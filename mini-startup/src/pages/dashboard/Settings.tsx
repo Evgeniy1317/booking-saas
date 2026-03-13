@@ -1,7 +1,7 @@
 /** Конструктор v1 — шаблоны сохранены для конструктора v2 (см. docs/CONSTRUCTOR-V2-PLAN.md, src/templates-v1/README.md) */
 import React, { useState, useEffect, useRef } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { Bell, Copy, ExternalLink, ChevronDown } from 'lucide-react'
+import { Bell, Copy, ExternalLink, ChevronDown, PenLine } from 'lucide-react'
 import QRCode from 'qrcode'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -13,6 +13,7 @@ import {
   HAIR_THEME_DEFAULT_BOOKING_SUBTITLE,
 } from '@/lib/hair-theme-defaults'
 import heroImage from '@/assets/images/barber-wallpaper-black-marble-background.jpg'
+import iconMarketing from '@/assets/images/constructor-images/free-icon-marketing-10476712.png'
 
 const slugify = (value: string) => {
   const slug = value
@@ -963,9 +964,9 @@ export default function Settings() {
   const googleMapQuery = (publicPage.address || 'Chisinau').trim()
   const googleSearchQuery = [publicPage.placeName, publicPage.address].filter(Boolean).join(' ')
   const googleMapUrl = hasCoords
-    ? `https://www.google.com/maps?q=${mapLat},${mapLng}&z=17&output=embed`
-    : `https://www.google.com/maps?q=${encodeURIComponent(googleMapQuery)}&output=embed`
-  const googleOpenUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(googleSearchQuery || googleMapQuery)}`
+    ? `https://www.google.com/maps?q=${mapLat},${mapLng}&z=17&output=embed&hl=en`
+    : `https://www.google.com/maps?q=${encodeURIComponent(googleMapQuery)}&output=embed&hl=en`
+  const googleOpenUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(googleSearchQuery || googleMapQuery)}&hl=en`
 
   const handleUseGeolocation = () => {
     if (!navigator.geolocation) {
@@ -1330,34 +1331,42 @@ export default function Settings() {
   )
   const content = (
     <PageLayout>
-        {/* Сайт вашего салона */}
-        <Card className="relative overflow-hidden border-2 border-primary/30 bg-gradient-to-br from-primary/10 via-card to-primary/5 shadow-[0_0_40px_rgba(59,130,246,0.15)] py-16 px-8 sm:py-20 sm:px-12">
-          <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_50%_at_50%_0%,rgba(59,130,246,0.12),transparent)] pointer-events-none" />
-          <div className="relative flex flex-col items-center justify-center text-center max-w-2xl mx-auto">
-            <h3 className="text-3xl sm:text-4xl font-bold text-foreground mb-4 tracking-tight">
-              Сайт вашего салона
-            </h3>
-            <p className="text-base sm:text-lg text-muted-foreground mb-10 leading-relaxed sm:whitespace-nowrap">
-              Редактируйте дизайн в конструкторе и смотрите результат на публичной странице
-            </p>
-            <div className="flex flex-col sm:flex-row gap-4 w-full sm:w-auto sm:flex-wrap sm:justify-center">
+        {/* Сайт вашего салона — CTA-блок */}
+        <Card className="relative overflow-hidden rounded-3xl border-0 bg-gradient-to-br from-primary/8 via-card to-primary/5 shadow-2xl shadow-black/20">
+          <div className="absolute top-0 right-0 w-[min(80%,320px)] h-full bg-gradient-to-l from-primary/10 to-transparent pointer-events-none" />
+          <div className="absolute bottom-0 left-0 w-64 h-64 rounded-full bg-primary/10 blur-3xl -translate-x-1/2 translate-y-1/2 pointer-events-none" />
+          <div className="relative flex flex-col sm:flex-row sm:items-center sm:justify-between gap-8 px-6 py-10 sm:px-10 sm:py-12">
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-4 mb-4">
+                <div className="flex shrink-0 items-center justify-center">
+                  <img src={iconMarketing} alt="" className="h-12 w-12 object-contain" />
+                </div>
+                <h3 className="text-2xl sm:text-3xl font-bold text-foreground tracking-tight">
+                  Сайт вашего салона
+                </h3>
+              </div>
+              <p className="text-muted-foreground text-sm sm:text-base leading-relaxed max-w-md">
+                Соберите страницу из блоков в конструкторе — шапка, галерея, запись и карта. Результат виден сразу.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-3 shrink-0">
               <Button
                 variant="default"
                 size="lg"
-                className="rounded-2xl font-bold text-lg h-14 px-10 shadow-xl shadow-primary/30 hover:shadow-primary/40 transition-all hover:scale-[1.02]"
+                className="rounded-xl h-11 px-6 font-semibold shadow-lg shadow-primary/20 hover:shadow-primary/30 transition-shadow gap-2"
                 onClick={() => navigate('/constructor')}
               >
-                Конструктор сайта
+                <PenLine className="h-4 w-4" />
+                Конструктор
               </Button>
               <Button
                 variant="outline"
                 size="lg"
-                className="rounded-2xl font-bold text-lg h-14 px-10 border-2 border-primary/50 bg-primary/5 hover:bg-primary/10 hover:border-primary"
-                onClick={() => {
-                  window.open(`/b/${publicSlug}?preview=1`, '_blank')
-                }}
+                className="rounded-xl h-11 px-6 font-semibold border-2 border-primary/40 bg-transparent hover:bg-primary/10 hover:border-primary/60 transition-colors gap-2"
+                onClick={() => window.open(`/b/${publicSlug}?preview=1`, '_blank')}
               >
-                Посмотреть ваш сайт
+                <ExternalLink className="h-4 w-4" />
+                Открыть сайт
               </Button>
             </div>
           </div>

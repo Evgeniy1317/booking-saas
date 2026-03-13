@@ -56,7 +56,7 @@ export default function LocationMap({
 
   const openGoogleMaps = () => {
     const destination = `${center[1]},${center[0]}`
-    const url = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destination)}`
+    const url = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destination)}&hl=en`
     window.open(url, '_blank', 'noopener,noreferrer')
   }
 

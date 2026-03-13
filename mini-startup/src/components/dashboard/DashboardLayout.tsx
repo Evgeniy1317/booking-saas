@@ -87,8 +87,8 @@ export default function DashboardLayout() {
       } ${isLightTheme ? 'bg-[hsl(0,0%,98%)]' : 'bg-background'}`}>
         <Header sidebarContent={<SidebarContent />} />
         
-        <div className="flex-1 p-4 sm:p-6 md:p-8 lg:p-10 xl:p-12 overflow-y-auto scrollbar-hide">
-          <div className="w-full max-w-full mx-auto space-y-8 pb-20">
+        <div className="flex-1 min-h-0 p-4 sm:p-6 md:p-8 lg:p-10 xl:p-12 overflow-y-auto scrollbar-hide">
+          <div className="w-full max-w-full mx-auto space-y-8 pb-6">
             <Outlet />
           </div>
         </div>

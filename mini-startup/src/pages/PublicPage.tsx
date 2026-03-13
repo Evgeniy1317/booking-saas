@@ -18,6 +18,9 @@ import worksDefault2 from '@/assets/images/constructor-images/orig (2).jpg'
 import worksDefault3 from '@/assets/images/constructor-images/caa5a2c48f545f5610765afae36e9568.jpg'
 import worksDefault4 from '@/assets/images/constructor-images/360_F_834954163_kERlfdHRLDAJpTGw4LYaGVhvsUH8sXd4.jpg'
 import worksDefault5 from '@/assets/images/constructor-images/istockphoto-1856117770-170667a.jpg'
+import worksCarousel1 from '@/assets/images/constructor-images/c612ebeea6a9ada45aba6c8d7c5db8e9.jpeg'
+import worksCarousel2 from '@/assets/images/constructor-images/ew_HairSociety_Eclat_7-1000x1000.jpg'
+import worksCarousel3 from '@/assets/images/constructor-images/1704.jpg'
 import patternBg from '@/assets/images/seamless-pattern-of-hairdressing-elements-illustration-of-doodle-icons-background-wallpaper-the-concept-of-a-hairdressing-salon-and-a-beauty-salon-vector.jpg'
 import manicurePattern from '@/assets/images/constructor-images/manicure-tools-seamless-pattern-for-nail-studio-or-spa-salon-beauty-routine-background-vector.jpg'
 import manicurePatternAlt from '@/assets/images/constructor-images/manicure-tools-doodle-seamless-pattern-manicure-scissors-gel-polish-woman-hands-white-background_646079-2612.avif'
@@ -52,6 +55,9 @@ const DEFAULT_WORKS_IMAGES = [
   worksDefault4,
   worksDefault5,
 ]
+
+/** 3 фотографии по умолчанию для карусели «Галерея работ» (слоты 1–3), пока не заданы свои */
+const DEFAULT_WORKS_CAROUSEL_IMAGES = [worksCarousel1, worksCarousel2, worksCarousel3]
 
 /** Начальные позиции хедера по темам (как в статическом шаблоне) — % от ширины/высоты */
 const DEFAULT_HEADER_LAYOUT_BY_THEME: Record<string, Record<string, { x: number; y: number }>> = {
@@ -550,6 +556,7 @@ function PublicPage() {
   const activeStaff = staff.filter((member) => member.active)
   const isMobile = useIsMobile()
   const location = useLocation()
+  const { slug: urlSlug } = useParams<{ slug: string }>()
   const isPreview = new URLSearchParams(location.search).get('preview') === '1'
   const isEditMode = new URLSearchParams(location.search).get('edit') === '1'
   /** Режим демонстрации шаблонов (выбор темы): показываем только дефолтный дизайн, правки не подставляются */
@@ -562,11 +569,9 @@ function PublicPage() {
     const themeRaw =
       localStorage.getItem('draft_publicHeaderTheme') ?? localStorage.getItem('publicHeaderTheme') ?? 'hair'
     const theme = themeRaw.startsWith('premium-') ? themeRaw.replace('premium-', '') : themeRaw
-    return (
-      localStorage.getItem(`draft_${key}_${theme}`) ??
-      localStorage.getItem(key) ??
-      fallback
-    )
+    const slug = urlSlug || 'salon'
+    // Только черновики этой темы и этого салона — без подстановки сохранённого key, иначе в другом шаблоне показывался бы адрес из первого
+    return localStorage.getItem(`draft_${key}_${slug}_${theme}`) ?? fallback
   }
 
   const publicHeaderThemeRaw = readPublic('publicHeaderTheme') || 'hair'
@@ -623,6 +628,16 @@ function PublicPage() {
     if (typeof window === 'undefined') return
     window.scrollTo({ top: 0, left: 0 })
   }, [])
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && urlSlug) {
+      try {
+        window.localStorage.setItem('publicSlug', urlSlug)
+      } catch {
+        // ignore
+      }
+    }
+  }, [urlSlug])
 
   useEffect(() => {
     if (!isPreview || typeof window === 'undefined') return
@@ -858,6 +873,8 @@ function PublicPage() {
     if (t === FOOTER_DEFAULT_ADDRESS) return true
     return t.split(/[\s,]+/).length <= 1 && t.length < 25
   }
+  /** Адрес для карты: в конструкторе редактируют publicAddress, во футере — publicFooterAddress; для превью учитываем оба */
+  const mapSourceAddress = (readPublic('publicAddress') || storedAddress || '').trim()
   const isLegacyHours = (s: string) => !s || String(s).trim() === ''
   const isLegacyDayOff = (s: string) => !s || String(s).trim() === ''
   const footerDisplayAddress =
@@ -1145,16 +1162,22 @@ function PublicPage() {
   const publicDayOff = readPublic('publicDayOff') || FOOTER_DEFAULT_DAY_OFF
   const mapLat = Number.parseFloat(readPublic('publicMapLat') || '')
   const mapLng = Number.parseFloat(readPublic('publicMapLng') || '')
-  const hasCoords = Number.isFinite(mapLat) && Number.isFinite(mapLng)
+  const hasCoordsRaw = Number.isFinite(mapLat) && Number.isFinite(mapLng)
+  /** В превью редактирования показываем введённый пользователем адрес и координаты; нейтральный — только для демо шаблона или пустого/legacy адреса */
+  const useMapBuiltIn = isTemplateDemo || (isPreview && isLegacyAddress(mapSourceAddress))
+  const hasCoords = useMapBuiltIn ? false : hasCoordsRaw
   const mapZoom = isMobile ? 15 : 17
-  const googleMapQuery = (publicAddress || 'Chisinau').trim()
-  const googleSearchQuery = [publicPlaceName, publicAddress].filter(Boolean).join(' ')
+  const mapAddressNeutral = FOOTER_DEFAULT_ADDRESS
+  const googleMapQuery = (useMapBuiltIn ? mapAddressNeutral : (publicAddress || 'Chisinau')).trim()
+  const googleSearchQuery = useMapBuiltIn
+    ? mapAddressNeutral
+    : [publicPlaceName, publicAddress].filter(Boolean).join(' ')
   const googleMapUrl = hasCoords
-    ? `https://www.google.com/maps?q=${mapLat},${mapLng}&z=${mapZoom}&output=embed`
-    : `https://www.google.com/maps?q=${encodeURIComponent(googleMapQuery)}&z=${mapZoom}&output=embed`
+    ? `https://www.google.com/maps?q=${mapLat},${mapLng}&z=${mapZoom}&output=embed&hl=en`
+    : `https://www.google.com/maps?q=${encodeURIComponent(googleMapQuery)}&z=${mapZoom}&output=embed&hl=en`
   const googleOpenUrl = hasCoords
-    ? `https://www.google.com/maps/search/?api=1&query=${mapLat},${mapLng}`
-    : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(googleSearchQuery || googleMapQuery)}`
+    ? `https://www.google.com/maps/search/?api=1&query=${mapLat},${mapLng}&hl=en`
+    : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(googleSearchQuery || googleMapQuery)}&hl=en`
   const heroBackgroundDefault =
     publicHeaderTheme === 'barber'
       ? barberHeaderBg
@@ -1166,7 +1189,7 @@ function PublicPage() {
             ? manicureHeaderBg
             : heroImage
   const heroBackgroundUrl = readPublic('publicHeroImage') || heroBackgroundDefault
-  const galleryValues = [
+  const galleryValuesRaw = [
     readPublic('publicGallery1') || '',
     readPublic('publicGallery2') || '',
     readPublic('publicGallery3') || '',
@@ -1178,6 +1201,9 @@ function PublicPage() {
     readPublic('publicGallery9') || '',
     readPublic('publicGallery10') || '',
   ]
+  const galleryValues = galleryValuesRaw.map((v, i) =>
+    v === '__empty__' ? '' : (v || DEFAULT_WORKS_CAROUSEL_IMAGES[i] || '')
+  )
   const worksImagesRaw = isTemplateDemo
     ? ['', '', '', '', '']
     : [

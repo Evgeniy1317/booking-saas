@@ -1,7 +1,9 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
+import { flushSync } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { PanelRightOpen, Save, ArrowLeft, Maximize2, X, ChevronLeft, Pencil, RotateCcw, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Card } from '@/components/ui/card'
 import { flushDraftsToPublic } from '@/lib/constructor-save'
 import { cn } from '@/lib/utils'
 import iconHairCutting from '@/assets/images/constructor-images/free-icon-hair-cutting-4614189.png'
@@ -14,6 +16,9 @@ import iconPremium2 from '@/assets/images/constructor-images/free-icon-premium-2
 import patternBg from '@/assets/images/seamless-pattern-of-hairdressing-elements-illustration-of-doodle-icons-background-wallpaper-the-concept-of-a-hairdressing-salon-and-a-beauty-salon-vector.jpg'
 import manicurePattern from '@/assets/images/constructor-images/manicure-tools-seamless-pattern-for-nail-studio-or-spa-salon-beauty-routine-background-vector.jpg'
 import manicurePatternAlt from '@/assets/images/constructor-images/manicure-tools-doodle-seamless-pattern-manicure-scissors-gel-polish-woman-hands-white-background_646079-2612.avif'
+import worksCarousel1 from '@/assets/images/constructor-images/c612ebeea6a9ada45aba6c8d7c5db8e9.jpeg'
+import worksCarousel2 from '@/assets/images/constructor-images/ew_HairSociety_Eclat_7-1000x1000.jpg'
+import worksCarousel3 from '@/assets/images/constructor-images/1704.jpg'
 import {
   HAIR_THEME_DEFAULT_NAME,
   HAIR_THEME_DEFAULT_TAGLINE,
@@ -21,7 +26,11 @@ import {
   HAIR_THEME_DEFAULT_BOOKING_SUBTITLE,
   DEFAULT_LOGO_URL,
   FOOTER_DEFAULT_NAME,
+  FOOTER_DEFAULT_ADDRESS,
 } from '@/lib/hair-theme-defaults'
+
+/** Дефолтные фото для слотов 1–3 карусели «Галерея работ» — отображаются в сайдбаре и в превью, пока не заданы свои */
+const WORKS_CAROUSEL_DEFAULTS = [worksCarousel1, worksCarousel2, worksCarousel3]
 
 /** Сжимает изображение для логотипа, чтобы влезало в localStorage и отображалось (в т.ч. большие картинки из ChatGPT) */
 function compressImageForLogo(dataUrl: string, onDone: (dataUrl: string) => void): void {
@@ -90,26 +99,31 @@ function themeStorageId(themeId: string | null): string {
   return themeId.startsWith('premium-') ? themeId.replace('premium-', '') : themeId
 }
 
-/** Удалить все черновики и флаг правок только для одной темы */
-function clearThemeDrafts(themeId: string): void {
+/** Удалить все черновики и флаг правок только для одной темы; при переданном slug — только черновики этого салона */
+function clearThemeDrafts(themeId: string, slug?: string): void {
   if (typeof window === 'undefined') return
   const id = themeStorageId(themeId)
-  const suffix = `_${id}`
+  const suffix = slug ? `_${slug}_${id}` : `_${id}`
   const keysToRemove: string[] = []
   for (let i = 0; i < window.localStorage.length; i++) {
     const k = window.localStorage.key(i)
-    if (k && (k.endsWith(suffix) || k === CONSTRUCTOR_HAS_USER_EDITS_PREFIX + id)) keysToRemove.push(k)
+    if (k && (k.endsWith(suffix) || (!slug && k === CONSTRUCTOR_HAS_USER_EDITS_PREFIX + id))) keysToRemove.push(k)
+  }
+  if (slug) {
+    keysToRemove.push(CONSTRUCTOR_HAS_USER_EDITS_PREFIX + slug + '_' + id)
+    keysToRemove.push(CONSTRUCTOR_HAS_USER_EDITS_PREFIX + id)
   }
   keysToRemove.forEach((k) => window.localStorage.removeItem(k))
   const layoutKey = HEADER_LAYOUT_KEY_BY_THEME[id]
-  if (layoutKey) window.localStorage.removeItem(layoutKey)
-  if (id === 'hair') {
+  if (layoutKey && !slug) window.localStorage.removeItem(layoutKey)
+  if (id === 'hair' && !slug) {
     window.localStorage.removeItem(HEADER_LAYOUT_HAIR_KEY)
     window.localStorage.removeItem(HEADER_HAIR_PADDING_KEY)
     window.localStorage.removeItem(HEADER_HAIR_CUSTOMIZED_KEY)
   }
 }
 
+/** Базовые шаблоны (v1) — зафиксированы, структура не меняется. См. src/lib/template-registry.ts */
 const ORDINARY_THEMES = [
   { id: 'hair', label: 'Парикмахерская', icon: iconHairCutting },
   { id: 'barber', label: 'Барбершоп', icon: iconBarbershop },
@@ -118,11 +132,13 @@ const ORDINARY_THEMES = [
   { id: 'manicure', label: 'Маникюр', icon: iconNailsPolish },
 ] as const
 
+/** Премиум-шаблоны: текущие 2 с той же структурой; далее — 2 новых сайта с другой структурой. */
 const PREMIUM_THEMES = [
   { id: 'premium-hair', label: 'Парикмахерская', icon: iconPremium2 },
   { id: 'premium-barber', label: 'Барбершоп', icon: iconPremium1 },
 ] as const
 
+/** Блоки базовой структуры (зафиксированы для обычных шаблонов). Премиум-сайты с другой структурой — отдельно. */
 const BLOCKS = [
   { id: 'header', label: 'Шапка сайта' },
   { id: 'gallery', label: 'Фотографии салона' },
@@ -180,14 +196,17 @@ export default function ConstructorPage() {
   const [, setStoragePoll] = useState(0)
   const [undoStack, setUndoStack] = useState<{ key: string; value: string | null; themeId?: string }[]>([])
   const MAX_UNDO = 50
+  const [showClearConfirmModal, setShowClearConfirmModal] = useState(false)
   const [addressQuery, setAddressQuery] = useState(() => {
     if (typeof window === 'undefined') return ''
+    const slug = window.localStorage.getItem('publicSlug') || 'salon'
     const theme =
       window.localStorage.getItem('draft_publicHeaderTheme') ??
       window.localStorage.getItem('publicHeaderTheme') ??
       'hair'
     const tid = theme.startsWith('premium-') ? theme.replace('premium-', '') : theme
     return (
+      window.localStorage.getItem(`draft_publicAddress_${slug}_${tid}`) ??
       window.localStorage.getItem(`draft_publicAddress_${tid}`) ??
       window.localStorage.getItem('draft_publicAddress') ??
       window.localStorage.getItem('publicAddress') ??
@@ -236,6 +255,20 @@ export default function ConstructorPage() {
     }
   }, [selectedBlockId, panelStage])
 
+  // При смене темы подставлять в поле адреса черновик этой темы (или пусто — нейтральный placeholder)
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const themeId =
+      selectedThemeId ??
+      window.localStorage.getItem('draft_publicHeaderTheme') ??
+      window.localStorage.getItem('publicHeaderTheme') ??
+      'hair'
+    const tid = themeStorageId(themeId)
+    const slug = window.localStorage.getItem('publicSlug') || 'salon'
+    const addr = window.localStorage.getItem(`draft_publicAddress_${slug}_${tid}`) ?? ''
+    setAddressQuery(addr)
+  }, [selectedThemeId, panelStage])
+
   const getDraftOrPublic = useCallback(
     (key: string, fallback = '') => {
       if (typeof window === 'undefined') return fallback
@@ -245,6 +278,7 @@ export default function ConstructorPage() {
           window.localStorage.getItem('publicHeaderTheme') ??
           fallback
         )
+      const slug = window.localStorage.getItem('publicSlug') || 'salon'
       const themeId =
         selectedThemeId ??
         window.localStorage.getItem('draft_publicHeaderTheme') ??
@@ -252,9 +286,7 @@ export default function ConstructorPage() {
         'hair'
       const tid = themeStorageId(themeId)
       return (
-        window.localStorage.getItem(`draft_${key}_${tid}`) ??
-        window.localStorage.getItem(key) ??
-        fallback
+        window.localStorage.getItem(`draft_${key}_${slug}_${tid}`) ?? fallback
       )
     },
     [selectedThemeId]
@@ -305,11 +337,22 @@ export default function ConstructorPage() {
   }, [addressQuery, isAddressFocused])
 
   const currentHeaderTheme = getDraftOrPublic('publicHeaderTheme') || 'hair'
-  /** Есть ли правки именно у выбранной темы — блок «Мой сайт» показываем только для неё */
+  /** Есть ли правки у выбранной темы: флаг или реальные черновики — блок «Мой сайт» показываем только для этой темы */
   const currentThemeHasEdits =
     typeof window !== 'undefined' &&
     !!selectedThemeId &&
-    window.localStorage.getItem(CONSTRUCTOR_HAS_USER_EDITS_PREFIX + themeStorageId(selectedThemeId)) === '1'
+    (() => {
+      const slug = window.localStorage.getItem('publicSlug') || 'salon'
+      const tid = themeStorageId(selectedThemeId)
+      if (window.localStorage.getItem(CONSTRUCTOR_HAS_USER_EDITS_PREFIX + slug + '_' + tid) === '1') return true
+      if (window.localStorage.getItem(CONSTRUCTOR_HAS_USER_EDITS_PREFIX + tid) === '1') return true
+      const suffix = `_${slug}_${tid}`
+      for (let i = 0; i < window.localStorage.length; i++) {
+        const k = window.localStorage.key(i)
+        if (k && k.startsWith('draft_') && k !== 'draft_publicHeaderTheme' && k.endsWith(suffix)) return true
+      }
+      return false
+    })()
   const hasHeaderDesignOverride =
     typeof window !== 'undefined' &&
     (!!localStorage.getItem(HEADER_LAYOUT_HAIR_KEY) ||
@@ -319,24 +362,26 @@ export default function ConstructorPage() {
   /** Сбрасывает правки только для одной темы (шаблон темы не меняется). */
   const loadThemeDefaults = useCallback((themeId: string) => {
     if (typeof window === 'undefined') return
+    const slug = window.localStorage.getItem('publicSlug') || 'salon'
     const valueToStore = themeStorageId(themeId)
-    clearThemeDrafts(valueToStore)
+    clearThemeDrafts(valueToStore, slug)
     if (valueToStore === 'hair') {
-      window.localStorage.setItem('draft_publicName_hair', FOOTER_DEFAULT_NAME)
-      window.localStorage.setItem('draft_publicTagline_hair', HAIR_THEME_DEFAULT_TAGLINE)
-      window.localStorage.setItem('draft_publicBookingTitle_hair', HAIR_THEME_DEFAULT_BOOKING_TITLE)
-      window.localStorage.setItem('draft_publicBookingSubtitle_hair', HAIR_THEME_DEFAULT_BOOKING_SUBTITLE)
+      window.localStorage.setItem(`draft_publicName_${slug}_hair`, FOOTER_DEFAULT_NAME)
+      window.localStorage.setItem(`draft_publicTagline_${slug}_hair`, HAIR_THEME_DEFAULT_TAGLINE)
+      window.localStorage.setItem(`draft_publicBookingTitle_${slug}_hair`, HAIR_THEME_DEFAULT_BOOKING_TITLE)
+      window.localStorage.setItem(`draft_publicBookingSubtitle_${slug}_hair`, HAIR_THEME_DEFAULT_BOOKING_SUBTITLE)
     }
   }, [])
 
   const handleRestoreInitialHeader = useCallback(() => {
     if (typeof window === 'undefined') return
+    const slug = window.localStorage.getItem('publicSlug') || 'salon'
     setUndoStack([])
-    clearThemeDrafts('hair')
-    localStorage.setItem('draft_publicName_hair', FOOTER_DEFAULT_NAME)
-    localStorage.setItem('draft_publicTagline_hair', HAIR_THEME_DEFAULT_TAGLINE)
-    localStorage.setItem('draft_publicBookingTitle_hair', HAIR_THEME_DEFAULT_BOOKING_TITLE)
-    localStorage.setItem('draft_publicBookingSubtitle_hair', HAIR_THEME_DEFAULT_BOOKING_SUBTITLE)
+    clearThemeDrafts('hair', slug)
+    localStorage.setItem(`draft_publicName_${slug}_hair`, FOOTER_DEFAULT_NAME)
+    localStorage.setItem(`draft_publicTagline_${slug}_hair`, HAIR_THEME_DEFAULT_TAGLINE)
+    localStorage.setItem(`draft_publicBookingTitle_${slug}_hair`, HAIR_THEME_DEFAULT_BOOKING_TITLE)
+    localStorage.setItem(`draft_publicBookingSubtitle_${slug}_hair`, HAIR_THEME_DEFAULT_BOOKING_SUBTITLE)
     setRestoreTick((t) => t + 1)
     try {
       iframeRef.current?.contentWindow?.location?.reload()
@@ -356,13 +401,14 @@ export default function ConstructorPage() {
   const setDraft = useCallback(
     (key: string, value: string) => {
       if (typeof window === 'undefined') return
+      const slug = window.localStorage.getItem('publicSlug') || 'salon'
       const themeId =
         selectedThemeId ??
         window.localStorage.getItem('draft_publicHeaderTheme') ??
         'hair'
       const tid = themeStorageId(themeId)
       const storageKey =
-        key === 'publicHeaderTheme' ? `draft_${key}` : `draft_${key}_${tid}`
+        key === 'publicHeaderTheme' ? `draft_${key}` : `draft_${key}_${slug}_${tid}`
       const prev =
         window.localStorage.getItem(storageKey) ??
         (key === 'publicHeaderTheme' ? null : window.localStorage.getItem(key))
@@ -372,7 +418,7 @@ export default function ConstructorPage() {
       })
       window.localStorage.setItem(storageKey, value)
       if (key !== 'publicHeaderTheme')
-        window.localStorage.setItem(CONSTRUCTOR_HAS_USER_EDITS_PREFIX + tid, '1')
+        window.localStorage.setItem(CONSTRUCTOR_HAS_USER_EDITS_PREFIX + slug + '_' + tid, '1')
       setStoragePoll((n) => n + 1)
       notifyIframeDraft()
     },
@@ -381,13 +427,14 @@ export default function ConstructorPage() {
 
   const handleUndo = useCallback(() => {
     if (typeof window === 'undefined') return
+    const slug = window.localStorage.getItem('publicSlug') || 'salon'
     setUndoStack((prev) => {
       if (prev.length === 0) return prev
       const last = prev[prev.length - 1]
       const storageKey =
         last.key === 'publicHeaderTheme' || !last.themeId
           ? `draft_${last.key}`
-          : `draft_${last.key}_${last.themeId}`
+          : `draft_${last.key}_${slug}_${last.themeId}`
       if (last.value === null || last.value === undefined) {
         window.localStorage.removeItem(storageKey)
       } else {
@@ -436,6 +483,12 @@ export default function ConstructorPage() {
   }
 
   const goToEdit = () => {
+    if (selectedThemeId && typeof window !== 'undefined') {
+      const valueToStore = selectedThemeId.startsWith('premium-')
+        ? selectedThemeId.replace('premium-', '')
+        : selectedThemeId
+      window.localStorage.setItem('draft_publicHeaderTheme', valueToStore)
+    }
     setSelectedBlockId(null)
     setPanelStage('edit')
   }
@@ -463,42 +516,103 @@ export default function ConstructorPage() {
   }, [])
 
 
-  const handleClearMySite = useCallback(() => {
+  const handleClearMySiteClick = useCallback(() => {
+    setShowClearConfirmModal(true)
+  }, [])
+
+  const handleClearMySiteConfirm = useCallback(() => {
     if (typeof window === 'undefined') return
-    const confirmed = window.confirm(
-      'Вы уверены, что хотите удалить последние изменения для этой темы? Другие темы не затронуты.'
-    )
-    if (!confirmed) return
+    setShowClearConfirmModal(false)
     const themeId = selectedThemeId || currentHeaderTheme || 'hair'
-    loadThemeDefaults(themeId)
-    setUndoStack([])
-    setStoragePoll((n) => n + 1)
+    const slug = window.localStorage.getItem('publicSlug') || 'salon'
+    const tid = themeStorageId(themeId)
+    clearThemeDrafts(tid, slug)
+    window.localStorage.removeItem(CONSTRUCTOR_HAS_USER_EDITS_PREFIX + slug + '_' + tid)
+    window.localStorage.removeItem(CONSTRUCTOR_HAS_USER_EDITS_PREFIX + tid)
+    flushSync(() => {
+      setAddressQuery('')
+      setUndoStack([])
+      setStoragePoll((n) => n + 1)
+    })
+    notifyIframeDraft()
     try {
       iframeRef.current?.contentWindow?.location?.reload()
     } catch {
       // ignore
     }
-  }, [selectedThemeId, currentHeaderTheme, loadThemeDefaults])
+  }, [selectedThemeId, currentHeaderTheme, notifyIframeDraft])
+
+  const handleClearMySite = handleClearMySiteClick
 
   /** На экране «Все блоки» — вернуть изначальный дизайн только этой темы */
   const handleRestoreInitialDesign = useCallback(() => {
     if (typeof window === 'undefined') return
     if (currentHeaderTheme === 'hair') {
       handleRestoreInitialHeader()
+      setAddressQuery('')
+      notifyIframeDraft()
       return
     }
     loadThemeDefaults(currentHeaderTheme)
+    setAddressQuery('')
     setUndoStack([])
     setStoragePoll((n) => n + 1)
+    notifyIframeDraft()
     try {
       iframeRef.current?.contentWindow?.location?.reload()
     } catch {
       // ignore
     }
-  }, [currentHeaderTheme, loadThemeDefaults, handleRestoreInitialHeader])
+  }, [currentHeaderTheme, loadThemeDefaults, handleRestoreInitialHeader, notifyIframeDraft])
 
   return (
     <div className="h-screen flex flex-col bg-background text-foreground overflow-hidden">
+      {/* Модальное окно подтверждения «Стереть» */}
+      {showClearConfirmModal && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4"
+          onClick={() => setShowClearConfirmModal(false)}
+        >
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" aria-hidden />
+          <Card
+            className="relative z-[101] w-full max-w-md backdrop-blur-2xl bg-card/95 border border-border/50 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-6">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setShowClearConfirmModal(false)}
+                className="absolute top-4 right-4 h-8 w-8"
+                aria-label="Закрыть"
+              >
+                <X className="w-4 h-4" />
+              </Button>
+              <h3 className="text-lg font-bold pr-10 mb-3 text-foreground">
+                Удалить изменения?
+              </h3>
+              <p className="text-sm text-muted-foreground mb-6">
+                Вы точно хотите удалить последние изменения в этом шаблоне?
+              </p>
+              <div className="flex gap-3 justify-end">
+                <Button
+                  variant="outline"
+                  onClick={() => setShowClearConfirmModal(false)}
+                >
+                  Назад
+                </Button>
+                <Button
+                  onClick={handleClearMySiteConfirm}
+                  className="bg-primary text-primary-foreground hover:bg-primary/90"
+                >
+                  Да
+                </Button>
+              </div>
+            </div>
+          </Card>
+        </div>
+      )}
+
       {/* Шапка конструктора */}
       <header className="border-b border-border/50 bg-card/40 backdrop-blur supports-[backdrop-filter]:bg-card/60 shrink-0">
         <div className="flex items-center justify-between gap-4 px-4 py-3 sm:px-6">
@@ -1307,22 +1421,25 @@ export default function ConstructorPage() {
                         <div className="grid grid-cols-2 gap-2">
                           {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((idx) => {
                             const image = getDraftOrPublic(`publicGallery${idx}`)
+                            const displayImage =
+                              image === '__empty__' ? '' : (image || (idx <= 3 ? WORKS_CAROUSEL_DEFAULTS[idx - 1] : ''))
+                            const hasImage = Boolean(displayImage)
                             return (
                               <div
                                 key={`works-slot-${idx}`}
                                 className={cn(
                                   'relative aspect-square rounded-lg border-2 overflow-hidden',
-                                  image ? 'border-border/50 bg-card/30' : 'border-dashed border-border/50 bg-card/20'
+                                  hasImage ? 'border-border/50 bg-card/30' : 'border-dashed border-border/50 bg-card/20'
                                 )}
                               >
-                                {image ? (
+                                {hasImage ? (
                                   <>
                                     <label
                                       htmlFor={`constructor-works-gallery-${idx}`}
                                       className="absolute inset-0 cursor-pointer block"
                                       title="Заменить фото"
                                     >
-                                      <img src={image} alt="" className="h-full w-full object-cover" />
+                                      <img src={displayImage} alt="" className="h-full w-full object-cover" />
                                     </label>
                                     <button
                                       type="button"
@@ -1330,8 +1447,7 @@ export default function ConstructorPage() {
                                         e.preventDefault()
                                         e.stopPropagation()
                                         if (typeof window === 'undefined') return
-                                        window.localStorage.removeItem(`draft_publicGallery${idx}_${themeStorageId(currentHeaderTheme)}`)
-                                        window.localStorage.removeItem(`publicGallery${idx}`)
+                                        setDraft(`publicGallery${idx}`, '__empty__')
                                         setStoragePoll((n) => n + 1)
                                         notifyIframeDraft()
                                       }}
@@ -1357,13 +1473,19 @@ export default function ConstructorPage() {
                                   className="hidden"
                                   onChange={(e) => {
                                     const file = e.target.files?.[0]
-                                    if (!file) return
+                                    if (!file || typeof window === 'undefined') return
                                     const reader = new FileReader()
                                     reader.onload = () => {
-                                      const result = reader.result as string
-                                      if (result && typeof window !== 'undefined') {
-                                        setDraft(`publicGallery${idx}`, result)
-                                      }
+                                      const result = typeof reader.result === 'string' ? reader.result : ''
+                                      if (!result) return
+                                      compressImageForLogo(result, (dataUrl) => {
+                                        setDraft(`publicGallery${idx}`, dataUrl)
+                                        setStoragePoll((n) => n + 1)
+                                        notifyIframeDraft()
+                                      })
+                                    }
+                                    reader.onerror = () => {
+                                      e.target.value = ''
                                     }
                                     reader.readAsDataURL(file)
                                     e.target.value = ''
@@ -1547,6 +1669,7 @@ export default function ConstructorPage() {
                               const v = e.target.value
                               setAddressQuery(v)
                               setDraft('publicAddress', v)
+                              setDraft('publicFooterAddress', v)
                             }}
                             onFocus={() => {
                               setIsAddressFocused(true)
@@ -1556,7 +1679,7 @@ export default function ConstructorPage() {
                               // небольшая задержка, чтобы клик по подсказке успел отработать
                               setTimeout(() => setIsAddressFocused(false), 150)
                             }}
-                            placeholder="Например: ул. Пушкина 10, Кишинёв"
+                            placeholder={FOOTER_DEFAULT_ADDRESS}
                             className="w-full px-3 py-2 rounded-lg border border-border/50 text-sm bg-card/30 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
                           />
                           {isAddressOpen && addressResults.length > 0 && (
@@ -1574,6 +1697,7 @@ export default function ConstructorPage() {
                                         (formatted ? formatted.split(',')[0] : '')
                                       setAddressQuery(formatted)
                                       setDraft('publicAddress', formatted)
+                                      setDraft('publicFooterAddress', formatted)
                                       if (result.lat && result.lon) {
                                         setDraft('publicMapLat', String(result.lat))
                                         setDraft('publicMapLng', String(result.lon))
