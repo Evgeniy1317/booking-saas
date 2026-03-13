@@ -87,7 +87,10 @@ function snapToGuidesWithThreshold(value: number, others: number[], threshold: n
 const TAGLINE_SNAP_THRESHOLD = 5
 /** Смещение Y вниз от центра логотипа/названия до линии «под элементом» (в %) */
 const TAGLINE_UNDER_LOGO_OFFSET = 6
-const TAGLINE_UNDER_TITLE_OFFSET = 5
+/** Отступ описания вниз от названия при прилипании «под заголовком» (только это прилипание остаётся) */
+const TAGLINE_UNDER_TITLE_OFFSET = 12
+/** Радиус (в %) от точки «под названием»: при отпускании прилипает только если описание в этом радиусе, иначе остаётся где положили */
+const TAGLINE_UNDER_TITLE_SNAP_RADIUS = 5
 /** Половина ширины логотипа в % — для привязки «под начало логотипа» (левый край) */
 const LOGO_HALF_WIDTH_PERCENT = 5
 /** Точка под логотипом: смещение Y вниз от линии «под логотипом» */
@@ -196,6 +199,8 @@ export interface DraggableHeaderHairProps {
   defaultLayout?: Record<string, Position>
   /** Тема хедера (hair, barber, …) — для точного совпадения размеров шрифта с шаблоном */
   headerTheme?: string
+  /** Slug салона для ключей черновиков (draft_X_slug_theme), чтобы запоминание работало при возврате в тему */
+  slug?: string
 }
 
 export default function DraggableHeaderHair({
@@ -227,15 +232,19 @@ export default function DraggableHeaderHair({
   layoutStorageKey = 'draft_headerLayoutHair_v6',
   defaultLayout: defaultLayoutProp,
   headerTheme = 'hair',
+  slug = typeof window !== 'undefined' ? window.localStorage.getItem('publicSlug') || 'salon' : 'salon',
 }: DraggableHeaderHairProps) {
   const saveDraft = useCallback(
     (key: string, value: string) => {
       if (typeof window === 'undefined') return
-      window.localStorage.setItem(`draft_${key}_${headerTheme}`, value)
+      const storageKey = `draft_${key}_${slug}_${headerTheme}`
+      const prev = window.localStorage.getItem(storageKey)
+      if (prev === value) return
+      window.localStorage.setItem(storageKey, value)
       window.localStorage.setItem(`constructorHasUserEdits_${headerTheme}`, '1')
       onDraftChange?.()
     },
-    [onDraftChange, headerTheme]
+    [onDraftChange, headerTheme, slug]
   )
   const themeDefault = defaultLayoutProp ?? defaultLayout
   const [layout, setLayout] = useState<Record<string, Position>>(() =>
@@ -254,6 +263,7 @@ export default function DraggableHeaderHair({
   const [titleCharCount, setTitleCharCount] = useState(() => publicName.length)
   const [taglineCharCount, setTaglineCharCount] = useState(() => publicTagline.length)
   const [taglineFocused, setTaglineFocused] = useState(false)
+  const [localTagline, setLocalTagline] = useState(publicTagline)
   layoutRef.current = layout
 
   useEffect(() => {
@@ -263,10 +273,13 @@ export default function DraggableHeaderHair({
     setTaglineCharCount(publicTagline.length)
   }, [publicTagline])
   useEffect(() => {
+    if (!taglineFocused) setLocalTagline(publicTagline)
+  }, [publicTagline, taglineFocused])
+  useEffect(() => {
     const span = taglineMeasureRef.current
     if (!span) return
     const w = span.offsetWidth
-    setTaglineWidth(Math.max(120, Math.min(w + 16, 1200)))
+    setTaglineWidth(Math.max(120, Math.min(w + 40, 1200)))
   }, [publicTagline, taglineCharCount])
   useEffect(() => {
     return () => {
@@ -316,24 +329,7 @@ export default function DraggableHeaderHair({
       let newY = Math.max(0, Math.min(100, start.layoutY + deltaY))
 
       if (start.id === 'tagline') {
-        const layout = layoutRef.current
-        const titlePos = layout.title ?? themeDefault.title
-        const logoPos = layout.logo ?? themeDefault.logo
-        const logoStartX = Math.max(0, logoPos.x - LOGO_HALF_WIDTH_PERCENT)
-        const underLogoY = logoPos.y + TAGLINE_UNDER_LOGO_OFFSET
-        const underTitleY = titlePos.y + TAGLINE_UNDER_TITLE_OFFSET
-        const nearCorner =
-          Math.abs(newX - FIXED_TAGLINE_CORNER_POINT.x) <= TAGLINE_CORNER_SNAP_RADIUS &&
-          Math.abs(newY - FIXED_TAGLINE_CORNER_POINT.y) <= TAGLINE_CORNER_SNAP_RADIUS
-        if (nearCorner) {
-          newX = FIXED_TAGLINE_CORNER_POINT.x
-          newY = FIXED_TAGLINE_CORNER_POINT.y
-        } else {
-          const taglineSnapX = [50, logoPos.x, titlePos.x, logoStartX, FIXED_TAGLINE_CORNER_POINT.x]
-          const taglineSnapY = [underLogoY, underTitleY, FIXED_TAGLINE_CORNER_POINT.y, ...SNAP_GUIDES]
-          newX = snapToNearest(newX, taglineSnapX, TAGLINE_SNAP_THRESHOLD)
-          newY = snapToNearest(newY, taglineSnapY, TAGLINE_SNAP_THRESHOLD)
-        }
+        /* Описание перемещается свободно, без прилипания при драге; прилипание только при отпускании под названием */
       } else {
         const others = layoutRef.current
         const otherXs = (Object.keys(others) as (keyof typeof others)[])
@@ -429,8 +425,18 @@ export default function DraggableHeaderHair({
   const titleFontSizePx = Math.max(20, Math.min(56, 96 - titleCharCount * 1.5))
   const taglineLineHeight = 1.35
   const taglineSizeClass = 'text-base sm:text-lg md:text-2xl'
-  const titleClassName =
-    'font-serif font-semibold tracking-[0.08em] text-white drop-shadow-[0_12px_34px_rgba(0,0,0,0.5)] whitespace-nowrap outline-none focus:ring-2 focus:ring-primary/50 focus:ring-offset-2 focus:ring-offset-transparent rounded px-1 min-w-[2ch]'
+  const titleClassName = cn(
+    'font-semibold tracking-[0.08em] text-white drop-shadow-[0_12px_34px_rgba(0,0,0,0.5)] whitespace-nowrap outline-none focus:ring-2 focus:ring-primary/50 focus:ring-offset-2 focus:ring-offset-transparent rounded px-1 min-w-[2ch]',
+    headerTheme === 'barber'
+                ? 'font-barber-title'
+                : headerTheme === 'cosmetology'
+                  ? 'font-cosmetology-title'
+                  : headerTheme === 'coloring'
+                    ? 'font-coloring-title'
+                    : headerTheme === 'manicure'
+                      ? 'font-manicure-title'
+                      : 'font-serif'
+  )
   const buttonTextClass = 'text-base sm:text-lg md:text-xl'
   const buttonSizeClass = 'h-14 sm:h-16 md:h-[4.5rem] px-8 sm:px-12 md:px-14'
 
@@ -451,7 +457,29 @@ export default function DraggableHeaderHair({
     const start = dragStartRef.current
     if (start) {
       if (dragCommittedRef.current) {
-        saveLayout(layoutStorageKey, layoutRef.current)
+        if (start.id === 'tagline') {
+          const layout = layoutRef.current
+          const titlePos = layout.title ?? themeDefault.title
+          const taglinePos = layout.tagline
+          const underTitleY = titlePos.y + TAGLINE_UNDER_TITLE_OFFSET
+          const snapTarget = { x: titlePos.x, y: underTitleY }
+          const dist = taglinePos
+            ? Math.hypot(taglinePos.x - snapTarget.x, taglinePos.y - snapTarget.y)
+            : Infinity
+          if (taglinePos && dist <= TAGLINE_UNDER_TITLE_SNAP_RADIUS) {
+            const snapped = { ...layout, tagline: { x: snapTarget.x, y: snapTarget.y } }
+            layoutRef.current = snapped
+            setLayout(snapped)
+            saveLayout(layoutStorageKey, snapped)
+          } else {
+            saveLayout(layoutStorageKey, layout)
+          }
+        } else {
+          saveLayout(layoutStorageKey, layoutRef.current)
+        }
+        if (typeof window !== 'undefined') {
+          window.localStorage.setItem(`constructorHasUserEdits_${headerTheme}`, '1')
+        }
         onDraftChange?.()
       } else if (start.id === 'title') {
         focusEditableAndMoveCaretToEnd(titleBlockRef.current?.querySelector<HTMLElement>('[contenteditable="true"]'))
@@ -464,7 +492,7 @@ export default function DraggableHeaderHair({
     setDragging(null)
     setDragPos(null)
     onDragEnd?.()
-  }, [layoutStorageKey, focusEditableAndMoveCaretToEnd, onDragEnd, onDraftChange])
+  }, [layoutStorageKey, themeDefault, focusEditableAndMoveCaretToEnd, onDragEnd, onDraftChange])
 
   useEffect(() => {
     if (!dragging) return
@@ -482,28 +510,14 @@ export default function DraggableHeaderHair({
     ? (Object.keys(layout) as (keyof typeof layout)[]).filter((k) => k !== dragging).map((k) => layout[k])
     : []
 
-  const taglineSnapGuides =
-    dragging === 'tagline'
-      ? (() => {
-          const logoPos = layout.logo ?? themeDefault.logo
-          const titlePos = layout.title ?? themeDefault.title
-          const logoStartX = Math.max(0, logoPos.x - LOGO_HALF_WIDTH_PERCENT)
-          const underLogoY = logoPos.y + TAGLINE_UNDER_LOGO_OFFSET
-          const underTitleY = titlePos.y + TAGLINE_UNDER_TITLE_OFFSET
-          return {
-            x: [50, logoPos.x, titlePos.x, logoStartX, FIXED_TAGLINE_CORNER_POINT.x].filter(
-              (v, i, a) => a.indexOf(v) === i
-            ),
-            y: [underLogoY, underTitleY, ...SNAP_GUIDES].filter((v, i, a) => a.indexOf(v) === i),
-            cornerPoint: { x: FIXED_TAGLINE_CORNER_POINT.x, y: FIXED_TAGLINE_CORNER_POINT.y },
-          }
-        })()
-      : null
+  /* У описания свободное перемещение, направляющие не показываем; прилипание только при отпускании под названием */
+  const taglineSnapGuides = null
 
   const taglinePos = pos('tagline')
   const isTaglineAtCorner =
     Math.abs(taglinePos.x - FIXED_TAGLINE_CORNER_POINT.x) < 1 &&
     Math.abs(taglinePos.y - FIXED_TAGLINE_CORNER_POINT.y) < 1
+  const displayTagline = taglineFocused ? localTagline : publicTagline
 
   return (
     <div className="absolute inset-0 z-20 pointer-events-none">
@@ -635,12 +649,12 @@ export default function DraggableHeaderHair({
               textAlign: 'center',
             }}
           >
-            {(publicTagline.split(/\r?\n/).reduce((a, b) => (a.length >= b.length ? a : b), '') || '\u00A0')}
+            {(displayTagline.split(/\r?\n/).reduce((a, b) => (a.length >= b.length ? a : b), '') || '\u00A0')}
           </span>
           <textarea
             ref={taglineRef}
             wrap="off"
-            rows={Math.max(1, (publicTagline.match(/\n/g)?.length ?? 0) + 1)}
+            rows={Math.max(1, (displayTagline.match(/\n/g)?.length ?? 0) + 1)}
             placeholder="Введите текст (Shift+Enter — новая строка)"
             className={cn(
               'block resize-none overflow-x-auto overflow-y-auto rounded border-0 bg-transparent py-0.5 text-white/80 placeholder:text-white/40 outline-none focus:ring-2 focus:ring-white/40 focus:ring-offset-0 min-w-[120px] max-w-[90vw] [scrollbar-width:none] [ms-overflow-style:none] [&::-webkit-scrollbar]:hidden',
@@ -654,9 +668,20 @@ export default function DraggableHeaderHair({
               width: `${taglineWidth}px`,
               textAlign: isTaglineAtCorner ? 'left' : 'center',
             }}
-            value={publicTagline}
-            onChange={(e) => updateTaglineValue((e.target as HTMLTextAreaElement).value)}
-            onFocus={() => setTaglineFocused(true)}
+            value={taglineFocused ? localTagline : publicTagline}
+            onChange={(e) => {
+              const v = (e.target as HTMLTextAreaElement).value
+              setLocalTagline(v)
+              updateTaglineValue(v)
+            }}
+            onFocus={() => {
+              setTaglineFocused(true)
+              const ta = taglineRef.current
+              if (ta) {
+                const len = ta.value.length
+                setTimeout(() => ta.setSelectionRange(len, len), 0)
+              }
+            }}
             onBlur={() => setTaglineFocused(false)}
             onKeyDown={(e) => {
               if (e.key !== 'Enter') return
@@ -667,6 +692,7 @@ export default function DraggableHeaderHair({
                 const end = ta.selectionEnd
                 const currentValue = ta.value
                 const newVal = currentValue.slice(0, start) + '\n' + currentValue.slice(end)
+                setLocalTagline(newVal)
                 updateTaglineValue(newVal)
                 setTimeout(() => {
                   taglineRef.current?.setSelectionRange(start + 1, start + 1)
@@ -683,7 +709,7 @@ export default function DraggableHeaderHair({
             left: `${pos('primaryCta').x}%`,
             top: `${pos('primaryCta').y}%`,
             transform: 'translate(-50%, -50%)',
-            marginRight: '0.75rem',
+            marginRight: '2rem',
           }}
           onMouseDown={(e) => handleMouseDown(e, 'primaryCta')}
         >
@@ -696,12 +722,13 @@ export default function DraggableHeaderHair({
             )}
             style={
               headerPrimaryCustom
-                ? {
-                    backgroundColor: barberPrimaryColor.background,
-                    color: barberPrimaryColor.text,
-                    boxShadow: barberPrimaryColor.glow,
-                    borderColor: barberPrimaryColor.background,
-                  }
+                ? (() => {
+                    const isGrad = typeof barberPrimaryColor.background === 'string' && barberPrimaryColor.background.includes('gradient')
+                    const border = 'borderColor' in barberPrimaryColor ? barberPrimaryColor.borderColor : barberPrimaryColor.background
+                    return isGrad
+                      ? { background: barberPrimaryColor.background, color: barberPrimaryColor.text, boxShadow: barberPrimaryColor.glow, borderColor: border }
+                      : { backgroundColor: barberPrimaryColor.background, color: barberPrimaryColor.text, boxShadow: barberPrimaryColor.glow, borderColor: barberPrimaryColor.background }
+                  })()
                 : undefined
             }
           >
@@ -723,7 +750,7 @@ export default function DraggableHeaderHair({
             left: `${pos('secondaryCta').x}%`,
             top: `${pos('secondaryCta').y}%`,
             transform: 'translate(-50%, -50%)',
-            marginLeft: '0.75rem',
+            marginLeft: '2rem',
           }}
           onMouseDown={(e) => handleMouseDown(e, 'secondaryCta')}
         >
@@ -737,12 +764,19 @@ export default function DraggableHeaderHair({
             )}
             style={
               headerSecondaryCustom
-                ? {
-                    backgroundColor: barberSecondaryColor.background,
-                    color: barberSecondaryColor.text,
-                    boxShadow: barberSecondaryColor.glow,
-                    borderColor: barberSecondaryColor.background,
-                  }
+                ? (() => {
+                    const isGrad = typeof barberSecondaryColor.background === 'string' && barberSecondaryColor.background.includes('gradient')
+                    const border = 'borderColor' in barberSecondaryColor ? barberSecondaryColor.borderColor : barberSecondaryColor.background
+                    return isGrad
+                      ? {
+                          background: barberSecondaryColor.background,
+                          backgroundColor: 'transparent',
+                          color: barberSecondaryColor.text,
+                          boxShadow: barberSecondaryColor.glow,
+                          borderColor: border,
+                        }
+                      : { backgroundColor: barberSecondaryColor.background, color: barberSecondaryColor.text, boxShadow: barberSecondaryColor.glow, borderColor: barberSecondaryColor.background }
+                  })()
                 : undefined
             }
           >

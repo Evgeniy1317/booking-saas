@@ -99,6 +99,23 @@ function themeStorageId(themeId: string | null): string {
   return themeId.startsWith('premium-') ? themeId.replace('premium-', '') : themeId
 }
 
+/** Есть ли сохранённые правки у данной темы (для отображения на карточке темы) */
+function themeHasEdits(themeId: string): boolean {
+  if (typeof window === 'undefined') return false
+  const slug = window.localStorage.getItem('publicSlug') || 'salon'
+  const tid = themeStorageId(themeId)
+  if (window.localStorage.getItem(CONSTRUCTOR_HAS_USER_EDITS_PREFIX + slug + '_' + tid) === '1') return true
+  if (window.localStorage.getItem(CONSTRUCTOR_HAS_USER_EDITS_PREFIX + tid) === '1') return true
+  const suffix = `_${slug}_${tid}`
+  for (let i = 0; i < window.localStorage.length; i++) {
+    const k = window.localStorage.key(i)
+    if (k && k.startsWith('draft_') && k !== 'draft_publicHeaderTheme' && k.endsWith(suffix)) return true
+  }
+  const layoutKey = HEADER_LAYOUT_KEY_BY_THEME[tid]
+  if (layoutKey && window.localStorage.getItem(layoutKey)) return true
+  return false
+}
+
 /** Удалить все черновики и флаг правок только для одной темы; при переданном slug — только черновики этого салона */
 function clearThemeDrafts(themeId: string, slug?: string): void {
   if (typeof window === 'undefined') return
@@ -115,8 +132,8 @@ function clearThemeDrafts(themeId: string, slug?: string): void {
   }
   keysToRemove.forEach((k) => window.localStorage.removeItem(k))
   const layoutKey = HEADER_LAYOUT_KEY_BY_THEME[id]
-  if (layoutKey && !slug) window.localStorage.removeItem(layoutKey)
-  if (id === 'hair' && !slug) {
+  if (layoutKey) window.localStorage.removeItem(layoutKey)
+  if (id === 'hair') {
     window.localStorage.removeItem(HEADER_LAYOUT_HAIR_KEY)
     window.localStorage.removeItem(HEADER_HAIR_PADDING_KEY)
     window.localStorage.removeItem(HEADER_HAIR_CUSTOMIZED_KEY)
@@ -181,6 +198,42 @@ const HEADER_BUTTON_OPTIONS = [
   { id: 'indigo', label: 'Индиго', background: '#6366f1', text: '#ffffff', glow: '0 0 18px rgba(99,102,241,0.6)' },
   { id: 'gray', label: 'Серый', background: '#6b7280', text: '#ffffff', glow: '0 0 18px rgba(107,114,128,0.6)' },
   { id: 'brown', label: 'Коричневый', background: '#92400e', text: '#ffffff', glow: '0 0 18px rgba(146,64,14,0.6)' },
+  { id: 'black', label: 'Черный', background: '#0b0b0b', text: '#ffffff', glow: '0 0 18px rgba(0,0,0,0.6)' },
+] as const
+
+/** Цвета кнопок для темы «Косметология» — палитра в тонах розового/матового */
+const HEADER_BUTTON_OPTIONS_COSMETOLOGY = [
+  { id: 'rose', label: 'Роза', background: '#E8B4B8', text: '#1a0f12', glow: '0 0 20px rgba(232,180,184,0.55)' },
+  { id: 'mauve', label: 'Бордо', background: '#B76E79', text: '#ffffff', glow: '0 0 20px rgba(183,110,121,0.55)' },
+  { id: 'pink', label: 'Розовый', background: '#FF4D9D', text: '#0b0b0b', glow: '0 0 20px rgba(255,77,157,0.55)' },
+  { id: 'gold', label: 'Золото', background: '#E3B04B', text: '#111111', glow: '0 0 18px rgba(227,176,75,0.6)' },
+  { id: 'blue', label: 'Синий', background: '#3b82f6', text: '#ffffff', glow: '0 0 20px rgba(59,130,246,0.6)' },
+  { id: 'white', label: 'Белый', background: '#FFFFFF', text: '#0b0b0b', glow: '0 0 16px rgba(255,255,255,0.6)' },
+  { id: 'violet', label: 'Виолет', background: '#A78BFA', text: '#0b0b0b', glow: '0 0 18px rgba(167,139,250,0.6)' },
+  { id: 'black', label: 'Черный', background: '#0b0b0b', text: '#ffffff', glow: '0 0 18px rgba(0,0,0,0.6)' },
+] as const
+
+/** Цвета кнопок для темы «Покраска волос» — фиолетовый/фуксия/медный */
+const HEADER_BUTTON_OPTIONS_COLORING = [
+  { id: 'violet', label: 'Фиолет', background: '#A78BFA', text: '#0b0b0b', glow: '0 0 20px rgba(167,139,250,0.6)' },
+  { id: 'fuchsia', label: 'Фуксия', background: '#D946EF', text: '#ffffff', glow: '0 0 20px rgba(217,70,239,0.55)' },
+  { id: 'purple', label: 'Пурпур', background: '#7C3AED', text: '#ffffff', glow: '0 0 20px rgba(124,58,237,0.55)' },
+  { id: 'copper', label: 'Медь', background: '#B87333', text: '#1a0f0a', glow: '0 0 20px rgba(184,115,51,0.55)' },
+  { id: 'pink', label: 'Розовый', background: '#EC4899', text: '#ffffff', glow: '0 0 20px rgba(236,72,153,0.55)' },
+  { id: 'gold', label: 'Золото', background: '#E3B04B', text: '#111111', glow: '0 0 18px rgba(227,176,75,0.6)' },
+  { id: 'white', label: 'Белый', background: '#FFFFFF', text: '#0b0b0b', glow: '0 0 16px rgba(255,255,255,0.6)' },
+  { id: 'black', label: 'Черный', background: '#0b0b0b', text: '#ffffff', glow: '0 0 18px rgba(0,0,0,0.6)' },
+] as const
+
+/** Цвета кнопок для темы «Маникюр» — нежно-розовый, румянец, корал, розовое золото */
+const HEADER_BUTTON_OPTIONS_MANICURE = [
+  { id: 'blush', label: 'Румянец', background: '#F8B4C4', text: '#2d1519', glow: '0 0 20px rgba(248,180,196,0.55)' },
+  { id: 'rose', label: 'Роза', background: '#E8A0B0', text: '#1a0f12', glow: '0 0 20px rgba(232,160,176,0.55)' },
+  { id: 'coral', label: 'Корал', background: '#F4A6B4', text: '#1a0f12', glow: '0 0 20px rgba(244,166,180,0.55)' },
+  { id: 'pink', label: 'Розовый', background: '#EC4899', text: '#ffffff', glow: '0 0 20px rgba(236,72,153,0.55)' },
+  { id: 'gold', label: 'Золото', background: '#E8C9A0', text: '#1a1510', glow: '0 0 20px rgba(232,201,160,0.55)' },
+  { id: 'white', label: 'Белый', background: '#FFFFFF', text: '#0b0b0b', glow: '0 0 16px rgba(255,255,255,0.6)' },
+  { id: 'violet', label: 'Виолет', background: '#C4B5FD', text: '#1a1525', glow: '0 0 20px rgba(196,181,253,0.55)' },
   { id: 'black', label: 'Черный', background: '#0b0b0b', text: '#ffffff', glow: '0 0 18px rgba(0,0,0,0.6)' },
 ] as const
 
@@ -337,6 +390,23 @@ export default function ConstructorPage() {
   }, [addressQuery, isAddressFocused])
 
   const currentHeaderTheme = getDraftOrPublic('publicHeaderTheme') || 'hair'
+  /** Ключ хранилища цветов хедера: для косметологии, покраски и маникюра — отдельные, чтобы цвета применялись к хедеру темы */
+  const headerColorsStorageKey =
+    currentHeaderTheme === 'cosmetology'
+      ? 'publicHeaderCosmetologyColors'
+      : currentHeaderTheme === 'coloring'
+        ? 'publicHeaderColoringColors'
+        : currentHeaderTheme === 'manicure'
+          ? 'publicHeaderManicureColors'
+          : 'publicHeaderBarberColors'
+  const headerButtonOptionsList =
+    currentHeaderTheme === 'cosmetology'
+      ? HEADER_BUTTON_OPTIONS_COSMETOLOGY
+      : currentHeaderTheme === 'coloring'
+        ? HEADER_BUTTON_OPTIONS_COLORING
+        : currentHeaderTheme === 'manicure'
+          ? HEADER_BUTTON_OPTIONS_MANICURE
+          : HEADER_BUTTON_OPTIONS
   /** Есть ли правки у выбранной темы: флаг или реальные черновики — блок «Мой сайт» показываем только для этой темы */
   const currentThemeHasEdits =
     typeof window !== 'undefined' &&
@@ -356,8 +426,7 @@ export default function ConstructorPage() {
   const hasHeaderDesignOverride =
     typeof window !== 'undefined' &&
     (!!localStorage.getItem(HEADER_LAYOUT_HAIR_KEY) ||
-      !!localStorage.getItem(HEADER_HAIR_PADDING_KEY) ||
-      !!localStorage.getItem(HEADER_HAIR_CUSTOMIZED_KEY))
+      !!localStorage.getItem(HEADER_HAIR_PADDING_KEY))
 
   /** Сбрасывает правки только для одной темы (шаблон темы не меняется). */
   const loadThemeDefaults = useCallback((themeId: string) => {
@@ -1051,16 +1120,16 @@ export default function ConstructorPage() {
                               key={opt.id}
                               type="button"
                               onClick={() => {
-                                const raw = getDraftOrPublic('publicHeaderBarberColors')
+                                const raw = getDraftOrPublic(headerColorsStorageKey)
                                 let prev: { title?: string; subtitle?: string; primary?: string; secondary?: string } = {}
                                 if (raw) try { prev = JSON.parse(raw) } catch { /* ignore */ }
-                                setDraft('publicHeaderBarberColors', JSON.stringify({ ...prev, title: opt.id }))
+                                setDraft(headerColorsStorageKey, JSON.stringify({ ...prev, title: opt.id }))
                                 setStoragePoll((n) => n + 1)
                               }}
                               className={cn(
                                 'h-7 w-7 rounded-full border-2 transition',
                                 (() => {
-                                  const raw = getDraftOrPublic('publicHeaderBarberColors')
+                                  const raw = getDraftOrPublic(headerColorsStorageKey)
                                   let cur = 'default'
                                   if (raw) try { cur = JSON.parse(raw)?.title || 'default' } catch { /* ignore */ }
                                   return cur === opt.id ? 'border-primary' : 'border-border/50'
@@ -1073,11 +1142,11 @@ export default function ConstructorPage() {
                           <button
                             type="button"
                             onClick={() => {
-                              const raw = getDraftOrPublic('publicHeaderBarberColors')
+                              const raw = getDraftOrPublic(headerColorsStorageKey)
                               let prev: Record<string, string> = {}
                               if (raw) try { prev = JSON.parse(raw) } catch { /* ignore */ }
                               const next = { ...prev, title: 'default' }
-                              setDraft('publicHeaderBarberColors', JSON.stringify(next))
+                              setDraft(headerColorsStorageKey, JSON.stringify(next))
                               setStoragePoll((n) => n + 1)
                             }}
                             className="ml-0.5 px-2.5 py-1 rounded-full border border-border/50 text-sm text-muted-foreground hover:text-foreground"
@@ -1095,16 +1164,16 @@ export default function ConstructorPage() {
                               key={opt.id}
                               type="button"
                               onClick={() => {
-                                const raw = getDraftOrPublic('publicHeaderBarberColors')
+                                const raw = getDraftOrPublic(headerColorsStorageKey)
                                 let prev: Record<string, string> = {}
                                 if (raw) try { prev = JSON.parse(raw) } catch { /* ignore */ }
-                                setDraft('publicHeaderBarberColors', JSON.stringify({ ...prev, subtitle: opt.id }))
+                                setDraft(headerColorsStorageKey, JSON.stringify({ ...prev, subtitle: opt.id }))
                                 setStoragePoll((n) => n + 1)
                               }}
                               className={cn(
                                 'h-7 w-7 rounded-full border-2 transition',
                                 (() => {
-                                  const raw = getDraftOrPublic('publicHeaderBarberColors')
+                                  const raw = getDraftOrPublic(headerColorsStorageKey)
                                   let cur = 'default'
                                   if (raw) try { cur = JSON.parse(raw)?.subtitle || 'default' } catch { /* ignore */ }
                                   return cur === opt.id ? 'border-primary' : 'border-border/50'
@@ -1117,10 +1186,10 @@ export default function ConstructorPage() {
                           <button
                             type="button"
                             onClick={() => {
-                              const raw = getDraftOrPublic('publicHeaderBarberColors')
+                              const raw = getDraftOrPublic(headerColorsStorageKey)
                               let prev: Record<string, string> = {}
                               if (raw) try { prev = JSON.parse(raw) } catch { /* ignore */ }
-                              setDraft('publicHeaderBarberColors', JSON.stringify({ ...prev, subtitle: 'default' }))
+                              setDraft(headerColorsStorageKey, JSON.stringify({ ...prev, subtitle: 'default' }))
                               setStoragePoll((n) => n + 1)
                             }}
                             className="ml-0.5 px-2.5 py-1 rounded-full border border-border/50 text-sm text-muted-foreground hover:text-foreground"
@@ -1158,21 +1227,21 @@ export default function ConstructorPage() {
                             </button>
                           </div>
                           <div className="flex flex-wrap gap-2 items-center">
-                            {HEADER_BUTTON_OPTIONS.map((opt) => (
+                            {headerButtonOptionsList.map((opt) => (
                               <button
                                 key={opt.id}
                                 type="button"
                                 onClick={() => {
-                                  const raw = getDraftOrPublic('publicHeaderBarberColors')
+                                  const raw = getDraftOrPublic(headerColorsStorageKey)
                                   let prev: Record<string, string> = {}
                                   if (raw) try { prev = JSON.parse(raw) } catch { /* ignore */ }
-                                  setDraft('publicHeaderBarberColors', JSON.stringify({ ...prev, primary: opt.id }))
+                                  setDraft(headerColorsStorageKey, JSON.stringify({ ...prev, primary: opt.id }))
                                   setStoragePoll((n) => n + 1)
                                 }}
                                 className={cn(
                                   'h-7 w-7 rounded-full border-2',
                                   (() => {
-                                    const raw = getDraftOrPublic('publicHeaderBarberColors')
+                                    const raw = getDraftOrPublic(headerColorsStorageKey)
                                     let cur = 'default'
                                     if (raw) try { cur = JSON.parse(raw)?.primary || 'default' } catch { /* ignore */ }
                                     return cur === opt.id ? 'border-primary' : 'border-border/50'
@@ -1185,10 +1254,10 @@ export default function ConstructorPage() {
                             <button
                               type="button"
                               onClick={() => {
-                                const raw = getDraftOrPublic('publicHeaderBarberColors')
+                                const raw = getDraftOrPublic(headerColorsStorageKey)
                                 let prev: Record<string, string> = {}
                                 if (raw) try { prev = JSON.parse(raw) } catch { /* ignore */ }
-                                setDraft('publicHeaderBarberColors', JSON.stringify({ ...prev, primary: 'default' }))
+                                setDraft(headerColorsStorageKey, JSON.stringify({ ...prev, primary: 'default' }))
                                 setStoragePoll((n) => n + 1)
                               }}
                               className="px-2 py-1 rounded-full border border-border/50 text-sm text-muted-foreground"
@@ -1223,21 +1292,21 @@ export default function ConstructorPage() {
                             </button>
                           </div>
                           <div className="flex flex-wrap gap-2 items-center">
-                            {HEADER_BUTTON_OPTIONS.map((opt) => (
+                            {headerButtonOptionsList.map((opt) => (
                               <button
                                 key={opt.id}
                                 type="button"
                                 onClick={() => {
-                                  const raw = getDraftOrPublic('publicHeaderBarberColors')
+                                  const raw = getDraftOrPublic(headerColorsStorageKey)
                                   let prev: Record<string, string> = {}
                                   if (raw) try { prev = JSON.parse(raw) } catch { /* ignore */ }
-                                  setDraft('publicHeaderBarberColors', JSON.stringify({ ...prev, secondary: opt.id }))
+                                  setDraft(headerColorsStorageKey, JSON.stringify({ ...prev, secondary: opt.id }))
                                   setStoragePoll((n) => n + 1)
                                 }}
                                 className={cn(
                                   'h-7 w-7 rounded-full border-2',
                                   (() => {
-                                    const raw = getDraftOrPublic('publicHeaderBarberColors')
+                                    const raw = getDraftOrPublic(headerColorsStorageKey)
                                     let cur = 'default'
                                     if (raw) try { cur = JSON.parse(raw)?.secondary || 'default' } catch { /* ignore */ }
                                     return cur === opt.id ? 'border-primary' : 'border-border/50'
@@ -1250,10 +1319,10 @@ export default function ConstructorPage() {
                             <button
                               type="button"
                               onClick={() => {
-                                const raw = getDraftOrPublic('publicHeaderBarberColors')
+                                const raw = getDraftOrPublic(headerColorsStorageKey)
                                 let prev: Record<string, string> = {}
                                 if (raw) try { prev = JSON.parse(raw) } catch { /* ignore */ }
-                                setDraft('publicHeaderBarberColors', JSON.stringify({ ...prev, secondary: 'default' }))
+                                setDraft(headerColorsStorageKey, JSON.stringify({ ...prev, secondary: 'default' }))
                                 setStoragePoll((n) => n + 1)
                               }}
                               className="px-2 py-1 rounded-full border border-border/50 text-sm text-muted-foreground"

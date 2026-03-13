@@ -561,6 +561,8 @@ function PublicPage() {
   const isEditMode = new URLSearchParams(location.search).get('edit') === '1'
   /** Режим демонстрации шаблонов (выбор темы): показываем только дефолтный дизайн, правки не подставляются */
   const isTemplateDemo = isPreview && !isEditMode
+  const slugForDrafts =
+    urlSlug || (typeof window !== 'undefined' ? window.localStorage.getItem('publicSlug') : null) || 'salon'
   const readPublic = (key: string, fallback = '') => {
     if (!isPreview) return localStorage.getItem(key) ?? fallback
     if (key === 'publicHeaderTheme')
@@ -569,9 +571,8 @@ function PublicPage() {
     const themeRaw =
       localStorage.getItem('draft_publicHeaderTheme') ?? localStorage.getItem('publicHeaderTheme') ?? 'hair'
     const theme = themeRaw.startsWith('premium-') ? themeRaw.replace('premium-', '') : themeRaw
-    const slug = urlSlug || 'salon'
-    // Только черновики этой темы и этого салона — без подстановки сохранённого key, иначе в другом шаблоне показывался бы адрес из первого
-    return localStorage.getItem(`draft_${key}_${slug}_${theme}`) ?? fallback
+    // Только черновики этой темы и этого салона — тот же slug, что и при записи
+    return localStorage.getItem(`draft_${key}_${slugForDrafts}_${theme}`) ?? fallback
   }
 
   const publicHeaderThemeRaw = readPublic('publicHeaderTheme') || 'hair'
@@ -845,12 +846,15 @@ function PublicPage() {
     useBuiltInTemplate && isLegacyName(storedName || '')
       ? FOOTER_DEFAULT_NAME
       : publicName
-  const rawTagline =
-    isTemplateDemo
-      ? HAIR_THEME_DEFAULT_TAGLINE
-      : readPublic('publicTagline') || HAIR_THEME_DEFAULT_TAGLINE || t('defaultTagline')
+  const rawTagline = (() => {
+    if (isTemplateDemo) return HAIR_THEME_DEFAULT_TAGLINE
+    if (typeof window === 'undefined') return HAIR_THEME_DEFAULT_TAGLINE || ''
+    const taglineKey = `draft_publicTagline_${slugForDrafts}_${publicHeaderTheme}`
+    const stored = window.localStorage.getItem(taglineKey)
+    return stored !== null ? stored : (HAIR_THEME_DEFAULT_TAGLINE || t('defaultTagline'))
+  })()
   const publicTagline = clampHeaderSubtitleLines(
-    isJunkHeaderText(rawTagline) ? HAIR_THEME_DEFAULT_TAGLINE : rawTagline
+    rawTagline === '' ? '' : (isJunkHeaderText(rawTagline) ? HAIR_THEME_DEFAULT_TAGLINE : rawTagline)
   )
   const footerDisplayName =
     useBuiltInTemplate && isLegacyName(storedName || '')
@@ -926,7 +930,7 @@ function PublicPage() {
   const publicHeaderSecondaryCta = readPublic('publicHeaderSecondaryCta') || ''
   const publicHeaderExtraText = readPublic('publicHeaderExtraText') || ''
   const publicHeaderPrimaryCtaShape =
-    (readPublic('publicHeaderPrimaryCtaShape') as 'square' | 'round') || 'square'
+    (readPublic('publicHeaderPrimaryCtaShape') as 'square' | 'round') || 'round'
   const publicHeaderSecondaryCtaShape =
     (readPublic('publicHeaderSecondaryCtaShape') as 'square' | 'round') || 'square'
   const publicHeaderLogoPlacement =
@@ -956,6 +960,31 @@ function PublicPage() {
     { id: 'brown', color: '#92400e', glow: '0 0 14px rgba(146,64,14,0.55)' },
     { id: 'black', color: '#0b0b0b', glow: '0 0 14px rgba(0,0,0,0.55)' },
   ] as const
+  /** Уникальные дефолтные стили темы «Барбершоп»: цвет названия не из палитры, кнопки с градиентом */
+  const BARBER_DEFAULT_TITLE_COLOR = '#D4A574'
+  const BARBER_DEFAULT_TITLE_STYLE: React.CSSProperties = {
+    fontFamily: "'Oswald', sans-serif",
+    fontWeight: 600,
+    letterSpacing: '0.02em',
+    color: BARBER_DEFAULT_TITLE_COLOR,
+    textShadow: `0 0 24px rgba(212, 165, 116, 0.6)`,
+  }
+  const BARBER_DEFAULT_SUBTITLE_STYLE: React.CSSProperties = {
+    color: 'rgba(244, 228, 188, 0.92)',
+    textShadow: '0 0 20px rgba(201, 162, 39, 0.35)',
+  }
+  const BARBER_DEFAULT_PRIMARY = {
+    background: 'linear-gradient(135deg, #D4A574 0%, #8B6914 100%)',
+    text: '#1a1a1a',
+    glow: '0 0 20px rgba(139, 105, 20, 0.5)',
+    borderColor: '#8B6914',
+  }
+  const BARBER_DEFAULT_SECONDARY = {
+    background: 'linear-gradient(135deg, rgba(212, 165, 116, 0.15) 0%, rgba(139, 105, 20, 0.25) 100%)',
+    text: 'rgba(244, 228, 188, 0.95)',
+    glow: '0 0 16px rgba(212, 165, 116, 0.25)',
+    borderColor: 'rgba(212, 165, 116, 0.85)',
+  }
   const barberButtonOptions = [
     { id: 'gold', background: '#E3B04B', text: '#111111', glow: '0 0 18px rgba(227,176,75,0.6)' },
     { id: 'blue', background: '#3b82f6', text: '#ffffff', glow: '0 0 20px rgba(59,130,246,0.6)' },
@@ -970,6 +999,111 @@ function PublicPage() {
     { id: 'indigo', background: '#6366f1', text: '#ffffff', glow: '0 0 18px rgba(99,102,241,0.6)' },
     { id: 'gray', background: '#6b7280', text: '#ffffff', glow: '0 0 18px rgba(107,114,128,0.6)' },
     { id: 'brown', background: '#92400e', text: '#ffffff', glow: '0 0 18px rgba(146,64,14,0.6)' },
+    { id: 'black', background: '#0b0b0b', text: '#ffffff', glow: '0 0 18px rgba(0,0,0,0.6)' },
+  ] as const
+  /** Тема «Косметология»: палитра розовый/матовый/пудровый, градиенты и свой шрифт заголовка */
+  const COSMETOLOGY_DEFAULT_TITLE_COLOR = '#F5E6E8'
+  const COSMETOLOGY_DEFAULT_TITLE_STYLE: React.CSSProperties = {
+    fontFamily: "'Italiana', serif",
+    fontWeight: 400,
+    letterSpacing: '0.04em',
+    color: COSMETOLOGY_DEFAULT_TITLE_COLOR,
+    textShadow: `0 0 28px rgba(232, 180, 184, 0.65)`,
+  }
+  const COSMETOLOGY_DEFAULT_SUBTITLE_STYLE: React.CSSProperties = {
+    color: 'rgba(252, 240, 245, 0.94)',
+    textShadow: '0 0 18px rgba(205, 150, 165, 0.4)',
+  }
+  const COSMETOLOGY_DEFAULT_PRIMARY = {
+    background: 'linear-gradient(135deg, #E8B4B8 0%, #B76E79 50%, #8B6B7D 100%)',
+    text: '#1a0f12',
+    glow: '0 0 22px rgba(183, 110, 121, 0.5)',
+    borderColor: '#9B6B6B',
+  }
+  const COSMETOLOGY_DEFAULT_SECONDARY = {
+    background: 'linear-gradient(135deg, rgba(232, 180, 184, 0.2) 0%, rgba(139, 107, 125, 0.35) 100%)',
+    text: 'rgba(252, 245, 248, 0.96)',
+    glow: '0 0 18px rgba(232, 180, 184, 0.3)',
+    borderColor: 'rgba(232, 180, 184, 0.9)',
+  }
+  const cosmetologyButtonOptions = [
+    { id: 'rose', background: '#E8B4B8', text: '#1a0f12', glow: '0 0 20px rgba(232,180,184,0.55)' },
+    { id: 'mauve', background: '#B76E79', text: '#ffffff', glow: '0 0 20px rgba(183,110,121,0.55)' },
+    { id: 'pink', background: '#FF4D9D', text: '#0b0b0b', glow: '0 0 20px rgba(255,77,157,0.55)' },
+    { id: 'gold', background: '#E3B04B', text: '#111111', glow: '0 0 18px rgba(227,176,75,0.6)' },
+    { id: 'blue', background: '#3b82f6', text: '#ffffff', glow: '0 0 20px rgba(59,130,246,0.6)' },
+    { id: 'white', background: '#FFFFFF', text: '#0b0b0b', glow: '0 0 16px rgba(255,255,255,0.6)' },
+    { id: 'violet', background: '#A78BFA', text: '#0b0b0b', glow: '0 0 18px rgba(167,139,250,0.6)' },
+    { id: 'black', background: '#0b0b0b', text: '#ffffff', glow: '0 0 18px rgba(0,0,0,0.6)' },
+  ] as const
+  /** Тема «Покраска волос»: палитра фиолетовый/медный/фуксия, градиенты и выразительный шрифт заголовка */
+  const COLORING_DEFAULT_TITLE_COLOR = '#E8DDF5'
+  const COLORING_DEFAULT_TITLE_STYLE: React.CSSProperties = {
+    fontFamily: "'Great Vibes', cursive",
+    fontWeight: 400,
+    letterSpacing: '0.02em',
+    color: COLORING_DEFAULT_TITLE_COLOR,
+    textShadow: `0 0 32px rgba(167, 139, 250, 0.7)`,
+  }
+  const COLORING_DEFAULT_SUBTITLE_STYLE: React.CSSProperties = {
+    color: 'rgba(232, 222, 250, 0.95)',
+    textShadow: '0 0 20px rgba(139, 92, 246, 0.45)',
+  }
+  const COLORING_DEFAULT_PRIMARY = {
+    background: 'linear-gradient(135deg, #C084FC 0%, #A855F7 50%, #7C3AED 100%)',
+    text: '#faf5ff',
+    glow: '0 0 24px rgba(168, 85, 247, 0.55)',
+    borderColor: '#A855F7',
+  }
+  const COLORING_DEFAULT_SECONDARY = {
+    background: 'linear-gradient(135deg, rgba(192, 132, 252, 0.22) 0%, rgba(124, 58, 237, 0.38) 100%)',
+    text: 'rgba(250, 245, 255, 0.97)',
+    glow: '0 0 18px rgba(192, 132, 252, 0.35)',
+    borderColor: 'rgba(192, 132, 252, 0.88)',
+  }
+  const coloringButtonOptions = [
+    { id: 'violet', background: '#A78BFA', text: '#0b0b0b', glow: '0 0 20px rgba(167,139,250,0.6)' },
+    { id: 'fuchsia', background: '#D946EF', text: '#ffffff', glow: '0 0 20px rgba(217,70,239,0.55)' },
+    { id: 'purple', background: '#7C3AED', text: '#ffffff', glow: '0 0 20px rgba(124,58,237,0.55)' },
+    { id: 'copper', background: '#B87333', text: '#1a0f0a', glow: '0 0 20px rgba(184,115,51,0.55)' },
+    { id: 'pink', background: '#EC4899', text: '#ffffff', glow: '0 0 20px rgba(236,72,153,0.55)' },
+    { id: 'gold', background: '#E3B04B', text: '#111111', glow: '0 0 18px rgba(227,176,75,0.6)' },
+    { id: 'white', background: '#FFFFFF', text: '#0b0b0b', glow: '0 0 16px rgba(255,255,255,0.6)' },
+    { id: 'black', background: '#0b0b0b', text: '#ffffff', glow: '0 0 18px rgba(0,0,0,0.6)' },
+  ] as const
+  /** Тема «Маникюр»: палитра нежно-розовый/розовое золото, градиенты и изысканный рукописный шрифт заголовка */
+  const MANICURE_DEFAULT_TITLE_COLOR = '#FFE8F0'
+  const MANICURE_DEFAULT_TITLE_STYLE: React.CSSProperties = {
+    fontFamily: "'Allura', cursive",
+    fontWeight: 400,
+    letterSpacing: '0.03em',
+    color: MANICURE_DEFAULT_TITLE_COLOR,
+    textShadow: `0 0 28px rgba(255, 182, 193, 0.7)`,
+  }
+  const MANICURE_DEFAULT_SUBTITLE_STYLE: React.CSSProperties = {
+    color: 'rgba(255, 240, 245, 0.96)',
+    textShadow: '0 0 18px rgba(255, 182, 193, 0.45)',
+  }
+  const MANICURE_DEFAULT_PRIMARY = {
+    background: 'linear-gradient(135deg, #F8B4C4 0%, #E8A0B0 50%, #D48494 100%)',
+    text: '#2d1519',
+    glow: '0 0 22px rgba(232, 160, 176, 0.55)',
+    borderColor: '#D48494',
+  }
+  const MANICURE_DEFAULT_SECONDARY = {
+    background: 'linear-gradient(135deg, rgba(248, 180, 196, 0.25) 0%, rgba(212, 132, 148, 0.4) 100%)',
+    text: 'rgba(255, 248, 250, 0.97)',
+    glow: '0 0 18px rgba(248, 180, 196, 0.35)',
+    borderColor: 'rgba(248, 180, 196, 0.9)',
+  }
+  const manicureButtonOptions = [
+    { id: 'blush', background: '#F8B4C4', text: '#2d1519', glow: '0 0 20px rgba(248,180,196,0.55)' },
+    { id: 'rose', background: '#E8A0B0', text: '#1a0f12', glow: '0 0 20px rgba(232,160,176,0.55)' },
+    { id: 'coral', background: '#F4A6B4', text: '#1a0f12', glow: '0 0 20px rgba(244,166,180,0.55)' },
+    { id: 'pink', background: '#EC4899', text: '#ffffff', glow: '0 0 20px rgba(236,72,153,0.55)' },
+    { id: 'gold', background: '#E8C9A0', text: '#1a1510', glow: '0 0 20px rgba(232,201,160,0.55)' },
+    { id: 'white', background: '#FFFFFF', text: '#0b0b0b', glow: '0 0 16px rgba(255,255,255,0.6)' },
+    { id: 'violet', background: '#C4B5FD', text: '#1a1525', glow: '0 0 20px rgba(196,181,253,0.55)' },
     { id: 'black', background: '#0b0b0b', text: '#ffffff', glow: '0 0 18px rgba(0,0,0,0.6)' },
   ] as const
   const publicHeaderBarberColors = (() => {
@@ -1000,13 +1134,138 @@ function PublicPage() {
     }
   })()
   const barberTitleColor =
-    barberTextOptions.find((option) => option.id === publicHeaderBarberColors.title) || barberTextOptions[0]
+    publicHeaderTheme === 'barber' && publicHeaderBarberColors.title === 'default'
+      ? { id: 'default', color: BARBER_DEFAULT_TITLE_COLOR, glow: BARBER_DEFAULT_TITLE_STYLE.textShadow! }
+      : barberTextOptions.find((option) => option.id === publicHeaderBarberColors.title) || barberTextOptions[0]
   const barberSubtitleColor =
-    barberTextOptions.find((option) => option.id === publicHeaderBarberColors.subtitle) || barberTextOptions[1]
+    publicHeaderTheme === 'barber' && publicHeaderBarberColors.subtitle === 'default'
+      ? { id: 'default', color: BARBER_DEFAULT_SUBTITLE_STYLE.color!, glow: BARBER_DEFAULT_SUBTITLE_STYLE.textShadow! }
+      : barberTextOptions.find((option) => option.id === publicHeaderBarberColors.subtitle) || barberTextOptions[1]
   const barberPrimaryColor =
-    barberButtonOptions.find((option) => option.id === publicHeaderBarberColors.primary) || barberButtonOptions[0]
+    publicHeaderTheme === 'barber' && publicHeaderBarberColors.primary === 'default'
+      ? BARBER_DEFAULT_PRIMARY
+      : barberButtonOptions.find((option) => option.id === publicHeaderBarberColors.primary) || barberButtonOptions[0]
   const barberSecondaryColor =
-    barberButtonOptions.find((option) => option.id === publicHeaderBarberColors.secondary) || barberButtonOptions[1]
+    publicHeaderTheme === 'barber' && publicHeaderBarberColors.secondary === 'default'
+      ? BARBER_DEFAULT_SECONDARY
+      : barberButtonOptions.find((option) => option.id === publicHeaderBarberColors.secondary) || barberButtonOptions[1]
+  const publicHeaderCosmetologyColors = (() => {
+    const stored = readPublic('publicHeaderCosmetologyColors')
+    if (!stored) {
+      return { title: 'default', subtitle: 'default', primary: 'default', secondary: 'default' }
+    }
+    try {
+      const parsed = JSON.parse(stored)
+      return {
+        title: typeof parsed?.title === 'string' ? parsed.title : 'default',
+        subtitle: typeof parsed?.subtitle === 'string' ? parsed.subtitle : 'default',
+        primary: typeof parsed?.primary === 'string' ? parsed.primary : 'default',
+        secondary: typeof parsed?.secondary === 'string' ? parsed.secondary : 'default',
+      }
+    } catch {
+      return { title: 'default', subtitle: 'default', primary: 'default', secondary: 'default' }
+    }
+  })()
+  const cosmetologyTitleColor =
+    publicHeaderTheme === 'cosmetology' && publicHeaderCosmetologyColors.title === 'default'
+      ? { id: 'default', color: COSMETOLOGY_DEFAULT_TITLE_COLOR, glow: COSMETOLOGY_DEFAULT_TITLE_STYLE.textShadow! }
+      : barberTextOptions.find((option) => option.id === publicHeaderCosmetologyColors.title) || barberTextOptions[0]
+  const cosmetologySubtitleColor =
+    publicHeaderTheme === 'cosmetology' && publicHeaderCosmetologyColors.subtitle === 'default'
+      ? { id: 'default', color: COSMETOLOGY_DEFAULT_SUBTITLE_STYLE.color!, glow: COSMETOLOGY_DEFAULT_SUBTITLE_STYLE.textShadow! }
+      : barberTextOptions.find((option) => option.id === publicHeaderCosmetologyColors.subtitle) || barberTextOptions[1]
+  const cosmetologyPrimaryColor =
+    publicHeaderTheme === 'cosmetology' && publicHeaderCosmetologyColors.primary === 'default'
+      ? COSMETOLOGY_DEFAULT_PRIMARY
+      : cosmetologyButtonOptions.find((option) => option.id === publicHeaderCosmetologyColors.primary) || cosmetologyButtonOptions[0]
+  const cosmetologySecondaryColor =
+    publicHeaderTheme === 'cosmetology' && publicHeaderCosmetologyColors.secondary === 'default'
+      ? COSMETOLOGY_DEFAULT_SECONDARY
+      : cosmetologyButtonOptions.find((option) => option.id === publicHeaderCosmetologyColors.secondary) || cosmetologyButtonOptions[1]
+  const publicHeaderColoringColors = (() => {
+    const stored = readPublic('publicHeaderColoringColors')
+    if (!stored) {
+      return { title: 'default', subtitle: 'default', primary: 'default', secondary: 'default' }
+    }
+    try {
+      const parsed = JSON.parse(stored)
+      return {
+        title: typeof parsed?.title === 'string' ? parsed.title : 'default',
+        subtitle: typeof parsed?.subtitle === 'string' ? parsed.subtitle : 'default',
+        primary: typeof parsed?.primary === 'string' ? parsed.primary : 'default',
+        secondary: typeof parsed?.secondary === 'string' ? parsed.secondary : 'default',
+      }
+    } catch {
+      return { title: 'default', subtitle: 'default', primary: 'default', secondary: 'default' }
+    }
+  })()
+  const coloringTitleColor =
+    publicHeaderTheme === 'coloring' && publicHeaderColoringColors.title === 'default'
+      ? { id: 'default', color: COLORING_DEFAULT_TITLE_COLOR, glow: COLORING_DEFAULT_TITLE_STYLE.textShadow! }
+      : barberTextOptions.find((option) => option.id === publicHeaderColoringColors.title) || barberTextOptions[0]
+  const coloringSubtitleColor =
+    publicHeaderTheme === 'coloring' && publicHeaderColoringColors.subtitle === 'default'
+      ? { id: 'default', color: COLORING_DEFAULT_SUBTITLE_STYLE.color!, glow: COLORING_DEFAULT_SUBTITLE_STYLE.textShadow! }
+      : barberTextOptions.find((option) => option.id === publicHeaderColoringColors.subtitle) || barberTextOptions[1]
+  const coloringPrimaryColor =
+    publicHeaderTheme === 'coloring' && publicHeaderColoringColors.primary === 'default'
+      ? COLORING_DEFAULT_PRIMARY
+      : coloringButtonOptions.find((option) => option.id === publicHeaderColoringColors.primary) || coloringButtonOptions[0]
+  const coloringSecondaryColor =
+    publicHeaderTheme === 'coloring' && publicHeaderColoringColors.secondary === 'default'
+      ? COLORING_DEFAULT_SECONDARY
+      : coloringButtonOptions.find((option) => option.id === publicHeaderColoringColors.secondary) || coloringButtonOptions[1]
+  const publicHeaderManicureColors = (() => {
+    const stored = readPublic('publicHeaderManicureColors')
+    if (!stored) {
+      return { title: 'default', subtitle: 'default', primary: 'default', secondary: 'default' }
+    }
+    try {
+      const parsed = JSON.parse(stored)
+      return {
+        title: typeof parsed?.title === 'string' ? parsed.title : 'default',
+        subtitle: typeof parsed?.subtitle === 'string' ? parsed.subtitle : 'default',
+        primary: typeof parsed?.primary === 'string' ? parsed.primary : 'default',
+        secondary: typeof parsed?.secondary === 'string' ? parsed.secondary : 'default',
+      }
+    } catch {
+      return { title: 'default', subtitle: 'default', primary: 'default', secondary: 'default' }
+    }
+  })()
+  const manicureTitleColor =
+    publicHeaderTheme === 'manicure' && publicHeaderManicureColors.title === 'default'
+      ? { id: 'default', color: MANICURE_DEFAULT_TITLE_COLOR, glow: MANICURE_DEFAULT_TITLE_STYLE.textShadow! }
+      : barberTextOptions.find((option) => option.id === publicHeaderManicureColors.title) || barberTextOptions[0]
+  const manicureSubtitleColor =
+    publicHeaderTheme === 'manicure' && publicHeaderManicureColors.subtitle === 'default'
+      ? { id: 'default', color: MANICURE_DEFAULT_SUBTITLE_STYLE.color!, glow: MANICURE_DEFAULT_SUBTITLE_STYLE.textShadow! }
+      : barberTextOptions.find((option) => option.id === publicHeaderManicureColors.subtitle) || barberTextOptions[1]
+  const manicurePrimaryColor =
+    publicHeaderTheme === 'manicure' && publicHeaderManicureColors.primary === 'default'
+      ? MANICURE_DEFAULT_PRIMARY
+      : manicureButtonOptions.find((option) => option.id === publicHeaderManicureColors.primary) || manicureButtonOptions[0]
+  const manicureSecondaryColor =
+    publicHeaderTheme === 'manicure' && publicHeaderManicureColors.secondary === 'default'
+      ? MANICURE_DEFAULT_SECONDARY
+      : manicureButtonOptions.find((option) => option.id === publicHeaderManicureColors.secondary) || manicureButtonOptions[1]
+  const headerPrimaryColor =
+    publicHeaderTheme === 'cosmetology'
+      ? cosmetologyPrimaryColor
+      : publicHeaderTheme === 'coloring'
+        ? coloringPrimaryColor
+        : publicHeaderTheme === 'manicure'
+          ? manicurePrimaryColor
+          : barberPrimaryColor
+  const headerSecondaryColor =
+    publicHeaderTheme === 'cosmetology'
+      ? cosmetologySecondaryColor
+      : publicHeaderTheme === 'coloring'
+        ? coloringSecondaryColor
+        : publicHeaderTheme === 'manicure'
+          ? manicureSecondaryColor
+          : barberSecondaryColor
+  const isBarberGradient = (bg: string) => typeof bg === 'string' && bg.includes('gradient')
+  const isHeaderGradient = (bg: string) => typeof bg === 'string' && bg.includes('gradient')
   const publicGalleryTitle = readPublic('publicGalleryTitle') || t('salonPhotos')
   const publicGalleryTitleColor = readPublic('publicGalleryTitleColor') || 'default'
   const galleryTitleColorOption =
@@ -1038,35 +1297,137 @@ function PublicPage() {
     publicHeaderBarberColors.title !== 'default' ||
     publicHeaderBarberColors.subtitle !== 'default' ||
     publicHeaderBarberColors.primary !== 'default' ||
-    publicHeaderBarberColors.secondary !== 'default'
-  /** Кастомные цвета на сохранённой странице; в превью редактирования — только если не перетаскиваем и (для hair) уже кастомизировали */
+    publicHeaderBarberColors.secondary !== 'default' ||
+    publicHeaderCosmetologyColors.title !== 'default' ||
+    publicHeaderCosmetologyColors.subtitle !== 'default' ||
+    publicHeaderCosmetologyColors.primary !== 'default' ||
+    publicHeaderCosmetologyColors.secondary !== 'default' ||
+    publicHeaderColoringColors.title !== 'default' ||
+    publicHeaderColoringColors.subtitle !== 'default' ||
+    publicHeaderColoringColors.primary !== 'default' ||
+    publicHeaderColoringColors.secondary !== 'default' ||
+    publicHeaderManicureColors.title !== 'default' ||
+    publicHeaderManicureColors.subtitle !== 'default' ||
+    publicHeaderManicureColors.primary !== 'default' ||
+    publicHeaderManicureColors.secondary !== 'default'
+  /** Кастомные цвета на сохранённой странице; в превью — при редактировании или в демо шаблона */
   const applyHeaderColors =
-    !isPreview || (isEditMode && !isHeaderDragging && hasHeaderCustomized)
+    !isPreview ||
+    (isEditMode && !isHeaderDragging && hasHeaderCustomized) ||
+    (isTemplateDemo && (publicHeaderTheme === 'barber' || publicHeaderTheme === 'cosmetology' || publicHeaderTheme === 'coloring' || publicHeaderTheme === 'manicure'))
   const headerTitleStyle =
-    headerColorsEnabled && applyHeaderColors && publicHeaderBarberColors.title !== 'default'
-      ? { color: barberTitleColor.color, textShadow: barberTitleColor.glow }
-      : undefined
+    headerColorsEnabled && applyHeaderColors && publicHeaderTheme === 'barber'
+      ? publicHeaderBarberColors.title === 'default'
+        ? BARBER_DEFAULT_TITLE_STYLE
+        : { color: barberTitleColor.color, textShadow: barberTitleColor.glow }
+      : headerColorsEnabled && applyHeaderColors && publicHeaderTheme === 'cosmetology'
+        ? publicHeaderCosmetologyColors.title === 'default'
+          ? COSMETOLOGY_DEFAULT_TITLE_STYLE
+          : { color: cosmetologyTitleColor.color, textShadow: cosmetologyTitleColor.glow }
+        : headerColorsEnabled && applyHeaderColors && publicHeaderTheme === 'coloring'
+          ? publicHeaderColoringColors.title === 'default'
+            ? COLORING_DEFAULT_TITLE_STYLE
+            : { color: coloringTitleColor.color, textShadow: coloringTitleColor.glow }
+          : headerColorsEnabled && applyHeaderColors && publicHeaderTheme === 'manicure'
+            ? publicHeaderManicureColors.title === 'default'
+              ? MANICURE_DEFAULT_TITLE_STYLE
+              : { color: manicureTitleColor.color, textShadow: manicureTitleColor.glow }
+            : headerColorsEnabled && applyHeaderColors && publicHeaderBarberColors.title !== 'default'
+              ? { color: barberTitleColor.color, textShadow: barberTitleColor.glow }
+              : headerColorsEnabled && applyHeaderColors && publicHeaderCosmetologyColors.title !== 'default'
+                ? { color: cosmetologyTitleColor.color, textShadow: cosmetologyTitleColor.glow }
+                : headerColorsEnabled && applyHeaderColors && publicHeaderColoringColors.title !== 'default'
+                  ? { color: coloringTitleColor.color, textShadow: coloringTitleColor.glow }
+                  : headerColorsEnabled && applyHeaderColors && publicHeaderManicureColors.title !== 'default'
+                    ? { color: manicureTitleColor.color, textShadow: manicureTitleColor.glow }
+                    : undefined
   const hairTitleFontSizePx = useMemo(
     () => Math.max(20, Math.min(56, 96 - publicName.length * 1.5)),
     [publicName.length]
   )
   const headerSubtitleStyle =
-    headerColorsEnabled && applyHeaderColors && publicHeaderBarberColors.subtitle !== 'default'
-      ? { color: barberSubtitleColor.color, textShadow: barberSubtitleColor.glow }
-      : undefined
+    headerColorsEnabled && applyHeaderColors && publicHeaderTheme === 'barber'
+      ? publicHeaderBarberColors.subtitle === 'default'
+        ? BARBER_DEFAULT_SUBTITLE_STYLE
+        : { color: barberSubtitleColor.color, textShadow: barberSubtitleColor.glow }
+      : headerColorsEnabled && applyHeaderColors && publicHeaderTheme === 'cosmetology'
+        ? publicHeaderCosmetologyColors.subtitle === 'default'
+          ? COSMETOLOGY_DEFAULT_SUBTITLE_STYLE
+          : { color: cosmetologySubtitleColor.color, textShadow: cosmetologySubtitleColor.glow }
+        : headerColorsEnabled && applyHeaderColors && publicHeaderTheme === 'coloring'
+          ? publicHeaderColoringColors.subtitle === 'default'
+            ? COLORING_DEFAULT_SUBTITLE_STYLE
+            : { color: coloringSubtitleColor.color, textShadow: coloringSubtitleColor.glow }
+          : headerColorsEnabled && applyHeaderColors && publicHeaderTheme === 'manicure'
+            ? publicHeaderManicureColors.subtitle === 'default'
+              ? MANICURE_DEFAULT_SUBTITLE_STYLE
+              : { color: manicureSubtitleColor.color, textShadow: manicureSubtitleColor.glow }
+            : headerColorsEnabled && applyHeaderColors && publicHeaderBarberColors.subtitle !== 'default'
+              ? { color: barberSubtitleColor.color, textShadow: barberSubtitleColor.glow }
+              : headerColorsEnabled && applyHeaderColors && publicHeaderCosmetologyColors.subtitle !== 'default'
+                ? { color: cosmetologySubtitleColor.color, textShadow: cosmetologySubtitleColor.glow }
+                : headerColorsEnabled && applyHeaderColors && publicHeaderColoringColors.subtitle !== 'default'
+                  ? { color: coloringSubtitleColor.color, textShadow: coloringSubtitleColor.glow }
+                  : headerColorsEnabled && applyHeaderColors && publicHeaderManicureColors.subtitle !== 'default'
+                    ? { color: manicureSubtitleColor.color, textShadow: manicureSubtitleColor.glow }
+                    : undefined
   const headerPrimaryCustom =
-    headerColorsEnabled && applyHeaderColors && publicHeaderBarberColors.primary !== 'default'
+    headerColorsEnabled &&
+    applyHeaderColors &&
+    (publicHeaderBarberColors.primary !== 'default' ||
+      publicHeaderTheme === 'barber' ||
+      publicHeaderCosmetologyColors.primary !== 'default' ||
+      publicHeaderTheme === 'cosmetology' ||
+      publicHeaderColoringColors.primary !== 'default' ||
+      publicHeaderTheme === 'coloring' ||
+      publicHeaderManicureColors.primary !== 'default' ||
+      publicHeaderTheme === 'manicure')
   const headerSecondaryCustom =
-    headerColorsEnabled && applyHeaderColors && publicHeaderBarberColors.secondary !== 'default'
-  const headerUseGlow = publicHeaderTheme === 'barber'
+    headerColorsEnabled &&
+    applyHeaderColors &&
+    (publicHeaderBarberColors.secondary !== 'default' ||
+      publicHeaderTheme === 'barber' ||
+      publicHeaderCosmetologyColors.secondary !== 'default' ||
+      publicHeaderTheme === 'cosmetology' ||
+      publicHeaderColoringColors.secondary !== 'default' ||
+      publicHeaderTheme === 'coloring' ||
+      publicHeaderManicureColors.secondary !== 'default' ||
+      publicHeaderTheme === 'manicure')
+  const headerUseGlow = publicHeaderTheme === 'barber' || publicHeaderTheme === 'cosmetology' || publicHeaderTheme === 'coloring' || publicHeaderTheme === 'manicure'
   const getPrimaryIconClass = (defaultClass: string) =>
-    publicHeaderBarberColors.primary === 'black'
-      ? 'brightness-0 invert'
-      : publicHeaderBarberColors.primary === 'white'
-        ? 'brightness-0'
-        : publicHeaderBarberColors.primary === 'default'
-          ? defaultClass
-          : ''
+    publicHeaderTheme === 'manicure'
+      ? publicHeaderManicureColors.primary === 'black'
+        ? 'brightness-0 invert'
+        : publicHeaderManicureColors.primary === 'white'
+          ? 'brightness-0'
+          : publicHeaderManicureColors.primary === 'default'
+            ? 'brightness-0'
+            : ''
+      : publicHeaderTheme === 'coloring'
+      ? publicHeaderColoringColors.primary === 'black'
+        ? 'brightness-0 invert'
+        : publicHeaderColoringColors.primary === 'white'
+          ? 'brightness-0'
+          : publicHeaderColoringColors.primary === 'default'
+            ? 'brightness-0'
+            : ''
+      : publicHeaderTheme === 'cosmetology'
+      ? publicHeaderCosmetologyColors.primary === 'black'
+        ? 'brightness-0 invert'
+        : publicHeaderCosmetologyColors.primary === 'white'
+          ? 'brightness-0'
+          : publicHeaderCosmetologyColors.primary === 'default'
+            ? 'brightness-0'
+            : ''
+      : publicHeaderBarberColors.primary === 'black'
+        ? 'brightness-0 invert'
+        : publicHeaderBarberColors.primary === 'white'
+          ? 'brightness-0'
+          : publicHeaderTheme === 'barber' && publicHeaderBarberColors.primary === 'default'
+            ? 'brightness-0'
+            : publicHeaderBarberColors.primary === 'default'
+              ? defaultClass
+              : ''
   /** Изначальная позиция хедера темы «Парикмахерская» (логотип, название, описание, кнопки) */
   const HAIR_HEADER_INITIAL_PADDING = 'w-full px-4 pb-14 sm:pb-20 pt-40 sm:pt-32 md:pt-44 lg:pt-[22rem] xl:pt-[24rem] text-center justify-center'
   const bodyBackground =
@@ -1626,11 +1987,8 @@ function PublicPage() {
                 headerTheme={publicHeaderTheme}
                 onDragStart={() => setIsHeaderDragging(true)}
                 onDragEnd={() => setIsHeaderDragging(false)}
+                slug={slugForDrafts}
                 onDraftChange={() => {
-                  if (typeof window !== 'undefined') {
-                    if (publicHeaderTheme === 'hair') window.localStorage.setItem('draft_headerHairCustomized', '1')
-                    window.localStorage.setItem(`constructorHasUserEdits_${publicHeaderTheme}`, '1')
-                  }
                   draftVersionTrigger()
                 }}
                 containerRef={headerEditContainerRef}
@@ -1646,8 +2004,8 @@ function PublicPage() {
                 headerSubtitleStyle={headerSubtitleStyle}
                 headerPrimaryCustom={headerPrimaryCustom}
                 headerSecondaryCustom={headerSecondaryCustom}
-                barberPrimaryColor={barberPrimaryColor}
-                barberSecondaryColor={barberSecondaryColor}
+                barberPrimaryColor={headerPrimaryColor}
+                barberSecondaryColor={headerSecondaryColor}
                 publicHeaderPrimaryCtaShape={publicHeaderPrimaryCtaShape}
                 publicHeaderSecondaryCtaShape={publicHeaderSecondaryCtaShape}
                 getPrimaryIconClass={getPrimaryIconClass}
@@ -1675,7 +2033,14 @@ function PublicPage() {
                     </div>
                   )}
                   <h1
-                    className="w-full text-center font-serif font-semibold tracking-[0.08em] text-white drop-shadow-[0_12px_34px_rgba(0,0,0,0.5)] whitespace-nowrap overflow-visible max-w-[90%] mx-auto"
+                    className={cn(
+                      'w-full text-center font-semibold tracking-[0.08em] text-white drop-shadow-[0_12px_34px_rgba(0,0,0,0.5)] whitespace-nowrap overflow-visible max-w-[90%] mx-auto',
+                      publicHeaderTheme === 'barber'
+                        ? 'font-barber-title'
+                        : publicHeaderTheme === 'cosmetology'
+                          ? 'font-cosmetology-title'
+                          : 'font-serif'
+                    )}
                     style={{ ...headerTitleStyle, fontSize: `${hairTitleFontSizePx}px` }}
                   >
                     {headerDisplayName}
@@ -1708,7 +2073,14 @@ function PublicPage() {
                     </div>
                   )}
                   <h1
-                    className="w-full text-center font-serif font-semibold tracking-[0.08em] text-white drop-shadow-[0_12px_34px_rgba(0,0,0,0.5)] whitespace-nowrap overflow-visible max-w-[90%] mx-auto"
+                    className={cn(
+                      'w-full text-center font-semibold tracking-[0.08em] text-white drop-shadow-[0_12px_34px_rgba(0,0,0,0.5)] whitespace-nowrap overflow-visible max-w-[90%] mx-auto',
+                      publicHeaderTheme === 'coloring'
+                        ? 'font-coloring-title'
+                        : publicHeaderTheme === 'manicure'
+                          ? 'font-manicure-title'
+                          : 'font-serif'
+                    )}
                     style={{ ...headerTitleStyle, fontSize: `${hairTitleFontSizePx}px` }}
                   >
                     {headerDisplayName}
@@ -1818,12 +2190,19 @@ function PublicPage() {
                     )}
                     style={
                       headerPrimaryCustom
-                        ? {
-                            backgroundColor: barberPrimaryColor.background,
-                            color: barberPrimaryColor.text,
-                            boxShadow: headerUseGlow ? barberPrimaryColor.glow : 'none',
-                            borderColor: barberPrimaryColor.background,
-                          }
+                        ? isHeaderGradient(headerPrimaryColor.background)
+                          ? {
+                              background: headerPrimaryColor.background,
+                              color: headerPrimaryColor.text,
+                              boxShadow: headerUseGlow ? headerPrimaryColor.glow : 'none',
+                              borderColor: 'borderColor' in headerPrimaryColor ? headerPrimaryColor.borderColor : headerPrimaryColor.background,
+                            }
+                          : {
+                              backgroundColor: headerPrimaryColor.background,
+                              color: headerPrimaryColor.text,
+                              boxShadow: headerUseGlow ? headerPrimaryColor.glow : 'none',
+                              borderColor: headerPrimaryColor.background,
+                            }
                         : undefined
                     }
                     onClick={() => bookingSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
@@ -1847,12 +2226,20 @@ function PublicPage() {
                     )}
                     style={
                       headerSecondaryCustom
-                        ? {
-                            backgroundColor: barberSecondaryColor.background,
-                            color: barberSecondaryColor.text,
-                            boxShadow: headerUseGlow ? barberSecondaryColor.glow : 'none',
-                            borderColor: barberSecondaryColor.background,
-                          }
+                        ? isHeaderGradient(headerSecondaryColor.background)
+                          ? {
+                              background: headerSecondaryColor.background,
+                              backgroundColor: 'transparent',
+                              color: headerSecondaryColor.text,
+                              boxShadow: headerUseGlow ? headerSecondaryColor.glow : 'none',
+                              borderColor: 'borderColor' in headerSecondaryColor ? headerSecondaryColor.borderColor : headerSecondaryColor.background,
+                            }
+                          : {
+                              backgroundColor: headerSecondaryColor.background,
+                              color: headerSecondaryColor.text,
+                              boxShadow: headerUseGlow ? headerSecondaryColor.glow : 'none',
+                              borderColor: headerSecondaryColor.background,
+                            }
                         : undefined
                     }
                     onClick={() => {
@@ -1861,7 +2248,7 @@ function PublicPage() {
                   >
                     <MapPin
                       className="h-8 w-8 translate-y-[1px]"
-                      style={{ width: 28, height: 28, color: headerSecondaryCustom ? barberSecondaryColor.text : 'rgba(255,255,255,0.8)' }}
+                      style={{ width: 28, height: 28, color: headerSecondaryCustom ? headerSecondaryColor.text : 'rgba(255,255,255,0.8)' }}
                     />
                     {publicHeaderSecondaryCta || t('whereToFindQuestion')}
                   </Button>
@@ -1885,11 +2272,11 @@ function PublicPage() {
                   onChange={(e) => {
                     const v = e.target.value
                     if (typeof window !== 'undefined') {
-                      const prev = window.localStorage.getItem(`draft_publicGalleryTitle_${publicHeaderTheme}`) ?? window.localStorage.getItem('publicGalleryTitle') ?? ''
+                      const prev = window.localStorage.getItem(`draft_publicGalleryTitle_${slugForDrafts}_${publicHeaderTheme}`) ?? window.localStorage.getItem('publicGalleryTitle') ?? ''
                       try {
                         window.parent?.postMessage?.({ type: 'constructorUndoPush', key: 'publicGalleryTitle', value: prev || null, themeId: publicHeaderTheme }, '*')
                       } catch { /* ignore */ }
-                      window.localStorage.setItem(`draft_publicGalleryTitle_${publicHeaderTheme}`, v)
+                      window.localStorage.setItem(`draft_publicGalleryTitle_${slugForDrafts}_${publicHeaderTheme}`, v)
                       window.localStorage.setItem(`constructorHasUserEdits_${publicHeaderTheme}`, '1')
                       draftVersionTrigger()
                     }
@@ -1933,14 +2320,14 @@ function PublicPage() {
                 const removePhoto = () => {
                   if (typeof window === 'undefined') return
                   const previousValue =
-                    window.localStorage.getItem(`draft_${key}_${publicHeaderTheme}`) ??
+                    window.localStorage.getItem(`draft_${key}_${slugForDrafts}_${publicHeaderTheme}`) ??
                     window.localStorage.getItem(key) ??
                     ''
                   const wasUserImage = Boolean(image)
                   if (wasUserImage) {
-                    window.localStorage.removeItem(`draft_${key}_${publicHeaderTheme}`)
+                    window.localStorage.removeItem(`draft_${key}_${slugForDrafts}_${publicHeaderTheme}`)
                   } else {
-                    window.localStorage.setItem(`draft_${key}_${publicHeaderTheme}`, '__empty__')
+                    window.localStorage.setItem(`draft_${key}_${slugForDrafts}_${publicHeaderTheme}`, '__empty__')
                   }
                   window.localStorage.setItem(`constructorHasUserEdits_${publicHeaderTheme}`, '1')
                   try {
@@ -2016,11 +2403,11 @@ function PublicPage() {
                             reader.onload = () => {
                               const result = reader.result as string
                               if (result && typeof window !== 'undefined') {
-                                const prev = window.localStorage.getItem(`draft_${key}_${publicHeaderTheme}`) ?? window.localStorage.getItem(key) ?? ''
+                                const prev = window.localStorage.getItem(`draft_${key}_${slugForDrafts}_${publicHeaderTheme}`) ?? window.localStorage.getItem(key) ?? ''
                                 try {
                                   window.parent?.postMessage?.({ type: 'constructorUndoPush', key, value: prev || null, themeId: publicHeaderTheme }, '*')
                                 } catch { /* ignore */ }
-                                window.localStorage.setItem(`draft_${key}_${publicHeaderTheme}`, result)
+                                window.localStorage.setItem(`draft_${key}_${slugForDrafts}_${publicHeaderTheme}`, result)
                                 window.localStorage.setItem(`constructorHasUserEdits_${publicHeaderTheme}`, '1')
                                 draftVersionTrigger()
                               }
@@ -2057,11 +2444,11 @@ function PublicPage() {
                 onChange={(e) => {
                   const v = e.target.value
                   if (typeof window !== 'undefined') {
-                    const prev = window.localStorage.getItem(`draft_publicBookingTitle_${publicHeaderTheme}`) ?? window.localStorage.getItem('publicBookingTitle') ?? ''
+                    const prev = window.localStorage.getItem(`draft_publicBookingTitle_${slugForDrafts}_${publicHeaderTheme}`) ?? window.localStorage.getItem('publicBookingTitle') ?? ''
                     try {
                       window.parent?.postMessage?.({ type: 'constructorUndoPush', key: 'publicBookingTitle', value: prev || null, themeId: publicHeaderTheme }, '*')
                     } catch { /* ignore */ }
-                    window.localStorage.setItem(`draft_publicBookingTitle_${publicHeaderTheme}`, v)
+                    window.localStorage.setItem(`draft_publicBookingTitle_${slugForDrafts}_${publicHeaderTheme}`, v)
                     window.localStorage.setItem(`constructorHasUserEdits_${publicHeaderTheme}`, '1')
                     draftVersionTrigger()
                   }
@@ -2079,11 +2466,11 @@ function PublicPage() {
                 onChange={(e) => {
                   const v = e.target.value
                   if (typeof window !== 'undefined') {
-                    const prev = window.localStorage.getItem(`draft_publicBookingSubtitle_${publicHeaderTheme}`) ?? window.localStorage.getItem('publicBookingSubtitle') ?? ''
+                    const prev = window.localStorage.getItem(`draft_publicBookingSubtitle_${slugForDrafts}_${publicHeaderTheme}`) ?? window.localStorage.getItem('publicBookingSubtitle') ?? ''
                     try {
                       window.parent?.postMessage?.({ type: 'constructorUndoPush', key: 'publicBookingSubtitle', value: prev || null, themeId: publicHeaderTheme }, '*')
                     } catch { /* ignore */ }
-                    window.localStorage.setItem(`draft_publicBookingSubtitle_${publicHeaderTheme}`, v)
+                    window.localStorage.setItem(`draft_publicBookingSubtitle_${slugForDrafts}_${publicHeaderTheme}`, v)
                     window.localStorage.setItem(`constructorHasUserEdits_${publicHeaderTheme}`, '1')
                     draftVersionTrigger()
                   }
@@ -2697,11 +3084,11 @@ function PublicPage() {
                       onChange={(e) => {
                         const v = e.target.value
                         if (typeof window !== 'undefined') {
-                          const prev = window.localStorage.getItem(`draft_publicName_${publicHeaderTheme}`) ?? window.localStorage.getItem('publicName') ?? ''
+                          const prev = window.localStorage.getItem(`draft_publicName_${slugForDrafts}_${publicHeaderTheme}`) ?? window.localStorage.getItem('publicName') ?? ''
                           try {
                             window.parent?.postMessage?.({ type: 'constructorUndoPush', key: 'publicName', value: prev || null, themeId: publicHeaderTheme }, '*')
                           } catch { /* ignore */ }
-                          window.localStorage.setItem(`draft_publicName_${publicHeaderTheme}`, v)
+                          window.localStorage.setItem(`draft_publicName_${slugForDrafts}_${publicHeaderTheme}`, v)
                           window.localStorage.setItem(`constructorHasUserEdits_${publicHeaderTheme}`, '1')
                           draftVersionTrigger()
                         }
@@ -2760,8 +3147,8 @@ function PublicPage() {
                                   : key === 'viber'
                                     ? 'publicViber'
                                     : 'publicInstagram'
-                              const previousValue = window.localStorage.getItem(`draft_${storageKey}_${publicHeaderTheme}`) ?? window.localStorage.getItem(storageKey) ?? ''
-                              window.localStorage.setItem(`draft_${storageKey}_${publicHeaderTheme}`, '')
+                              const previousValue = window.localStorage.getItem(`draft_${storageKey}_${slugForDrafts}_${publicHeaderTheme}`) ?? window.localStorage.getItem(storageKey) ?? ''
+                              window.localStorage.setItem(`draft_${storageKey}_${slugForDrafts}_${publicHeaderTheme}`, '')
                               window.localStorage.setItem(`constructorHasUserEdits_${publicHeaderTheme}`, '1')
                               draftVersionTrigger()
                               try {
@@ -2845,7 +3232,7 @@ function PublicPage() {
                                 if (typeof window === 'undefined') return
                                 try {
                                   const stored =
-                                    window.localStorage.getItem(`draft_publicFooterVisibility_${publicHeaderTheme}`) ??
+                                    window.localStorage.getItem(`draft_publicFooterVisibility_${slugForDrafts}_${publicHeaderTheme}`) ??
                                     window.localStorage.getItem('publicFooterVisibility')
                                   const previousValue = stored ?? null
                                   const next: {
@@ -2863,7 +3250,7 @@ function PublicPage() {
                                   }
                                   next[item.id] = false
                                   if (item.id === 'schedule') next.dayOff = false
-                                  window.localStorage.setItem(`draft_publicFooterVisibility_${publicHeaderTheme}`, JSON.stringify(next))
+                                  window.localStorage.setItem(`draft_publicFooterVisibility_${slugForDrafts}_${publicHeaderTheme}`, JSON.stringify(next))
                                   window.localStorage.setItem(`constructorHasUserEdits_${publicHeaderTheme}`, '1')
                                   draftVersionTrigger()
                                   try {
@@ -2892,11 +3279,11 @@ function PublicPage() {
                                 onChange={(e) => {
                                   const v = e.target.value
                                   if (typeof window !== 'undefined') {
-                                    const prev = window.localStorage.getItem(`draft_${item.draftKey}_${publicHeaderTheme}`) ?? window.localStorage.getItem(item.draftKey) ?? ''
+                                    const prev = window.localStorage.getItem(`draft_${item.draftKey}_${slugForDrafts}_${publicHeaderTheme}`) ?? window.localStorage.getItem(item.draftKey) ?? ''
                                     try {
                                       window.parent?.postMessage?.({ type: 'constructorUndoPush', key: item.draftKey, value: prev || null, themeId: publicHeaderTheme }, '*')
                                     } catch { /* ignore */ }
-                                    window.localStorage.setItem(`draft_${item.draftKey}_${publicHeaderTheme}`, v)
+                                    window.localStorage.setItem(`draft_${item.draftKey}_${slugForDrafts}_${publicHeaderTheme}`, v)
                                     window.localStorage.setItem(`constructorHasUserEdits_${publicHeaderTheme}`, '1')
                                     draftVersionTrigger()
                                   }
@@ -2910,11 +3297,11 @@ function PublicPage() {
                                   onChange={(e) => {
                                     const v = e.target.value
                                     if (typeof window !== 'undefined') {
-                                      const prev = window.localStorage.getItem(`draft_${item.extraDraftKey}_${publicHeaderTheme}`) ?? window.localStorage.getItem(item.extraDraftKey) ?? ''
+                                      const prev = window.localStorage.getItem(`draft_${item.extraDraftKey}_${slugForDrafts}_${publicHeaderTheme}`) ?? window.localStorage.getItem(item.extraDraftKey) ?? ''
                                       try {
                                         window.parent?.postMessage?.({ type: 'constructorUndoPush', key: item.extraDraftKey, value: prev || null, themeId: publicHeaderTheme }, '*')
                                       } catch { /* ignore */ }
-                                      window.localStorage.setItem(`draft_${item.extraDraftKey}_${publicHeaderTheme}`, v)
+                                      window.localStorage.setItem(`draft_${item.extraDraftKey}_${slugForDrafts}_${publicHeaderTheme}`, v)
                                       window.localStorage.setItem(`constructorHasUserEdits_${publicHeaderTheme}`, '1')
                                       draftVersionTrigger()
                                     }

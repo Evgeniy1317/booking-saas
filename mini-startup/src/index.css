@@ -1,3 +1,8 @@
+@import url('https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Italiana&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Great+Vibes&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Allura&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -143,6 +148,34 @@
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
     opacity: 1 !important;
+  }
+
+  /* Тема барбершоп: уникальный шрифт главного названия — Oswald, плотный и выразительный */
+  .font-barber-title {
+    font-family: 'Oswald', sans-serif;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+
+  /* Тема косметология: элегантный шрифт заголовка — Italiana, изысканный и необычный */
+  .font-cosmetology-title {
+    font-family: 'Italiana', serif;
+    font-weight: 400;
+    letter-spacing: 0.04em;
+  }
+
+  /* Тема покраска волос: письменный шрифт заголовка — Great Vibes, элегантный рукописный */
+  .font-coloring-title {
+    font-family: 'Great Vibes', cursive;
+    font-weight: 400;
+    letter-spacing: 0.02em;
+  }
+
+  /* Тема маникюр: изысканный рукописный шрифт заголовка — Allura, похожий на подпись */
+  .font-manicure-title {
+    font-family: 'Allura', cursive;
+    font-weight: 400;
+    letter-spacing: 0.03em;
   }
 }
 
