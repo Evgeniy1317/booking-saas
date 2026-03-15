@@ -1,6 +1,37 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, Component, type ReactNode } from 'react'
 import { flushSync } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
+
+/** Показывает сообщение об ошибке вместо белого экрана при падении конструктора */
+class ConstructorErrorBoundary extends Component<
+  { children: ReactNode },
+  { hasError: boolean; error: Error | null }
+> {
+  state = { hasError: false, error: null as Error | null }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error }
+  }
+
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
+    console.error('ConstructorErrorBoundary:', error, info.componentStack)
+  }
+
+  render() {
+    if (this.state.hasError && this.state.error) {
+      return (
+        <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-background text-foreground">
+          <h2 className="text-lg font-semibold text-destructive">Ошибка в конструкторе</h2>
+          <p className="mt-2 text-sm text-muted-foreground max-w-md text-center">
+            {this.state.error.message}
+          </p>
+          <p className="mt-4 text-xs text-muted-foreground">Откройте консоль (F12) для подробностей.</p>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
 import { PanelRightOpen, Save, ArrowLeft, Maximize2, X, ChevronLeft, Pencil, RotateCcw, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -536,13 +567,10 @@ export default function ConstructorPage() {
     window.open(fullViewUrl, '_blank', 'noopener,noreferrer')
   }
 
-  /** Только переключить тему в превью, не сбрасывая правки (чтобы «Мой сайт» / последние правки сохранялись) */
+  /** Только переключить тему в превью, не сбрасывая правки (чтобы «Мой сайт» / последние правки сохранялись). Сохраняем полный id (premium-hair и т.д.), чтобы PublicPage показывал премиум-шаблон. */
   const selectTheme = (themeId: string) => {
     if (typeof window === 'undefined') return
-    const valueToStore = themeId.startsWith('premium-')
-      ? themeId.replace('premium-', '')
-      : themeId
-    window.localStorage.setItem('draft_publicHeaderTheme', valueToStore)
+    window.localStorage.setItem('draft_publicHeaderTheme', themeId)
     setSelectedThemeId(themeId)
     try {
       iframeRef.current?.contentWindow?.location?.reload()
@@ -553,10 +581,7 @@ export default function ConstructorPage() {
 
   const goToEdit = () => {
     if (selectedThemeId && typeof window !== 'undefined') {
-      const valueToStore = selectedThemeId.startsWith('premium-')
-        ? selectedThemeId.replace('premium-', '')
-        : selectedThemeId
-      window.localStorage.setItem('draft_publicHeaderTheme', valueToStore)
+      window.localStorage.setItem('draft_publicHeaderTheme', selectedThemeId)
     }
     setSelectedBlockId(null)
     setPanelStage('edit')
@@ -635,6 +660,7 @@ export default function ConstructorPage() {
   }, [currentHeaderTheme, loadThemeDefaults, handleRestoreInitialHeader, notifyIframeDraft])
 
   return (
+    <ConstructorErrorBoundary>
     <div className="h-screen flex flex-col bg-background text-foreground overflow-hidden">
       {/* Модальное окно подтверждения «Стереть» */}
       {showClearConfirmModal && (
@@ -875,12 +901,7 @@ export default function ConstructorPage() {
                   {selectedBlockId != null ? 'Назад' : 'Выбор темы'}
                 </Button>
                 <div className="w-full flex flex-col min-h-0 shrink-0">
-                  {(currentHeaderTheme === 'premium-hair' || currentHeaderTheme === 'premium-barber') ? (
-                    <div className="rounded-none border-2 border-dashed border-border/60 bg-card/20 p-6 mt-4 text-center">
-                      <p className="text-sm font-semibold text-foreground">Премиум шаблон</p>
-                      <p className="text-xs text-muted-foreground mt-1">Скоро будет новая структура.</p>
-                    </div>
-                  ) : selectedBlockId == null ? (
+                  {selectedBlockId == null ? (
                     <>
                       <div className="flex items-center gap-2 mb-3">
                         <span className="h-px flex-1 bg-border/50 shrink-0" />
@@ -906,61 +927,65 @@ export default function ConstructorPage() {
                           </li>
                         ))}
                       </ul>
-                      <div className="flex items-center gap-2 my-5">
-                        <span className="h-px flex-1 bg-border/50 shrink-0" />
-                        <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-wider shrink-0">
-                          Задний фон тела сайта
-                        </h3>
-                        <span className="h-px flex-1 bg-border/50 shrink-0" />
-                      </div>
-                      <div className="flex gap-4 justify-center pb-2">
-                        <div className="flex flex-col gap-3">
-                          {BODY_BACKGROUND_OPTIONS.slice(0, 3).map((option) => {
-                            const current = getDraftOrPublic('publicBodyBackgroundChoice', 'bg-2')
-                            const selected = current === option.id
-                            return (
-                              <button
-                                key={option.id}
-                                type="button"
-                                onClick={() => setDraft('publicBodyBackgroundChoice', option.id)}
-                                className={cn(
-                                  'h-20 w-20 rounded-full border-2 shrink-0 overflow-hidden transition',
-                                  selected ? 'border-primary ring-2 ring-primary/30' : 'border-border/50 hover:border-primary/50'
-                                )}
-                                style={
-                                  option.type === 'image'
-                                    ? { backgroundImage: `url(${option.url})`, backgroundSize: 'cover', backgroundPosition: 'center' }
-                                    : { backgroundColor: option.color }
-                                }
-                                aria-label={option.id}
-                              />
-                            )
-                          })}
-                        </div>
-                        <div className="flex flex-col gap-3">
-                          {BODY_BACKGROUND_OPTIONS.slice(3, 5).map((option) => {
-                            const current = getDraftOrPublic('publicBodyBackgroundChoice', 'bg-2')
-                            const selected = current === option.id
-                            return (
-                              <button
-                                key={option.id}
-                                type="button"
-                                onClick={() => setDraft('publicBodyBackgroundChoice', option.id)}
-                                className={cn(
-                                  'h-20 w-20 rounded-full border-2 shrink-0 overflow-hidden transition',
-                                  selected ? 'border-primary ring-2 ring-primary/30' : 'border-border/50 hover:border-primary/50'
-                                )}
-                                style={
-                                  option.type === 'image'
-                                    ? { backgroundImage: `url(${option.url})`, backgroundSize: 'cover', backgroundPosition: 'center' }
-                                    : { backgroundColor: option.color }
-                                }
-                                aria-label={option.id}
-                              />
-                            )
-                          })}
-                        </div>
-                      </div>
+                      {!(currentHeaderTheme === 'premium-hair' || currentHeaderTheme === 'premium-barber') && (
+                        <>
+                          <div className="flex items-center gap-2 my-5">
+                            <span className="h-px flex-1 bg-border/50 shrink-0" />
+                            <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-wider shrink-0">
+                              Задний фон тела сайта
+                            </h3>
+                            <span className="h-px flex-1 bg-border/50 shrink-0" />
+                          </div>
+                          <div className="flex gap-4 justify-center pb-2">
+                            <div className="flex flex-col gap-3">
+                              {BODY_BACKGROUND_OPTIONS.slice(0, 3).map((option) => {
+                                const current = getDraftOrPublic('publicBodyBackgroundChoice', 'bg-2')
+                                const selected = current === option.id
+                                return (
+                                  <button
+                                    key={option.id}
+                                    type="button"
+                                    onClick={() => setDraft('publicBodyBackgroundChoice', option.id)}
+                                    className={cn(
+                                      'h-20 w-20 rounded-full border-2 shrink-0 overflow-hidden transition',
+                                      selected ? 'border-primary ring-2 ring-primary/30' : 'border-border/50 hover:border-primary/50'
+                                    )}
+                                    style={
+                                      option.type === 'image'
+                                        ? { backgroundImage: `url(${option.url})`, backgroundSize: 'cover', backgroundPosition: 'center' }
+                                        : { backgroundColor: option.color }
+                                    }
+                                    aria-label={option.id}
+                                  />
+                                )
+                              })}
+                            </div>
+                            <div className="flex flex-col gap-3">
+                              {BODY_BACKGROUND_OPTIONS.slice(3, 5).map((option) => {
+                                const current = getDraftOrPublic('publicBodyBackgroundChoice', 'bg-2')
+                                const selected = current === option.id
+                                return (
+                                  <button
+                                    key={option.id}
+                                    type="button"
+                                    onClick={() => setDraft('publicBodyBackgroundChoice', option.id)}
+                                    className={cn(
+                                      'h-20 w-20 rounded-full border-2 shrink-0 overflow-hidden transition',
+                                      selected ? 'border-primary ring-2 ring-primary/30' : 'border-border/50 hover:border-primary/50'
+                                    )}
+                                    style={
+                                      option.type === 'image'
+                                        ? { backgroundImage: `url(${option.url})`, backgroundSize: 'cover', backgroundPosition: 'center' }
+                                        : { backgroundColor: option.color }
+                                    }
+                                    aria-label={option.id}
+                                  />
+                                )
+                              })}
+                            </div>
+                          </div>
+                        </>
+                      )}
                     </>
                   ) : selectedBlockId === 'header' ? (
                     <>
@@ -972,10 +997,13 @@ export default function ConstructorPage() {
                         <span className="flex-1 h-px bg-border/60" />
                       </div>
                     <div className="space-y-0 pr-1">
-                      {/* 1. Фон для шапки */}
+                      {/* 1. Фон для шапки: фото или видео (для премиум-шаблона — любое; при наличии видео показывается видео) */}
                       <section className="space-y-2 pt-0 pb-3 border-b border-border/50">
                         <h4 className="text-sm font-semibold text-foreground">Фон для шапки</h4>
-                        <div className="flex items-center gap-2">
+                        {(currentHeaderTheme === 'premium-hair' || currentHeaderTheme === 'premium-barber') && (
+                          <p className="text-xs text-muted-foreground">Можно загрузить видео или фото любого размера. Если загружено и то и другое — в шапке показывается видео.</p>
+                        )}
+                        <div className="flex flex-wrap items-center gap-2">
                           <input
                             id="constructor-hero-upload"
                             type="file"
@@ -1002,7 +1030,7 @@ export default function ConstructorPage() {
                             className="inline-flex items-center gap-2 px-4 py-2.5 rounded-none border-2 border-dashed border-border/60 bg-card/20 hover:border-primary/50 hover:bg-primary/5 text-sm font-medium cursor-pointer transition-colors"
                           >
                             <Plus className="h-4 w-4 shrink-0 text-muted-foreground" />
-                            <span>{getDraftOrPublic('publicHeroImage') ? 'Сменить фон' : 'Добавить свой фон'}</span>
+                            <span>{getDraftOrPublic('publicHeroImage') ? 'Сменить фото' : 'Добавить фото'}</span>
                           </label>
                           {getDraftOrPublic('publicHeroImage') && (
                             <button
@@ -1016,11 +1044,131 @@ export default function ConstructorPage() {
                               }}
                               className="px-3 py-2 rounded-lg border border-border/50 text-sm text-muted-foreground hover:text-foreground"
                             >
-                              Убрать
+                              Убрать фото
                             </button>
                           )}
                         </div>
+                        {(currentHeaderTheme === 'premium-hair' || currentHeaderTheme === 'premium-barber') && (
+                          <div className="flex flex-wrap items-center gap-2 pt-1">
+                            <input
+                              id="constructor-hero-video-upload"
+                              type="file"
+                              accept="video/*"
+                              className="hidden"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0]
+                                if (!file) return
+                                const reader = new FileReader()
+                                reader.onload = () => {
+                                  const result = typeof reader.result === 'string' ? reader.result : ''
+                                  if (result) {
+                                    setDraft('publicHeroVideo', result)
+                                    setStoragePoll((n) => n + 1)
+                                    notifyIframeDraft()
+                                  }
+                                }
+                                reader.readAsDataURL(file)
+                                e.target.value = ''
+                              }}
+                            />
+                            <label
+                              htmlFor="constructor-hero-video-upload"
+                              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-none border-2 border-dashed border-border/60 bg-card/20 hover:border-primary/50 hover:bg-primary/5 text-sm font-medium cursor-pointer transition-colors"
+                            >
+                              <Plus className="h-4 w-4 shrink-0 text-muted-foreground" />
+                              <span>{getDraftOrPublic('publicHeroVideo') ? 'Сменить видео' : 'Добавить видео'}</span>
+                            </label>
+                            {getDraftOrPublic('publicHeroVideo') && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (typeof window === 'undefined') return
+                                  window.localStorage.removeItem(`draft_publicHeroVideo_${themeStorageId(currentHeaderTheme)}`)
+                                  window.localStorage.removeItem('publicHeroVideo')
+                                  setStoragePoll((n) => n + 1)
+                                  notifyIframeDraft()
+                                }}
+                                className="px-3 py-2 rounded-lg border border-border/50 text-sm text-muted-foreground hover:text-foreground"
+                              >
+                                Убрать видео
+                              </button>
+                            )}
+                          </div>
+                        )}
                       </section>
+                      {/* Цвета для премиум: хедер и hero */}
+                      {(currentHeaderTheme === 'premium-hair' || currentHeaderTheme === 'premium-barber') && (
+                        <section className="space-y-3 pt-3 pb-3 border-b border-border/50">
+                          <h4 className="text-sm font-semibold text-foreground">Цвета хедера и hero</h4>
+                          <div className="space-y-2">
+                            <label className="text-xs text-muted-foreground block">Акцентный цвет (подзаголовок, кнопки, рамки)</label>
+                            <div className="flex flex-wrap gap-2">
+                              {[
+                                { id: '', hex: '#e3c76c', label: 'Золотой' },
+                                { id: '#c9a227', hex: '#c9a227', label: 'Тёмное золото' },
+                                { id: '#f0d78c', hex: '#f0d78c', label: 'Светлое золото' },
+                                { id: '#b8860b', hex: '#b8860b', label: 'Тёмно-золотой' },
+                                { id: '#daa520', hex: '#daa520', label: 'Золотисто-жёлтый' },
+                              ].map(({ id, hex, label }) => {
+                                const current = getDraftOrPublic('publicPremiumGoldColor') || ''
+                                const selected = (current || '#e3c76c') === (id || '#e3c76c') || (current && current === hex)
+                                return (
+                                  <button
+                                    key={id || 'default'}
+                                    type="button"
+                                    onClick={() => {
+                                      setDraft('publicPremiumGoldColor', id || '')
+                                      setStoragePoll((n) => n + 1)
+                                      notifyIframeDraft()
+                                    }}
+                                    className={cn(
+                                      'h-8 w-8 rounded-full border-2 shrink-0 transition',
+                                      selected ? 'border-primary ring-2 ring-primary/30' : 'border-border/50 hover:border-primary/50'
+                                    )}
+                                    style={{ backgroundColor: hex }}
+                                    title={label}
+                                    aria-label={label}
+                                  />
+                                )
+                              })}
+                            </div>
+                          </div>
+                          <div className="space-y-2">
+                            <label className="text-xs text-muted-foreground block">Фон хедера при скролле</label>
+                            <div className="flex flex-wrap gap-2">
+                              {[
+                                { id: '', hex: '#0b0b0b', label: 'Чёрный' },
+                                { id: '#1a1a1a', hex: '#1a1a1a', label: 'Тёмно-серый' },
+                                { id: '#0f0f0f', hex: '#0f0f0f', label: 'Почти чёрный' },
+                              ].map(({ id, hex, label }) => {
+                                const current = getDraftOrPublic('publicPremiumHeaderBgColor') || ''
+                                const selected = (current || '#0b0b0b') === (id || '#0b0b0b') || (current === hex)
+                                return (
+                                  <button
+                                    key={id || 'default'}
+                                    type="button"
+                                    onClick={() => {
+                                      setDraft('publicPremiumHeaderBgColor', id || '')
+                                      setStoragePoll((n) => n + 1)
+                                      notifyIframeDraft()
+                                    }}
+                                    className={cn(
+                                      'h-8 w-8 rounded-full border-2 shrink-0 transition',
+                                      selected ? 'border-primary ring-2 ring-primary/30' : 'border-border/50 hover:border-primary/50'
+                                    )}
+                                    style={{ backgroundColor: hex }}
+                                    title={label}
+                                    aria-label={label}
+                                  />
+                                )
+                              })}
+                            </div>
+                          </div>
+                          <p className="text-xs text-muted-foreground pt-1">
+                            Название в шапке, подзаголовок и заголовок hero, кнопки «Контакты» и «Записаться онлайн» редактируются прямо в превью — включите режим редактирования и кликните по тексту.
+                          </p>
+                        </section>
+                      )}
                       {/* 2. Логотип (шапка) */}
                       <section className="space-y-2 pt-3 pb-3 border-b border-border/50">
                         <h4 className="text-sm font-semibold text-foreground">Логотип (шапка)</h4>
@@ -1847,5 +1995,6 @@ export default function ConstructorPage() {
         </div>
       </main>
     </div>
+    </ConstructorErrorBoundary>
   )
 }

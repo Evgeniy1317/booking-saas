@@ -715,7 +715,7 @@ export default function DraggableHeaderHair({
         >
           <Button
             className={cn(
-              publicHeaderPrimaryCtaShape === 'round' ? 'rounded-full' : 'rounded-none',
+              publicHeaderPrimaryCtaShape === 'round' ? 'rounded-full overflow-hidden' : 'rounded-none',
               buttonSizeClass,
               buttonTextClass,
               'border backdrop-blur-xl shadow-[0_12px_30px_rgba(0,0,0,0.35)] inline-flex items-center gap-2'
@@ -757,13 +757,13 @@ export default function DraggableHeaderHair({
           <Button
             variant="outline"
             className={cn(
-              publicHeaderSecondaryCtaShape === 'round' ? 'rounded-full' : 'rounded-none',
+              publicHeaderSecondaryCtaShape === 'round' ? 'rounded-full overflow-hidden' : 'rounded-none',
               buttonSizeClass,
               buttonTextClass,
               'backdrop-blur-xl inline-flex items-center gap-2'
             )}
-            style={
-              headerSecondaryCustom
+            style={{
+              ...(headerSecondaryCustom
                 ? (() => {
                     const isGrad = typeof barberSecondaryColor.background === 'string' && barberSecondaryColor.background.includes('gradient')
                     const border = 'borderColor' in barberSecondaryColor ? barberSecondaryColor.borderColor : barberSecondaryColor.background
@@ -777,8 +777,9 @@ export default function DraggableHeaderHair({
                         }
                       : { backgroundColor: barberSecondaryColor.background, color: barberSecondaryColor.text, boxShadow: barberSecondaryColor.glow, borderColor: barberSecondaryColor.background }
                   })()
-                : undefined
-            }
+                : {}),
+              ...(publicHeaderSecondaryCtaShape === 'round' ? { borderRadius: '9999px' } : {}),
+            }}
           >
             <MapPin className="h-8 w-8 shrink-0" style={{ color: headerSecondaryCustom ? barberSecondaryColor.text : 'rgba(255,255,255,0.8)' }} />
             <span

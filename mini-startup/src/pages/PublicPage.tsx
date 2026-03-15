@@ -1,18 +1,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import Lottie from 'lottie-react'
-import { useLocation, useParams, Link } from 'react-router-dom'
+import { useLocation, useParams, useNavigate, Link } from 'react-router-dom'
 import { createPortal } from 'react-dom'
 import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, X, Instagram, MapPin, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { PublicBookingFormSection } from '@/components/public/PublicBookingFormSection'
 import { cn } from '@/lib/utils'
 import heroImage from '@/assets/images/barber-wallpaper-black-marble-background.jpg'
 import cosmetologyHeaderBg from '@/assets/images/constructor-images/загруженное.png'
 import coloringHeaderBg from '@/assets/images/constructor-images/загруженное (1).png'
 import manicureHeaderBg from '@/assets/images/constructor-images/806534aa6d64e65ec11617c1c8df8f8c.jpg'
 import barberHeaderBg from '@/assets/images/constructor-images/загруженное (2).jpg'
+import defaultHeroVideo from '@/assets/images/video/3998440-uhd_4096_2160_25fps.mp4'
 import worksDefault1 from '@/assets/images/constructor-images/998b104a5c45e39378ead8e9c3414675.jpg'
 import worksDefault2 from '@/assets/images/constructor-images/orig (2).jpg'
 import worksDefault3 from '@/assets/images/constructor-images/caa5a2c48f545f5610765afae36e9568.jpg'
@@ -33,6 +35,7 @@ import flagRo from '@/assets/images/flag.png'
 import { useIsMobile } from '@/hooks/use-mobile'
 import CircularGallery from './CircularGallery'
 import DraggableHeaderHair from '@/components/public/DraggableHeaderHair'
+import PremiumBarberTemplate from '@/components/public/PremiumBarberTemplate'
 import {
   HAIR_THEME_DEFAULT_NAME,
   HAIR_THEME_DEFAULT_TAGLINE,
@@ -45,6 +48,7 @@ import {
   FOOTER_DEFAULT_DAY_OFF,
   FOOTER_DEFAULT_PHONE,
   FOOTER_DEFAULT_EMAIL,
+  DEFAULT_WORLD_MAP_EMBED_URL,
 } from '@/lib/hair-theme-defaults'
 
 /** 5 фотографий по умолчанию для блока «Фотографии салона» (интерьеры шаблонов), порядок слотов 1–5 */
@@ -526,7 +530,6 @@ const ViberIcon = ({ className = '' }: { className?: string }) => (
 )
 
 function PublicPage() {
-  useParams<{ slug: string }>()
   const [publicLang, setPublicLang] = useState<PublicLang>(() => {
     const stored = localStorage.getItem('publicLang') as PublicLang | null
     if (stored === 'ru' || stored === 'en' || stored === 'ro') {
@@ -575,7 +578,11 @@ function PublicPage() {
     return localStorage.getItem(`draft_${key}_${slugForDrafts}_${theme}`) ?? fallback
   }
 
-  const publicHeaderThemeRaw = readPublic('publicHeaderTheme') || 'hair'
+  const themeFromUrl = new URLSearchParams(location.search).get('theme')
+  const publicHeaderThemeRaw =
+    (themeFromUrl === 'premium-hair' || themeFromUrl === 'premium-barber')
+      ? themeFromUrl
+      : (readPublic('publicHeaderTheme') || 'hair')
   const publicHeaderTheme = publicHeaderThemeRaw.startsWith('premium-')
     ? publicHeaderThemeRaw.replace('premium-', '')
     : publicHeaderThemeRaw
@@ -612,6 +619,7 @@ function PublicPage() {
   const successTimeoutRef = useRef<number | null>(null)
   const [isSocialOpen, setIsSocialOpen] = useState(false)
   const [isHeaderDragging, setIsHeaderDragging] = useState(false)
+  const navigate = useNavigate()
   const socialRef = useRef<HTMLDivElement>(null)
   const lastScrollYRef = useRef(0)
 
@@ -1533,9 +1541,14 @@ function PublicPage() {
   const googleSearchQuery = useMapBuiltIn
     ? mapAddressNeutral
     : [publicPlaceName, publicAddress].filter(Boolean).join(' ')
-  const googleMapUrl = hasCoords
-    ? `https://www.google.com/maps?q=${mapLat},${mapLng}&z=${mapZoom}&output=embed&hl=en`
-    : `https://www.google.com/maps?q=${encodeURIComponent(googleMapQuery)}&z=${mapZoom}&output=embed&hl=en`
+  const useDefaultWorldMap =
+    !hasCoords &&
+    (useMapBuiltIn || isLegacyAddress(mapSourceAddress) || !mapSourceAddress)
+  const googleMapUrl = useDefaultWorldMap
+    ? DEFAULT_WORLD_MAP_EMBED_URL
+    : hasCoords
+      ? `https://www.google.com/maps?q=${mapLat},${mapLng}&z=${mapZoom}&output=embed&hl=en`
+      : `https://www.google.com/maps?q=${encodeURIComponent(googleMapQuery)}&z=${mapZoom}&output=embed&hl=en`
   const googleOpenUrl = hasCoords
     ? `https://www.google.com/maps/search/?api=1&query=${mapLat},${mapLng}&hl=en`
     : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(googleSearchQuery || googleMapQuery)}&hl=en`
@@ -1716,6 +1729,9 @@ function PublicPage() {
               setShowSuccess(false)
               resetForm()
               successTimeoutRef.current = null
+              if (location.pathname.endsWith('/booking')) {
+                navigate(urlSlug ? `/b/${urlSlug}${location.search || '?theme=premium-hair'}` : '/')
+              }
             }, 1800)
           }}
         />
@@ -1854,7 +1870,124 @@ function PublicPage() {
     </div>
   ) : null
 
-  if (isPremiumTemplate) {
+  const isBookingPage = location.pathname.endsWith('/booking')
+  if (isBookingPage) {
+    const backUrl = urlSlug ? `/b/${urlSlug}${location.search || '?theme=premium-hair'}` : '/'
+    return (
+      <div className="min-h-screen bg-background flex flex-col">
+        {canUseDOM && successOverlay ? createPortal(successOverlay, document.body) : null}
+        <div className="flex shrink-0 items-center border-b border-border/60 px-4 py-3">
+          <button
+            type="button"
+            onClick={() => navigate(backUrl)}
+            className="inline-flex items-center gap-2 text-sm font-medium text-foreground hover:text-foreground/80"
+          >
+            <ChevronLeft className="h-5 w-5" />
+            {t('back')}
+          </button>
+        </div>
+        <div className="flex-1 min-h-0 overflow-auto p-4">
+          <PublicBookingFormSection
+            t={t}
+            steps={steps}
+            currentStep={currentStep}
+            setCurrentStep={setCurrentStep}
+            activeServices={activeServices}
+            selectedServiceId={selectedServiceId}
+            setSelectedServiceId={setSelectedServiceId}
+            setSelectedStaffId={setSelectedStaffId}
+            setSelectedTime={setSelectedTime}
+            selectedStaffId={selectedStaffId}
+            selectedTime={selectedTime}
+            availableStaff={availableStaff}
+            slots={slots}
+            busySlots={busySlots}
+            setCalendarDate={setCalendarDate}
+            setIsDatePickerOpen={setIsDatePickerOpen}
+            selectedDate={selectedDate}
+            formatDisplayDate={formatDisplayDate}
+            setSelectedDate={setSelectedDate}
+            clientName={clientName}
+            setClientName={setClientName}
+            clientPhone={clientPhone}
+            setClientPhone={setClientPhone}
+            clientEmail={clientEmail}
+            setClientEmail={setClientEmail}
+            clientComment={clientComment}
+            setClientComment={setClientComment}
+            clientSocialMethod={clientSocialMethod}
+            setClientSocialMethod={setClientSocialMethod}
+            isSocialOpen={isSocialOpen}
+            setIsSocialOpen={setIsSocialOpen}
+            socialOptions={socialOptions}
+            clientSocialHandle={clientSocialHandle}
+            setClientSocialHandle={setClientSocialHandle}
+            canProceed={canProceed}
+            handleSubmit={handleSubmit}
+            summaryItems={summaryItems}
+            selectedService={selectedService}
+            isMobile={isMobile}
+            socialRef={socialRef}
+          />
+        </div>
+      </div>
+    )
+  }
+
+  if (publicHeaderThemeRaw === 'premium-hair') {
+    const heroVideoUrl = readPublic('publicHeroVideo') || defaultHeroVideo
+    const heroImageUrl = readPublic('publicHeroImage') || barberHeaderBg
+    const premiumHeroSubtitle = readPublic('publicPremiumHeroSubtitle') || 'Твой салон красоты'
+    const premiumHeroTitle = readPublic('publicPremiumHeroTitle') || 'Стрижки, укладки\nи уход в одном месте'
+    const premiumHeroContactsLabel = readPublic('publicPremiumHeroContactsLabel') || 'Контакты'
+    const premiumBookLabel = readPublic('publicPremiumBookLabel') || t('bookOnline')
+    const premiumGoldColor = readPublic('publicPremiumGoldColor') || undefined
+    const premiumHeaderBgColor = readPublic('publicPremiumHeaderBgColor') || undefined
+    const savePremiumDraft = (key: string, value: string) => {
+      if (typeof window === 'undefined') return
+      const prev = window.localStorage.getItem(`draft_${key}_${slugForDrafts}_${publicHeaderTheme}`) ?? window.localStorage.getItem(key) ?? ''
+      try {
+        window.parent?.postMessage?.({ type: 'constructorUndoPush', key, value: prev || null, themeId: publicHeaderThemeRaw }, '*')
+      } catch { /* ignore */ }
+      window.localStorage.setItem(`draft_${key}_${slugForDrafts}_${publicHeaderTheme}`, value)
+      window.localStorage.setItem(`constructorHasUserEdits_${publicHeaderThemeRaw}`, '1')
+      draftVersionTrigger()
+    }
+    return (
+      <PremiumBarberTemplate
+        siteName={headerDisplayName}
+        tagline={publicTagline}
+        onBookNow={() => navigate(urlSlug ? `/b/${urlSlug}/booking${location.search ? location.search : ''}` : '/')}
+        bookLabel={premiumBookLabel}
+        footerAddress={publicFooterAddress}
+        footerPhone={publicPhone}
+        footerHours={publicHours}
+        footerDayOff={footerVisibility.dayOff ? footerDisplayDayOff : undefined}
+        footerEmail={publicEmail}
+        footerLogo={publicLogo || null}
+        footerLogoShape={footerLogoDisplayShape}
+        footerLogoVisible={publicFooterLogoVisible}
+        telegramUrl={publicTelegram || undefined}
+        viberUrl={publicViber || undefined}
+        instagramUrl={publicInstagram || undefined}
+        addressLabel={t('addressLabel')}
+        scheduleLabel={t('scheduleLabel')}
+        phoneLabel={t('phoneLabel')}
+        emailLabel={t('emailLabel')}
+        mapEmbedUrl={googleMapUrl}
+        heroVideoUrl={heroVideoUrl || undefined}
+        heroImageUrl={heroImageUrl || undefined}
+        isEditMode={isPreview && isEditMode}
+        heroSubtitle={premiumHeroSubtitle}
+        heroTitle={premiumHeroTitle}
+        heroContactsLabel={premiumHeroContactsLabel}
+        onSaveDraft={isPreview && isEditMode ? savePremiumDraft : undefined}
+        accentColor={premiumGoldColor || undefined}
+        headerBgColor={premiumHeaderBgColor || undefined}
+      />
+    )
+  }
+  if (publicHeaderThemeRaw === 'premium-barber') {
     return (
       <div className="min-h-screen bg-[#0b0b0b] flex flex-col items-center justify-center text-center px-6">
         <p className="text-white/90 text-xl sm:text-2xl font-medium">Премиум шаблон</p>
@@ -2511,341 +2644,48 @@ function PublicPage() {
           )}
         </section>
 
-        <section className="w-full max-w-6xl mx-auto">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6 items-start lg:items-stretch rounded-3xl border border-border/40 bg-card/30 backdrop-blur-xl p-4 sm:p-6 lg:p-8 shadow-[0_20px_50px_rgba(0,0,0,0.35)] overflow-visible">
-            <Card className="relative z-30 p-4 sm:p-6 lg:col-span-2 h-full bg-background/40 border-border/40 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
-            <h3 className="text-xl sm:text-2xl font-display font-semibold mb-2 text-center">{t('onlineBooking')}</h3>
-            <p className="text-xs sm:text-sm text-muted-foreground mb-5 sm:mb-6 text-center">
-              {t('onlineBookingSubtitle')}
-            </p>
-
-              <div className="mb-6 rounded-xl border border-border/50 bg-card/30 px-4 py-3 text-left">
-                <div className="flex items-center justify-between text-xs text-muted-foreground">
-                  <span>{t('step')} {currentStep} {t('of')} {steps.length}</span>
-                  <span>{steps[currentStep - 1]}</span>
-                </div>
-                <div className="mt-2 h-1.5 w-full rounded-full bg-muted/50">
-                  <div
-                    className="h-1.5 rounded-full bg-primary transition-all"
-                    style={{ width: `${(currentStep / 4) * 100}%` }}
-                  />
-                </div>
-              </div>
-
-            <div className="space-y-8">
-              <div className={cn("text-center", currentStep !== 1 && "hidden")}>
-                <div className="flex items-center justify-center gap-2 sm:gap-3 mb-2">
-                  <span className="inline-flex h-6 w-6 sm:h-7 sm:w-7 items-center justify-center rounded-full border border-primary/30 bg-primary/15 text-[10px] sm:text-xs font-bold text-primary">
-                    1
-                  </span>
-                  <h3 className="text-base sm:text-lg font-display font-semibold">{t('serviceTitle')}</h3>
-                </div>
-                <p className="text-xs sm:text-sm font-medium text-foreground/80 text-left mb-3 sm:mb-4">{t('chooseService')}</p>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 auto-rows-fr">
-                  {activeServices.map((service) => (
-                    <button
-                      key={service.id}
-                      type="button"
-                    onClick={() => {
-                      setSelectedServiceId(service.id)
-                      setSelectedStaffId(null)
-                      setSelectedTime(null)
-                    }}
-                      className={cn(
-                        'w-full text-left rounded-xl border transition min-h-[48px] sm:min-h-[56px] flex items-stretch focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-offset-0',
-                        selectedServiceId === service.id
-                          ? 'border-primary/60 bg-primary/5'
-                          : 'border-border/60 hover:border-primary/40'
-                      )}
-                    >
-                      <div className="flex-1 px-3 py-3 sm:px-4 sm:py-4 flex flex-col justify-center">
-                        <h4 className="font-semibold">{service.name}</h4>
-                        <p className="text-[11px] sm:text-xs text-muted-foreground mt-2">{service.duration} {t('minutesShort')}</p>
-                      </div>
-                      <div className="border-l-2 border-dashed border-border/80 flex items-center px-3 py-3 sm:px-4 sm:py-4">
-                        <span className="text-xs sm:text-sm font-semibold text-emerald-400">
-                          {service.price} MDL
-                        </span>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className={cn("text-center", currentStep !== 2 && "hidden")}>
-                <div className="flex items-center justify-center gap-2 sm:gap-3 mb-2">
-                  <span className="inline-flex h-6 w-6 sm:h-7 sm:w-7 items-center justify-center rounded-full border border-primary/30 bg-primary/15 text-[10px] sm:text-xs font-bold text-primary">
-                    2
-                  </span>
-                  <h3 className="text-base sm:text-lg font-display font-semibold">{t('masterTitle')}</h3>
-                </div>
-                <p className="text-xs sm:text-sm font-medium text-foreground/80 text-left mb-3 sm:mb-4">{t('chooseMaster')}</p>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {availableStaff.map((member) => (
-                    <button
-                      key={member.id}
-                      type="button"
-                      onClick={() => {
-                        setSelectedStaffId(member.id)
-                        setSelectedTime(null)
-                      }}
-                      className={cn(
-                        'w-full text-left rounded-xl border p-3 sm:p-4 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-offset-0',
-                        selectedStaffId === member.id
-                          ? 'border-primary/60 bg-primary/5'
-                          : 'border-border/60 hover:border-primary/40'
-                      )}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div
-                          className="w-9 h-9 sm:w-10 sm:h-10 rounded-full flex items-center justify-center text-white text-xs sm:text-sm font-semibold"
-                          style={{ backgroundColor: member.color }}
-                        >
-                          {member.name.charAt(0)}
-                        </div>
-                        <div>
-                          <p className="font-semibold">{member.name}</p>
-                          <p className="text-[11px] sm:text-xs text-muted-foreground">{member.category}</p>
-                        </div>
-                      </div>
-                      {member.description && (
-                        <p className="text-[11px] sm:text-xs text-muted-foreground mt-2">{member.description}</p>
-                      )}
-                      <p className="text-[11px] sm:text-xs text-muted-foreground mt-2">
-                        {t('schedulePrefix')}: {member.workingHours.start}–{member.workingHours.end}
-                      </p>
-                    </button>
-                  ))}
-                  {availableStaff.length === 0 && (
-                    <div className="text-sm text-muted-foreground text-center">
-                      {t('noMasters')}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className={cn("text-center", currentStep !== 3 && "hidden")}>
-                <div className="flex items-center justify-center gap-2 sm:gap-3 mb-2">
-                  <span className="inline-flex h-6 w-6 sm:h-7 sm:w-7 items-center justify-center rounded-full border border-primary/30 bg-primary/15 text-[10px] sm:text-xs font-bold text-primary">
-                    3
-                  </span>
-                  <h3 className="text-base sm:text-lg font-display font-semibold">{t('dateTimeTitle')}</h3>
-                </div>
-                <p className="text-xs sm:text-sm font-medium text-foreground/80 text-left mb-3 sm:mb-4">{t('chooseSlot')}</p>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4">
-                  <div className="md:col-span-1">
-                    <label className="block text-xs sm:text-sm font-medium mb-2">{t('dateLabel')}</label>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setCalendarDate(new Date(selectedDate + 'T00:00:00'))
-                        setIsDatePickerOpen(true)
-                      }}
-                      className="w-full px-4 py-3 sm:py-3.5 rounded-lg border border-border/60 bg-card/40 text-xs sm:text-sm text-foreground flex items-center justify-between hover:border-primary/40 transition"
-                    >
-                      <span className="text-left leading-snug whitespace-normal">
-                        {formatDisplayDate(selectedDate)}
-                      </span>
-                      <CalendarIcon className="h-4 w-4 text-muted-foreground" />
-                    </button>
-                  </div>
-                  <div className="md:col-span-2">
-                    <label className="text-xs sm:text-sm font-medium">{t('timeLabel')}</label>
-                    <div className="mt-2 grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2">
-                      {slots.map((slot) => (
-                        <button
-                          key={slot}
-                          type="button"
-                          onClick={() => {
-                            setSelectedTime(slot)
-                          }}
-                          disabled={!selectedService || !selectedStaff || busySlots.has(slot)}
-                          className={cn(
-                            'rounded-lg border px-2 py-2 sm:px-3 sm:py-2.5 text-xs sm:text-sm transition focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-0',
-                            selectedTime === slot
-                              ? 'border-primary/60 bg-primary text-primary-foreground'
-                              : busySlots.has(slot)
-                              ? 'border-red-500/40 bg-red-500/15 text-red-400 cursor-not-allowed'
-                              : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400 hover:border-emerald-500/50 hover:bg-emerald-500/15',
-                            selectedTime === slot
-                              ? 'focus-visible:ring-primary/40'
-                              : busySlots.has(slot)
-                              ? 'focus-visible:ring-red-500/40'
-                              : 'focus-visible:ring-emerald-500/40',
-                            (!selectedService || !selectedStaff) && 'opacity-50 cursor-not-allowed'
-                          )}
-                        >
-                          {slot}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className={cn("text-center", currentStep !== 4 && "hidden")}>
-                <div className="flex items-center justify-center gap-2 sm:gap-3 mb-2">
-                  <span className="inline-flex h-6 w-6 sm:h-7 sm:w-7 items-center justify-center rounded-full border border-primary/30 bg-primary/15 text-[10px] sm:text-xs font-bold text-primary">
-                    4
-                  </span>
-                  <h3 className="text-base sm:text-lg font-display font-semibold">{t('contactsTitle')}</h3>
-                </div>
-                <p className="text-xs sm:text-sm font-medium text-foreground/80 text-left mb-3 sm:mb-4">{t('fillDetails')}</p>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <Input
-                    placeholder={t('namePlaceholder')}
-                    value={clientName}
-                    onChange={(e) => setClientName(e.target.value)}
-                    className="h-11 sm:h-12 text-sm sm:text-base bg-card/40 border-border/60 focus-visible:ring-2 focus-visible:ring-primary/30"
-                  />
-                  <Input
-                    placeholder={t('phonePlaceholder')}
-                    value={clientPhone}
-                    onChange={(e) => {
-                      const raw = e.target.value
-                      const sanitized = raw.replace(/[^\d+]/g, '')
-                      const normalized = sanitized.startsWith('+')
-                        ? `+${sanitized.slice(1).replace(/\+/g, '')}`
-                        : sanitized.replace(/\+/g, '')
-                      setClientPhone(normalized)
-                    }}
-                    inputMode="tel"
-                    pattern="[0-9+]*"
-                    className="h-11 sm:h-12 text-sm sm:text-base bg-card/40 border-border/60 focus-visible:ring-2 focus-visible:ring-primary/30"
-                  />
-                  <Input
-                    placeholder={t('emailPlaceholder')}
-                    value={clientEmail}
-                    onChange={(e) => setClientEmail(e.target.value)}
-                    className="h-11 sm:h-12 text-sm sm:text-base bg-card/40 border-border/60 focus-visible:ring-2 focus-visible:ring-primary/30"
-                  />
-                  <Input
-                    placeholder={t('commentPlaceholder')}
-                    value={clientComment}
-                    onChange={(e) => setClientComment(e.target.value)}
-                    className="h-11 sm:h-12 text-sm sm:text-base bg-card/40 border-border/60 focus-visible:ring-2 focus-visible:ring-primary/30"
-                  />
-                  <div className="space-y-2">
-                    <p className="text-xs sm:text-sm font-medium text-foreground/80 whitespace-nowrap">
-                      {t('contactMethodLabel')}
-                    </p>
-                    <div ref={socialRef} className="relative w-full z-40">
-                      <button
-                        type="button"
-                        onClick={() => setIsSocialOpen((prev) => !prev)}
-                        className={cn(
-                          "h-11 sm:h-12 w-full rounded-md bg-card/40 border px-3 pr-10 text-sm sm:text-base text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 text-left transition",
-                          isSocialOpen ? "border-primary/40" : "border-border/60 hover:border-primary/30"
-                        )}
-                      >
-                        {clientSocialMethod || t('contactMethodPlaceholder')}
-                      </button>
-                      <ChevronDown
-                        className={cn(
-                          "pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground transition-transform",
-                          isSocialOpen && "rotate-180"
-                        )}
-                      />
-                      {isSocialOpen && (
-                        <div className="absolute left-0 right-0 mt-2 rounded-md border border-border/60 bg-[#1b1f27] shadow-[0_18px_40px_rgba(0,0,0,0.35)] z-50 overflow-hidden">
-                          {socialOptions.map((option) => (
-                            <button
-                              key={option}
-                              type="button"
-                              onClick={() => {
-                                setClientSocialMethod(option)
-                                setIsSocialOpen(false)
-                              }}
-                              className={cn(
-                                "w-full px-3 py-2 text-left text-sm sm:text-base transition",
-                                clientSocialMethod === option
-                                  ? "bg-primary/15 text-foreground"
-                                  : "text-foreground/90 hover:bg-primary/10"
-                              )}
-                            >
-                              {option}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                  <div className="mt-4 sm:mt-6">
-                    <Input
-                      placeholder={t('contactHandlePlaceholder')}
-                      value={clientSocialHandle}
-                      onChange={(e) => setClientSocialHandle(e.target.value)}
-                      className="h-11 sm:h-12 text-sm sm:text-base bg-card/40 border-border/60 focus-visible:ring-2 focus-visible:ring-primary/30"
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {!isMobile && (
-              <div className="mt-6 flex items-end gap-3">
-                <div className="ml-auto flex items-center gap-2">
-                  {currentStep > 1 && (
-                    <Button
-                      variant="outline"
-                      onClick={() => setCurrentStep((prev) => Math.max(1, prev - 1))}
-                    >
-                      {t('back')}
-                    </Button>
-                  )}
-                  {currentStep < 4 && (
-                    <Button
-                      onClick={() => {
-                        setCurrentStep((prev) => Math.min(4, prev + 1))
-                      }}
-                      disabled={!canProceed(currentStep)}
-                    >
-                      {t('next')}
-                    </Button>
-                  )}
-                  {currentStep === 4 && (
-                    <Button onClick={handleSubmit} disabled={!canProceed(4)}>
-                      {t('sendRequest')}
-                    </Button>
-                  )}
-                </div>
-              </div>
-            )}
-            </Card>
-
-            <div className="hidden lg:block h-full">
-              <div className="h-full min-h-[520px] rounded-2xl border border-border/60 bg-card/70 px-5 py-6 shadow-[0_18px_40px_rgba(0,0,0,0.35)] flex flex-col">
-                <div className="flex items-center justify-center">
-                  <h3 className="text-xl font-display font-bold text-foreground text-center">
-                    {t('yourBooking')}
-                  </h3>
-                </div>
-                <div className="mt-5 space-y-3 text-sm flex-1">
-                  {summaryItems.map((item) => (
-                    <div key={item.label} className="flex items-start justify-between gap-3">
-                      <span className="text-muted-foreground">{item.label}</span>
-                      <span
-                        className={cn(
-                          'text-right max-w-[60%] break-words font-semibold',
-                          item.filled ? 'text-foreground' : 'text-muted-foreground'
-                        )}
-                      >
-                        {item.filled ? item.value : '—'}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-                <div className="mt-5 flex items-center justify-between rounded-xl border border-border/50 bg-background/40 px-4 py-3 text-sm">
-                  <span className="text-muted-foreground">{t('priceLabel')}</span>
-                  <span className="font-semibold text-emerald-400">
-                    {selectedService ? `${selectedService.price} MDL` : '—'}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-          </div>
-        </section>
+        <PublicBookingFormSection
+          t={t}
+          steps={steps}
+          currentStep={currentStep}
+          setCurrentStep={setCurrentStep}
+          activeServices={activeServices}
+          selectedServiceId={selectedServiceId}
+          setSelectedServiceId={setSelectedServiceId}
+          setSelectedStaffId={setSelectedStaffId}
+          setSelectedTime={setSelectedTime}
+          selectedStaffId={selectedStaffId}
+          selectedTime={selectedTime}
+          availableStaff={availableStaff}
+          slots={slots}
+          busySlots={busySlots}
+          setCalendarDate={setCalendarDate}
+          setIsDatePickerOpen={setIsDatePickerOpen}
+          selectedDate={selectedDate}
+          formatDisplayDate={formatDisplayDate}
+          setSelectedDate={setSelectedDate}
+          clientName={clientName}
+          setClientName={setClientName}
+          clientPhone={clientPhone}
+          setClientPhone={setClientPhone}
+          clientEmail={clientEmail}
+          setClientEmail={setClientEmail}
+          clientComment={clientComment}
+          setClientComment={setClientComment}
+          clientSocialMethod={clientSocialMethod}
+          setClientSocialMethod={setClientSocialMethod}
+          isSocialOpen={isSocialOpen}
+          setIsSocialOpen={setIsSocialOpen}
+          socialOptions={socialOptions}
+          clientSocialHandle={clientSocialHandle}
+          setClientSocialHandle={setClientSocialHandle}
+          canProceed={canProceed}
+          handleSubmit={handleSubmit}
+          summaryItems={summaryItems}
+          selectedService={selectedService}
+          isMobile={isMobile}
+          socialRef={socialRef}
+        />
 
         {galleryPreview.length > 0 && sectionVisibility.works && (
           <section ref={worksSectionRef} className="flex justify-center">
@@ -3425,4 +3265,4 @@ function PublicPage() {
   )
 }
 
-export default PublicPage
+export { PublicPage as default }

@@ -11,6 +11,10 @@ export const HAIR_THEME_DEFAULT_BOOKING_SUBTITLE =
 /** Логотип по умолчанию при первом заходе в конструктор (шапка, футер, все шаблоны) — в public/default-salon-logo.png */
 export const DEFAULT_LOGO_URL = '/default-salon-logo.png'
 
+/** Карта по умолчанию во всех шаблонах и в редактировании: мир, английские названия континентов, без метки */
+export const DEFAULT_WORLD_MAP_EMBED_URL =
+  'https://www.google.com/maps?q=0,0&z=2&output=embed&hl=en'
+
 /** Встроенный шаблон футера для всех шаблонов и первого захода в редактировании — заблокированные значения по умолчанию */
 export const FOOTER_DEFAULT_NAME = 'Твой салон красоты'
 export const FOOTER_DEFAULT_ADDRESS = 'Город, улица, дом'

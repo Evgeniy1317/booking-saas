@@ -35,6 +35,7 @@ function App() {
           <Route path="analytics" element={<Analytics />} />
         </Route>
         <Route path="/b/:slug" element={<PublicPage />} />
+        <Route path="/b/:slug/booking" element={<PublicPage />} />
       </Routes>
     </Router>
   )

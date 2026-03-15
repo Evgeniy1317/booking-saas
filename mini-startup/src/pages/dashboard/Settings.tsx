@@ -11,6 +11,8 @@ import { useLanguage } from '@/contexts/LanguageContext'
 import {
   HAIR_THEME_DEFAULT_BOOKING_TITLE,
   HAIR_THEME_DEFAULT_BOOKING_SUBTITLE,
+  DEFAULT_WORLD_MAP_EMBED_URL,
+  FOOTER_DEFAULT_ADDRESS,
 } from '@/lib/hair-theme-defaults'
 import heroImage from '@/assets/images/barber-wallpaper-black-marble-background.jpg'
 import iconMarketing from '@/assets/images/constructor-images/free-icon-marketing-10476712.png'
@@ -963,9 +965,14 @@ export default function Settings() {
   const hasCoords = Number.isFinite(mapLat) && Number.isFinite(mapLng)
   const googleMapQuery = (publicPage.address || 'Chisinau').trim()
   const googleSearchQuery = [publicPage.placeName, publicPage.address].filter(Boolean).join(' ')
-  const googleMapUrl = hasCoords
-    ? `https://www.google.com/maps?q=${mapLat},${mapLng}&z=17&output=embed&hl=en`
-    : `https://www.google.com/maps?q=${encodeURIComponent(googleMapQuery)}&output=embed&hl=en`
+  const useDefaultWorldMap =
+    !hasCoords &&
+    (!googleMapQuery || googleMapQuery === 'Chisinau' || googleMapQuery === FOOTER_DEFAULT_ADDRESS)
+  const googleMapUrl = useDefaultWorldMap
+    ? DEFAULT_WORLD_MAP_EMBED_URL
+    : hasCoords
+      ? `https://www.google.com/maps?q=${mapLat},${mapLng}&z=17&output=embed&hl=en`
+      : `https://www.google.com/maps?q=${encodeURIComponent(googleMapQuery)}&output=embed&hl=en`
   const googleOpenUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(googleSearchQuery || googleMapQuery)}&hl=en`
 
   const handleUseGeolocation = () => {
@@ -1157,6 +1164,13 @@ export default function Settings() {
       'publicHeaderBarberColors',
       'publicHeaderTheme',
       'publicHeroImage',
+      'publicHeroVideo',
+      'publicPremiumHeroSubtitle',
+      'publicPremiumHeroTitle',
+      'publicPremiumHeroContactsLabel',
+      'publicPremiumBookLabel',
+      'publicPremiumGoldColor',
+      'publicPremiumHeaderBgColor',
       'publicBodyBackgroundChoice',
       'publicBookingTitle',
       'publicBookingSubtitle',
