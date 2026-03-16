@@ -50,6 +50,9 @@ import manicurePatternAlt from '@/assets/images/constructor-images/manicure-tool
 import worksCarousel1 from '@/assets/images/constructor-images/c612ebeea6a9ada45aba6c8d7c5db8e9.jpeg'
 import worksCarousel2 from '@/assets/images/constructor-images/ew_HairSociety_Eclat_7-1000x1000.jpg'
 import worksCarousel3 from '@/assets/images/constructor-images/1704.jpg'
+import aboutSalon1 from '@/assets/images/constructor-images/pexels-cottonbro-3993118.jpg'
+import aboutSalon2 from '@/assets/images/constructor-images/pexels-cottonbro-3993293.jpg'
+import aboutSalon3 from '@/assets/images/constructor-images/pexels-cottonbro-3993308.jpg'
 import {
   HAIR_THEME_DEFAULT_NAME,
   HAIR_THEME_DEFAULT_TAGLINE,
@@ -62,6 +65,8 @@ import {
 
 /** Дефолтные фото для слотов 1–3 карусели «Галерея работ» — отображаются в сайдбаре и в превью, пока не заданы свои */
 const WORKS_CAROUSEL_DEFAULTS = [worksCarousel1, worksCarousel2, worksCarousel3]
+/** Дефолтные фото для блока «О салоне» (премиум-шаблон) — слоты 1–3 по умолчанию */
+const ABOUT_SALON_DEFAULTS = [aboutSalon1, aboutSalon2, aboutSalon3]
 
 /** Сжимает изображение для логотипа, чтобы влезало в localStorage и отображалось (в т.ч. большие картинки из ChatGPT) */
 function compressImageForLogo(dataUrl: string, onDone: (dataUrl: string) => void): void {
@@ -214,6 +219,19 @@ const HEADER_TEXT_OPTIONS = [
   { id: 'black', label: 'Черный', color: '#0b0b0b', glow: '0 0 14px rgba(0,0,0,0.55)' },
 ] as const
 
+/** Палитра «Цвет хедера» для премиум-шаблона: те же цвета + яркие, с эффектом свечения */
+const PREMIUM_HEADER_COLOR_OPTIONS = [
+  ...HEADER_TEXT_OPTIONS,
+  { id: 'cyan', label: 'Бирюза', color: '#22d3ee', glow: '0 0 14px rgba(34,211,238,0.55)' },
+  { id: 'yellow', label: 'Жёлтый', color: '#eab308', glow: '0 0 14px rgba(234,179,8,0.55)' },
+  { id: 'magenta', label: 'Пурпур', color: '#d946ef', glow: '0 0 14px rgba(217,70,239,0.55)' },
+  { id: 'teal', label: 'Бирюзовый', color: '#2dd4bf', glow: '0 0 14px rgba(45,212,191,0.55)' },
+  { id: 'sky', label: 'Небесный', color: '#0ea5e9', glow: '0 0 14px rgba(14,165,233,0.55)' },
+  { id: 'amber', label: 'Янтарный', color: '#f59e0b', glow: '0 0 14px rgba(245,158,11,0.55)' },
+  { id: 'fuchsia', label: 'Фуксия', color: '#c026d3', glow: '0 0 14px rgba(192,38,211,0.55)' },
+  { id: 'mint', label: 'Мятный', color: '#99f6e4', glow: '0 0 14px rgba(153,246,228,0.55)' },
+]
+
 /** Цвета кнопок — тот же порядок и те же id, что и у текста */
 const HEADER_BUTTON_OPTIONS = [
   { id: 'gold', label: 'Золото', background: '#E3B04B', text: '#111111', glow: '0 0 18px rgba(227,176,75,0.6)' },
@@ -288,10 +306,10 @@ export default function ConstructorPage() {
       window.localStorage.getItem('draft_publicHeaderTheme') ??
       window.localStorage.getItem('publicHeaderTheme') ??
       'hair'
-    const tid = theme.startsWith('premium-') ? theme.replace('premium-', '') : theme
+    const themeForKey = theme
     return (
-      window.localStorage.getItem(`draft_publicAddress_${slug}_${tid}`) ??
-      window.localStorage.getItem(`draft_publicAddress_${tid}`) ??
+      window.localStorage.getItem(`draft_publicAddress_${slug}_${themeForKey}`) ??
+      window.localStorage.getItem(`draft_publicAddress_${themeForKey}`) ??
       window.localStorage.getItem('draft_publicAddress') ??
       window.localStorage.getItem('publicAddress') ??
       ''
@@ -330,15 +348,6 @@ export default function ConstructorPage() {
     return () => window.removeEventListener('message', handler)
   }, [])
 
-  useEffect(() => {
-    if (selectedBlockId == null || panelStage !== 'edit') return
-    try {
-      iframeRef.current?.contentWindow?.postMessage?.({ type: 'scrollToSection', sectionId: selectedBlockId }, '*')
-    } catch {
-      // ignore
-    }
-  }, [selectedBlockId, panelStage])
-
   // При смене темы подставлять в поле адреса черновик этой темы (или пусто — нейтральный placeholder)
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -347,9 +356,8 @@ export default function ConstructorPage() {
       window.localStorage.getItem('draft_publicHeaderTheme') ??
       window.localStorage.getItem('publicHeaderTheme') ??
       'hair'
-    const tid = themeStorageId(themeId)
     const slug = window.localStorage.getItem('publicSlug') || 'salon'
-    const addr = window.localStorage.getItem(`draft_publicAddress_${slug}_${tid}`) ?? ''
+    const addr = window.localStorage.getItem(`draft_publicAddress_${slug}_${themeId}`) ?? ''
     setAddressQuery(addr)
   }, [selectedThemeId, panelStage])
 
@@ -369,8 +377,10 @@ export default function ConstructorPage() {
         window.localStorage.getItem('publicHeaderTheme') ??
         'hair'
       const tid = themeStorageId(themeId)
+      const addressMapKeys = ['publicFooterAddress', 'publicAddress', 'publicMapEmbedUrl']
+      const themeForKey = addressMapKeys.includes(key) ? themeId : tid
       return (
-        window.localStorage.getItem(`draft_${key}_${slug}_${tid}`) ?? fallback
+        window.localStorage.getItem(`draft_${key}_${slug}_${themeForKey}`) ?? fallback
       )
     },
     [selectedThemeId]
@@ -421,6 +431,18 @@ export default function ConstructorPage() {
   }, [addressQuery, isAddressFocused])
 
   const currentHeaderTheme = getDraftOrPublic('publicHeaderTheme') || 'hair'
+
+  useEffect(() => {
+    if (selectedBlockId == null || panelStage !== 'edit') return
+    const isPremium = currentHeaderTheme === 'premium-hair' || currentHeaderTheme === 'premium-barber'
+    const sectionId = isPremium && selectedBlockId === 'booking' ? 'gallery' : isPremium && selectedBlockId === 'works' ? 'services' : selectedBlockId
+    try {
+      iframeRef.current?.contentWindow?.postMessage?.({ type: 'scrollToSection', sectionId }, '*')
+    } catch {
+      // ignore
+    }
+  }, [selectedBlockId, panelStage, currentHeaderTheme])
+
   /** Ключ хранилища цветов хедера: для косметологии, покраски и маникюра — отдельные, чтобы цвета применялись к хедеру темы */
   const headerColorsStorageKey =
     currentHeaderTheme === 'cosmetology'
@@ -507,13 +529,16 @@ export default function ConstructorPage() {
         window.localStorage.getItem('draft_publicHeaderTheme') ??
         'hair'
       const tid = themeStorageId(themeId)
+      // Адрес и карта для премиум-шаблонов — по полному id темы, чтобы не переходить на другие шаблоны
+      const addressMapKeys = ['publicFooterAddress', 'publicAddress', 'publicMapEmbedUrl']
+      const themeForKey = addressMapKeys.includes(key) ? themeId : tid
       const storageKey =
-        key === 'publicHeaderTheme' ? `draft_${key}` : `draft_${key}_${slug}_${tid}`
+        key === 'publicHeaderTheme' ? `draft_${key}` : `draft_${key}_${slug}_${themeForKey}`
       const prev =
         window.localStorage.getItem(storageKey) ??
         (key === 'publicHeaderTheme' ? null : window.localStorage.getItem(key))
       setUndoStack((prevStack) => {
-        const next = [...prevStack, { key, value: prev, themeId: tid }]
+        const next = [...prevStack, { key, value: prev, themeId: themeForKey }]
         return next.slice(-MAX_UNDO)
       })
       window.localStorage.setItem(storageKey, value)
@@ -560,10 +585,9 @@ export default function ConstructorPage() {
 
   const slug = typeof window !== 'undefined' ? (localStorage.getItem('publicSlug') || 'salon') : 'salon'
   const previewUrl = panelStage === 'edit' ? `/b/${slug}?preview=1&edit=1` : `/b/${slug}?preview=1`
-  /** В полном размере — только просмотр, без редактирования (без edit=1) */
-  const fullViewUrl = `/b/${slug}?preview=1`
-
+  /** В полном размере — без режима редактирования (без рамок и полосок), с последними изменениями из localStorage (full=1 чтобы подставлялись черновики, не дефолт) */
   const openFullSize = () => {
+    const fullViewUrl = `/b/${slug}?preview=1&full=1&_=${Date.now()}`
     window.open(fullViewUrl, '_blank', 'noopener,noreferrer')
   }
 
@@ -781,7 +805,7 @@ export default function ConstructorPage() {
               <X className="h-4 w-4" />
             </Button>
           </div>
-          <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-3 flex flex-col gap-4 [scrollbar-width:none] [&::-webkit-scrollbar]:[display:none]">
+          <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-3 flex flex-col gap-4 [scrollbar-width:none] [&::-webkit-scrollbar]:[display:none] min-h-0">
             {panelStage === 'themes' && (
               <>
                 <div className="flex flex-col items-center">
@@ -911,7 +935,10 @@ export default function ConstructorPage() {
                         <span className="h-px flex-1 bg-border/50 shrink-0" />
                       </div>
                       <ul className="space-y-2">
-                        {BLOCKS.map((block) => (
+                        {BLOCKS.map((block) => {
+                          const isPremium = currentHeaderTheme === 'premium-hair' || currentHeaderTheme === 'premium-barber'
+                          const label = block.id === 'gallery' && isPremium ? 'О салоне' : block.id === 'booking' && isPremium ? 'Наши работы' : block.id === 'works' && isPremium ? 'Наши услуги' : block.label
+                          return (
                           <li key={block.id}>
                             <button
                               type="button"
@@ -922,10 +949,11 @@ export default function ConstructorPage() {
                                 visibleSectionId === block.id && 'border-primary/70 bg-primary/10 shadow-[0_0_12px_rgba(59,130,246,0.35)]'
                               )}
                             >
-                              {block.label}
+                              {label}
                             </button>
                           </li>
-                        ))}
+                          )
+                        })}
                       </ul>
                       {!(currentHeaderTheme === 'premium-hair' || currentHeaderTheme === 'premium-barber') && (
                         <>
@@ -1096,79 +1124,120 @@ export default function ConstructorPage() {
                           </div>
                         )}
                       </section>
-                      {/* Цвета для премиум: хедер и hero */}
+                      {/* Цвет хедера (премиум) — палитра как в других шаблонах, с эффектом свечения */}
                       {(currentHeaderTheme === 'premium-hair' || currentHeaderTheme === 'premium-barber') && (
                         <section className="space-y-3 pt-3 pb-3 border-b border-border/50">
-                          <h4 className="text-sm font-semibold text-foreground">Цвета хедера и hero</h4>
-                          <div className="space-y-2">
-                            <label className="text-xs text-muted-foreground block">Акцентный цвет (подзаголовок, кнопки, рамки)</label>
-                            <div className="flex flex-wrap gap-2">
-                              {[
-                                { id: '', hex: '#e3c76c', label: 'Золотой' },
-                                { id: '#c9a227', hex: '#c9a227', label: 'Тёмное золото' },
-                                { id: '#f0d78c', hex: '#f0d78c', label: 'Светлое золото' },
-                                { id: '#b8860b', hex: '#b8860b', label: 'Тёмно-золотой' },
-                                { id: '#daa520', hex: '#daa520', label: 'Золотисто-жёлтый' },
-                              ].map(({ id, hex, label }) => {
-                                const current = getDraftOrPublic('publicPremiumGoldColor') || ''
-                                const selected = (current || '#e3c76c') === (id || '#e3c76c') || (current && current === hex)
-                                return (
-                                  <button
-                                    key={id || 'default'}
-                                    type="button"
-                                    onClick={() => {
-                                      setDraft('publicPremiumGoldColor', id || '')
-                                      setStoragePoll((n) => n + 1)
-                                      notifyIframeDraft()
-                                    }}
-                                    className={cn(
-                                      'h-8 w-8 rounded-full border-2 shrink-0 transition',
-                                      selected ? 'border-primary ring-2 ring-primary/30' : 'border-border/50 hover:border-primary/50'
-                                    )}
-                                    style={{ backgroundColor: hex }}
-                                    title={label}
-                                    aria-label={label}
-                                  />
-                                )
-                              })}
-                            </div>
+                          <h4 className="text-sm font-semibold text-foreground">Цвет хедера</h4>
+                          <div className="flex flex-wrap gap-2">
+                            {PREMIUM_HEADER_COLOR_OPTIONS.map((opt) => {
+                              const current = getDraftOrPublic('publicPremiumHeaderBgColor') || ''
+                              const selected = current === opt.color
+                              return (
+                                <button
+                                  key={opt.id}
+                                  type="button"
+                                  onClick={() => {
+                                    setDraft('publicPremiumHeaderBgColor', opt.color)
+                                    setDraft('publicPremiumHeaderBgGlow', opt.glow)
+                                    setStoragePoll((n) => n + 1)
+                                    notifyIframeDraft()
+                                  }}
+                                  className={cn(
+                                    'h-8 w-8 rounded-full border-2 shrink-0 transition',
+                                    selected ? 'border-primary ring-2 ring-primary/30' : 'border-border/50 hover:border-primary/50'
+                                  )}
+                                  style={{
+                                    backgroundColor: opt.color,
+                                    boxShadow: selected ? opt.glow : undefined,
+                                  }}
+                                  title={opt.label}
+                                  aria-label={opt.label}
+                                />
+                              )
+                            })}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setDraft('publicPremiumHeaderBgColor', '')
+                                setDraft('publicPremiumHeaderBgGlow', '')
+                                setStoragePoll((n) => n + 1)
+                                notifyIframeDraft()
+                              }}
+                              className={cn(
+                                'px-2.5 py-1.5 rounded-full border text-sm font-medium transition-colors',
+                                !getDraftOrPublic('publicPremiumHeaderBgColor')
+                                  ? 'border-primary bg-primary/10 text-foreground'
+                                  : 'border-border/50 text-muted-foreground hover:text-foreground'
+                              )}
+                            >
+                              По умолчанию
+                            </button>
                           </div>
-                          <div className="space-y-2">
-                            <label className="text-xs text-muted-foreground block">Фон хедера при скролле</label>
-                            <div className="flex flex-wrap gap-2">
-                              {[
-                                { id: '', hex: '#0b0b0b', label: 'Чёрный' },
-                                { id: '#1a1a1a', hex: '#1a1a1a', label: 'Тёмно-серый' },
-                                { id: '#0f0f0f', hex: '#0f0f0f', label: 'Почти чёрный' },
-                              ].map(({ id, hex, label }) => {
-                                const current = getDraftOrPublic('publicPremiumHeaderBgColor') || ''
-                                const selected = (current || '#0b0b0b') === (id || '#0b0b0b') || (current === hex)
-                                return (
-                                  <button
-                                    key={id || 'default'}
-                                    type="button"
-                                    onClick={() => {
-                                      setDraft('publicPremiumHeaderBgColor', id || '')
-                                      setStoragePoll((n) => n + 1)
-                                      notifyIframeDraft()
-                                    }}
-                                    className={cn(
-                                      'h-8 w-8 rounded-full border-2 shrink-0 transition',
-                                      selected ? 'border-primary ring-2 ring-primary/30' : 'border-border/50 hover:border-primary/50'
-                                    )}
-                                    style={{ backgroundColor: hex }}
-                                    title={label}
-                                    aria-label={label}
-                                  />
-                                )
-                              })}
-                            </div>
-                          </div>
-                          <p className="text-xs text-muted-foreground pt-1">
-                            Название в шапке, подзаголовок и заголовок hero, кнопки «Контакты» и «Записаться онлайн» редактируются прямо в превью — включите режим редактирования и кликните по тексту.
-                          </p>
                         </section>
                       )}
+                      {(currentHeaderTheme === 'premium-hair' || currentHeaderTheme === 'premium-barber') && (
+                        <>
+                          {[
+                            { key: 'publicPremiumHeaderNavColor', keyGlow: '', label: 'Цвет кнопок в шапке' },
+                            { key: 'publicPremiumHeaderTitleColor', keyGlow: '', label: 'Цвет главного названия в шапке' },
+                            { key: 'publicPremiumHeroSubtitleColor', keyGlow: '', label: 'Цвет первого заголовка в hero' },
+                            { key: 'publicPremiumHeroTitleColor', keyGlow: '', label: 'Цвет второго заголовка в hero' },
+                            { key: 'publicPremiumHeroButton1BorderColor', keyGlow: 'publicPremiumHeroButton1Glow', label: 'Цвет рамки первой кнопки' },
+                            { key: 'publicPremiumHeroButton2BorderColor', keyGlow: 'publicPremiumHeroButton2Glow', label: 'Цвет рамки второй кнопки' },
+                          ].map(({ key, keyGlow, label }) => (
+                            <section key={key} className="space-y-2 pt-3 pb-3 border-b border-border/50">
+                              <h4 className="text-sm font-semibold text-foreground">{label}</h4>
+                              <div className="flex flex-wrap gap-2 items-center">
+                                {PREMIUM_HEADER_COLOR_OPTIONS.map((opt) => {
+                                  const current = getDraftOrPublic(key) || ''
+                                  const selected = current === opt.color
+                                  return (
+                                    <button
+                                      key={opt.id}
+                                      type="button"
+                                      onClick={() => {
+                                        setDraft(key, opt.color)
+                                        if (keyGlow) setDraft(keyGlow, opt.glow)
+                                        setStoragePoll((n) => n + 1)
+                                        notifyIframeDraft()
+                                      }}
+                                      className={cn(
+                                        'h-8 w-8 rounded-full border-2 shrink-0 transition',
+                                        selected ? 'border-primary ring-2 ring-primary/30' : 'border-border/50 hover:border-primary/50'
+                                      )}
+                                      style={{
+                                        backgroundColor: opt.color,
+                                        boxShadow: selected ? opt.glow : undefined,
+                                      }}
+                                      title={opt.label}
+                                      aria-label={opt.label}
+                                    />
+                                  )
+                                })}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setDraft(key, '')
+                                    if (keyGlow) setDraft(keyGlow, '')
+                                    setStoragePoll((n) => n + 1)
+                                    notifyIframeDraft()
+                                  }}
+                                  className={cn(
+                                    'px-2.5 py-1.5 rounded-full border text-sm font-medium transition-colors',
+                                    !getDraftOrPublic(key)
+                                      ? 'border-primary bg-primary/10 text-foreground'
+                                      : 'border-border/50 text-muted-foreground hover:text-foreground'
+                                  )}
+                                >
+                                  По умолчанию
+                                </button>
+                              </div>
+                            </section>
+                          ))}
+                        </>
+                      )}
+                      {!(currentHeaderTheme === 'premium-hair' || currentHeaderTheme === 'premium-barber') && (
+                      <>
                       {/* 2. Логотип (шапка) */}
                       <section className="space-y-2 pt-3 pb-3 border-b border-border/50">
                         <h4 className="text-sm font-semibold text-foreground">Логотип (шапка)</h4>
@@ -1480,9 +1549,238 @@ export default function ConstructorPage() {
                           </div>
                         </div>
                       </section>
+                      </>
+                      )}
                     </div>
                     </>
                   ) : selectedBlockId === 'gallery' ? (
+                    (currentHeaderTheme === 'premium-hair' || currentHeaderTheme === 'premium-barber') ? (
+                    <>
+                      <div className="flex items-center gap-2 mb-4 mt-1">
+                        <span className="flex-1 h-px bg-border/60" />
+                        <h3 className="text-base font-bold text-foreground uppercase tracking-wider shrink-0 px-2">
+                          О салоне
+                        </h3>
+                        <span className="flex-1 h-px bg-border/60" />
+                      </div>
+                      <p className="text-sm leading-snug text-muted-foreground text-center py-2 mb-4">
+                        Тексты редактируются в превью. Цвета и фото задаются здесь. До 10 фото в карусели; по умолчанию — 3 примера.
+                      </p>
+                      <section className="space-y-2 pt-2 pb-3 border-b border-border/50">
+                        <h4 className="text-sm font-semibold text-foreground">Цвет заголовка</h4>
+                        <div className="flex flex-wrap gap-2 items-center">
+                          {HEADER_TEXT_OPTIONS.map((opt) => (
+                            <button
+                              key={opt.id}
+                              type="button"
+                              onClick={() => {
+                                setDraft('publicAboutSalonTitleColor', opt.color)
+                                setStoragePoll((n) => n + 1)
+                                notifyIframeDraft()
+                              }}
+                              className={cn(
+                                'h-7 w-7 rounded-full border-2 transition',
+                                (getDraftOrPublic('publicAboutSalonTitleColor') || '') === opt.color ? 'border-primary' : 'border-border/50'
+                              )}
+                              style={{ backgroundColor: opt.color }}
+                              aria-label={opt.label}
+                            />
+                          ))}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDraft('publicAboutSalonTitleColor', '')
+                              setStoragePoll((n) => n + 1)
+                              notifyIframeDraft()
+                            }}
+                            className="ml-0.5 px-2.5 py-1 rounded-full border border-border/50 text-sm text-muted-foreground hover:text-foreground"
+                          >
+                            По умолчанию
+                          </button>
+                        </div>
+                      </section>
+                      <section className="space-y-2 pt-3 pb-3 border-b border-border/50">
+                        <h4 className="text-sm font-semibold text-foreground">Цвет описания</h4>
+                        <div className="flex flex-wrap gap-2 items-center">
+                          {HEADER_TEXT_OPTIONS.map((opt) => (
+                            <button
+                              key={opt.id}
+                              type="button"
+                              onClick={() => {
+                                setDraft('publicAboutSalonDescColor', opt.color)
+                                setStoragePoll((n) => n + 1)
+                                notifyIframeDraft()
+                              }}
+                              className={cn(
+                                'h-7 w-7 rounded-full border-2 transition',
+                                (getDraftOrPublic('publicAboutSalonDescColor') || '') === opt.color ? 'border-primary' : 'border-border/50'
+                              )}
+                              style={{ backgroundColor: opt.color }}
+                              aria-label={opt.label}
+                            />
+                          ))}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDraft('publicAboutSalonDescColor', '')
+                              setStoragePoll((n) => n + 1)
+                              notifyIframeDraft()
+                            }}
+                            className="ml-0.5 px-2.5 py-1 rounded-full border border-border/50 text-sm text-muted-foreground hover:text-foreground"
+                          >
+                            По умолчанию
+                          </button>
+                        </div>
+                      </section>
+                      <section className="space-y-2 pt-3 pb-3 border-b border-border/50">
+                        <h4 className="text-sm font-semibold text-foreground">Цвет третьего текста</h4>
+                        <div className="flex flex-wrap gap-2 items-center">
+                          {HEADER_TEXT_OPTIONS.map((opt) => (
+                            <button
+                              key={opt.id}
+                              type="button"
+                              onClick={() => {
+                                setDraft('publicAboutSalonThirdColor', opt.color)
+                                setStoragePoll((n) => n + 1)
+                                notifyIframeDraft()
+                              }}
+                              className={cn(
+                                'h-7 w-7 rounded-full border-2 transition',
+                                (getDraftOrPublic('publicAboutSalonThirdColor') || '') === opt.color ? 'border-primary' : 'border-border/50'
+                              )}
+                              style={{ backgroundColor: opt.color }}
+                              aria-label={opt.label}
+                            />
+                          ))}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDraft('publicAboutSalonThirdColor', '')
+                              setStoragePoll((n) => n + 1)
+                              notifyIframeDraft()
+                            }}
+                            className="ml-0.5 px-2.5 py-1 rounded-full border border-border/50 text-sm text-muted-foreground hover:text-foreground"
+                          >
+                            По умолчанию
+                          </button>
+                        </div>
+                      </section>
+                      <section className="space-y-2 pt-3 pb-3 border-b border-border/50">
+                        <h4 className="text-sm font-semibold text-foreground">Цвет рамки кнопки</h4>
+                        <div className="flex flex-wrap gap-2 items-center">
+                          {HEADER_TEXT_OPTIONS.map((opt) => (
+                            <button
+                              key={opt.id}
+                              type="button"
+                              onClick={() => {
+                                setDraft('publicAboutSalonButtonBorderColor', opt.color)
+                                setStoragePoll((n) => n + 1)
+                                notifyIframeDraft()
+                              }}
+                              className={cn(
+                                'h-7 w-7 rounded-full border-2 transition',
+                                (getDraftOrPublic('publicAboutSalonButtonBorderColor') || '') === opt.color ? 'border-primary' : 'border-border/50'
+                              )}
+                              style={{ backgroundColor: opt.color }}
+                              aria-label={opt.label}
+                            />
+                          ))}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDraft('publicAboutSalonButtonBorderColor', '')
+                              setStoragePoll((n) => n + 1)
+                              notifyIframeDraft()
+                            }}
+                            className="ml-0.5 px-2.5 py-1 rounded-full border border-border/50 text-sm text-muted-foreground hover:text-foreground"
+                          >
+                            По умолчанию
+                          </button>
+                        </div>
+                      </section>
+                      <section className="space-y-2 pt-3 pb-3">
+                        <h4 className="text-sm font-semibold text-foreground">Фото салона (до 10)</h4>
+                        <p className="text-xs text-muted-foreground">По умолчанию — 3 примера. Крестик — удалить, клик по слоту — загрузить своё.</p>
+                        <div className="grid grid-cols-2 gap-2">
+                          {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((idx) => {
+                            const image = getDraftOrPublic(`publicAboutSalon${idx}`)
+                            const displayImage =
+                              image === '__empty__' ? '' : (image || (idx <= 3 ? ABOUT_SALON_DEFAULTS[idx - 1] : ''))
+                            const hasImage = Boolean(displayImage)
+                            return (
+                              <div
+                                key={`about-salon-slot-${idx}`}
+                                className={cn(
+                                  'relative aspect-square rounded-lg border-2 overflow-hidden',
+                                  hasImage ? 'border-border/50 bg-card/30' : 'border-dashed border-border/50 bg-card/20'
+                                )}
+                              >
+                                {hasImage ? (
+                                  <>
+                                    <label
+                                      htmlFor={`constructor-about-salon-${idx}`}
+                                      className="absolute inset-0 cursor-pointer block"
+                                      title="Заменить фото"
+                                    >
+                                      <img src={displayImage} alt="" className="h-full w-full object-cover" />
+                                    </label>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.preventDefault()
+                                        e.stopPropagation()
+                                        if (typeof window === 'undefined') return
+                                        setDraft(`publicAboutSalon${idx}`, '__empty__')
+                                        setStoragePoll((n) => n + 1)
+                                        notifyIframeDraft()
+                                      }}
+                                      className="absolute top-1 right-1 h-6 w-6 rounded-full bg-red-500 text-white flex items-center justify-center hover:bg-red-600 z-10"
+                                      aria-label="Удалить"
+                                    >
+                                      <X className="h-3 w-3" />
+                                    </button>
+                                  </>
+                                ) : (
+                                  <label
+                                    htmlFor={`constructor-about-salon-${idx}`}
+                                    className="h-full w-full flex flex-col items-center justify-center gap-1 cursor-pointer text-muted-foreground hover:text-foreground"
+                                  >
+                                    <Plus className="h-5 w-5" />
+                                    <span className="text-[10px]">Слот {idx}</span>
+                                  </label>
+                                )}
+                                <input
+                                  id={`constructor-about-salon-${idx}`}
+                                  type="file"
+                                  accept="image/*"
+                                  className="hidden"
+                                  onChange={(e) => {
+                                    const file = e.target.files?.[0]
+                                    if (!file || typeof window === 'undefined') return
+                                    const reader = new FileReader()
+                                    reader.onload = () => {
+                                      const result = typeof reader.result === 'string' ? reader.result : ''
+                                      if (!result) return
+                                      compressImageForLogo(result, (dataUrl) => {
+                                        setDraft(`publicAboutSalon${idx}`, dataUrl)
+                                        setStoragePoll((n) => n + 1)
+                                        notifyIframeDraft()
+                                      })
+                                    }
+                                    reader.onerror = () => {
+                                      e.target.value = ''
+                                    }
+                                    reader.readAsDataURL(file)
+                                    e.target.value = ''
+                                  }}
+                                />
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </section>
+                    </>
+                    ) : (
                     <>
                       <div className="flex items-center gap-2 mb-4 mt-1">
                         <span className="flex-1 h-px bg-border/60" />
@@ -1542,7 +1840,167 @@ export default function ConstructorPage() {
                         </div>
                       </section>
                     </>
+                    )
                   ) : selectedBlockId === 'booking' ? (
+                    (currentHeaderTheme === 'premium-hair' || currentHeaderTheme === 'premium-barber') ? (
+                    <>
+                      <div className="flex items-center gap-2 mb-4 mt-1">
+                        <span className="flex-1 h-px bg-border/60" />
+                        <h3 className="text-base font-bold text-foreground uppercase tracking-wider shrink-0 px-2">
+                          Наши работы
+                        </h3>
+                        <span className="flex-1 h-px bg-border/60" />
+                      </div>
+                      <p className="text-sm leading-snug text-muted-foreground text-center py-2 mb-4">
+                        Тексты редактируются в превью. Цвета и фото задаются здесь. До 10 фото; по умолчанию — 3 примера.
+                      </p>
+                      <section className="space-y-2 pt-2 pb-3 border-b border-border/50">
+                        <h4 className="text-sm font-semibold text-foreground">Цвет заголовка 1</h4>
+                        <div className="flex flex-wrap gap-2 items-center">
+                          {HEADER_TEXT_OPTIONS.map((opt) => (
+                            <button
+                              key={opt.id}
+                              type="button"
+                              onClick={() => {
+                                setDraft('publicWorksTitleColor', opt.color)
+                                setStoragePoll((n) => n + 1)
+                                notifyIframeDraft()
+                              }}
+                              className={cn(
+                                'h-7 w-7 rounded-full border-2 transition',
+                                (getDraftOrPublic('publicWorksTitleColor') || '') === opt.color ? 'border-primary' : 'border-border/50'
+                              )}
+                              style={{ backgroundColor: opt.color }}
+                              aria-label={opt.label}
+                            />
+                          ))}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDraft('publicWorksTitleColor', '')
+                              setStoragePoll((n) => n + 1)
+                              notifyIframeDraft()
+                            }}
+                            className="ml-0.5 px-2.5 py-1 rounded-full border border-border/50 text-sm text-muted-foreground hover:text-foreground"
+                          >
+                            По умолчанию
+                          </button>
+                        </div>
+                      </section>
+                      <section className="space-y-2 pt-3 pb-3 border-b border-border/50">
+                        <h4 className="text-sm font-semibold text-foreground">Цвет заголовка 2</h4>
+                        <div className="flex flex-wrap gap-2 items-center">
+                          {HEADER_TEXT_OPTIONS.map((opt) => (
+                            <button
+                              key={opt.id}
+                              type="button"
+                              onClick={() => {
+                                setDraft('publicWorksSubtitleColor', opt.color)
+                                setStoragePoll((n) => n + 1)
+                                notifyIframeDraft()
+                              }}
+                              className={cn(
+                                'h-7 w-7 rounded-full border-2 transition',
+                                (getDraftOrPublic('publicWorksSubtitleColor') || '') === opt.color ? 'border-primary' : 'border-border/50'
+                              )}
+                              style={{ backgroundColor: opt.color }}
+                              aria-label={opt.label}
+                            />
+                          ))}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDraft('publicWorksSubtitleColor', '')
+                              setStoragePoll((n) => n + 1)
+                              notifyIframeDraft()
+                            }}
+                            className="ml-0.5 px-2.5 py-1 rounded-full border border-border/50 text-sm text-muted-foreground hover:text-foreground"
+                          >
+                            По умолчанию
+                          </button>
+                        </div>
+                      </section>
+                      <section className="space-y-2 pt-3 pb-3">
+                        <h4 className="text-sm font-semibold text-foreground">Фото работ (до 10)</h4>
+                        <p className="text-xs text-muted-foreground">По умолчанию — 3 примера. Крестик — удалить, клик по слоту — загрузить своё.</p>
+                        <div className="grid grid-cols-2 gap-2">
+                          {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((idx) => {
+                            const image = getDraftOrPublic(`publicWorks${idx}`)
+                            const displayImage =
+                              image === '__empty__' ? '' : (image || (idx <= 3 ? WORKS_CAROUSEL_DEFAULTS[idx - 1] : ''))
+                            const hasImage = Boolean(displayImage)
+                            return (
+                              <div
+                                key={`works-block-slot-${idx}`}
+                                className={cn(
+                                  'relative aspect-square rounded-lg border-2 overflow-hidden',
+                                  hasImage ? 'border-border/50 bg-card/30' : 'border-dashed border-border/50 bg-card/20'
+                                )}
+                              >
+                                {hasImage ? (
+                                  <>
+                                    <label
+                                      htmlFor={`constructor-works-block-${idx}`}
+                                      className="absolute inset-0 cursor-pointer block"
+                                      title="Заменить фото"
+                                    >
+                                      <img src={displayImage} alt="" className="h-full w-full object-cover" />
+                                    </label>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.preventDefault()
+                                        e.stopPropagation()
+                                        if (typeof window === 'undefined') return
+                                        setDraft(`publicWorks${idx}`, '__empty__')
+                                        setStoragePoll((n) => n + 1)
+                                        notifyIframeDraft()
+                                      }}
+                                      className="absolute top-1 right-1 h-6 w-6 rounded-full bg-red-500 text-white flex items-center justify-center hover:bg-red-600 z-10"
+                                      aria-label="Удалить"
+                                    >
+                                      <X className="h-3 w-3" />
+                                    </button>
+                                  </>
+                                ) : (
+                                  <label
+                                    htmlFor={`constructor-works-block-${idx}`}
+                                    className="h-full w-full flex flex-col items-center justify-center gap-1 cursor-pointer text-muted-foreground hover:text-foreground"
+                                  >
+                                    <Plus className="h-5 w-5" />
+                                    <span className="text-[10px]">Слот {idx}</span>
+                                  </label>
+                                )}
+                                <input
+                                  id={`constructor-works-block-${idx}`}
+                                  type="file"
+                                  accept="image/*"
+                                  className="hidden"
+                                  onChange={(e) => {
+                                    const file = e.target.files?.[0]
+                                    if (!file || typeof window === 'undefined') return
+                                    const reader = new FileReader()
+                                    reader.onload = () => {
+                                      const result = typeof reader.result === 'string' ? reader.result : ''
+                                      if (!result) return
+                                      compressImageForLogo(result, (dataUrl) => {
+                                        setDraft(`publicWorks${idx}`, dataUrl)
+                                        setStoragePoll((n) => n + 1)
+                                        notifyIframeDraft()
+                                      })
+                                    }
+                                    reader.onerror = () => { e.target.value = '' }
+                                    reader.readAsDataURL(file)
+                                    e.target.value = ''
+                                  }}
+                                />
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </section>
+                    </>
+                    ) : (
                     <>
                       <div className="flex items-center gap-2 mb-4 mt-1">
                         <span className="flex-1 h-px bg-border/60" />
@@ -1621,7 +2079,22 @@ export default function ConstructorPage() {
                         </div>
                       </section>
                     </>
+                    )
                   ) : selectedBlockId === 'works' ? (
+                    (currentHeaderTheme === 'premium-hair' || currentHeaderTheme === 'premium-barber') ? (
+                    <>
+                      <div className="flex items-center gap-2 mb-4 mt-1">
+                        <span className="flex-1 h-px bg-border/60" />
+                        <h3 className="text-base font-bold text-foreground uppercase tracking-wider shrink-0 px-2">
+                          Наши услуги
+                        </h3>
+                        <span className="flex-1 h-px bg-border/60" />
+                      </div>
+                      <p className="text-sm leading-snug text-muted-foreground text-center py-2 mb-4">
+                        Карточки услуг редактируются прямо в превью: обобщённое название тематики, процедуры (название и описание) и фото. Всего 5 карточек; у каждой — крестик у фото, у названия и у каждой процедуры для удаления. Текст в карточках растягивается без скролла.
+                      </p>
+                    </>
+                    ) : (
                     <>
                       <div className="flex items-center gap-2 mb-4 mt-1">
                         <span className="flex-1 h-px bg-border/60" />
@@ -1714,6 +2187,7 @@ export default function ConstructorPage() {
                         </div>
                       </div>
                     </>
+                    )
                   ) : selectedBlockId === 'footer' ? (
                     <>
                       <div className="flex items-center gap-2 mb-4 mt-1 w-full">
@@ -1863,6 +2337,111 @@ export default function ConstructorPage() {
                           </div>
                         </div>
                       </section>
+                      {(currentHeaderTheme === 'premium-hair' || currentHeaderTheme === 'premium-barber') && (
+                        <section className="space-y-3 pt-3 pb-3 border-b border-border/50">
+                          <h4 className="text-sm font-semibold text-foreground">Цвета футера (премиум)</h4>
+                          <p className="text-xs text-muted-foreground">Цвет главного названия, текст контактов и строка «Выходной». Названия блоков (АДРЕС, ГРАФИК и т.д.) не меняются.</p>
+                          <div className="space-y-2">
+                            <span className="text-xs text-muted-foreground">Главное название</span>
+                            <div className="flex flex-wrap gap-2 items-center">
+                              {HEADER_TEXT_OPTIONS.map((opt) => (
+                                <button
+                                  key={opt.id}
+                                  type="button"
+                                  onClick={() => {
+                                    setDraft('publicFooterTitleColor', opt.color)
+                                    setStoragePoll((n) => n + 1)
+                                    notifyIframeDraft()
+                                  }}
+                                  className={cn(
+                                    'h-7 w-7 rounded-full border-2 transition',
+                                    (getDraftOrPublic('publicFooterTitleColor') || '') === opt.color ? 'border-primary' : 'border-border/50'
+                                  )}
+                                  style={{ backgroundColor: opt.color }}
+                                  aria-label={opt.label}
+                                />
+                              ))}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setDraft('publicFooterTitleColor', '')
+                                  setStoragePoll((n) => n + 1)
+                                  notifyIframeDraft()
+                                }}
+                                className="ml-0.5 px-2.5 py-1 rounded-full border border-border/50 text-sm text-muted-foreground hover:text-foreground"
+                              >
+                                По умолчанию
+                              </button>
+                            </div>
+                          </div>
+                          <div className="space-y-2">
+                            <span className="text-xs text-muted-foreground">Текст контактов</span>
+                            <div className="flex flex-wrap gap-2 items-center">
+                              {HEADER_TEXT_OPTIONS.map((opt) => (
+                                <button
+                                  key={opt.id}
+                                  type="button"
+                                  onClick={() => {
+                                    setDraft('publicFooterTextColor', opt.color)
+                                    setStoragePoll((n) => n + 1)
+                                    notifyIframeDraft()
+                                  }}
+                                  className={cn(
+                                    'h-7 w-7 rounded-full border-2 transition',
+                                    (getDraftOrPublic('publicFooterTextColor') || '') === opt.color ? 'border-primary' : 'border-border/50'
+                                  )}
+                                  style={{ backgroundColor: opt.color }}
+                                  aria-label={opt.label}
+                                />
+                              ))}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setDraft('publicFooterTextColor', '')
+                                  setStoragePoll((n) => n + 1)
+                                  notifyIframeDraft()
+                                }}
+                                className="ml-0.5 px-2.5 py-1 rounded-full border border-border/50 text-sm text-muted-foreground hover:text-foreground"
+                              >
+                                По умолчанию
+                              </button>
+                            </div>
+                          </div>
+                          <div className="space-y-2">
+                            <span className="text-xs text-muted-foreground">Строка «Выходной»</span>
+                            <div className="flex flex-wrap gap-2 items-center">
+                              {HEADER_TEXT_OPTIONS.map((opt) => (
+                                <button
+                                  key={opt.id}
+                                  type="button"
+                                  onClick={() => {
+                                    setDraft('publicFooterDayOffColor', opt.color)
+                                    setStoragePoll((n) => n + 1)
+                                    notifyIframeDraft()
+                                  }}
+                                  className={cn(
+                                    'h-7 w-7 rounded-full border-2 transition',
+                                    (getDraftOrPublic('publicFooterDayOffColor') || '') === opt.color ? 'border-primary' : 'border-border/50'
+                                  )}
+                                  style={{ backgroundColor: opt.color }}
+                                  aria-label={opt.label}
+                                />
+                              ))}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setDraft('publicFooterDayOffColor', '')
+                                  setStoragePoll((n) => n + 1)
+                                  notifyIframeDraft()
+                                }}
+                                className="ml-0.5 px-2.5 py-1 rounded-full border border-border/50 text-sm text-muted-foreground hover:text-foreground"
+                              >
+                                По умолчанию
+                              </button>
+                            </div>
+                          </div>
+                        </section>
+                      )}
                     </>
                   ) : selectedBlockId === 'map' ? (
                     <>
@@ -1959,8 +2538,8 @@ export default function ConstructorPage() {
               </>
             )}
           </div>
-          {panelStage === 'edit' && ORDINARY_THEMES.some((t) => t.id === currentHeaderTheme) && (
-            <div className="shrink-0 p-3 border-t border-border/40 bg-card/95">
+          {panelStage === 'edit' && (
+            <div className="shrink-0 p-3 border-t border-border/40 bg-card/95 sticky bottom-0">
               <Button
                 variant="outline"
                 size="sm"

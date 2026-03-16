@@ -529,7 +529,7 @@ const ViberIcon = ({ className = '' }: { className?: string }) => (
   </svg>
 )
 
-function PublicPage() {
+export default function PublicPage() {
   const [publicLang, setPublicLang] = useState<PublicLang>(() => {
     const stored = localStorage.getItem('publicLang') as PublicLang | null
     if (stored === 'ru' || stored === 'en' || stored === 'ro') {
@@ -560,10 +560,13 @@ function PublicPage() {
   const isMobile = useIsMobile()
   const location = useLocation()
   const { slug: urlSlug } = useParams<{ slug: string }>()
-  const isPreview = new URLSearchParams(location.search).get('preview') === '1'
-  const isEditMode = new URLSearchParams(location.search).get('edit') === '1'
+  const searchParams = new URLSearchParams(location.search)
+  const isPreview = searchParams.get('preview') === '1'
+  const isEditMode = searchParams.get('edit') === '1'
+  /** Открытие «Полный размер» из конструктора — показывать черновики, не дефолт */
+  const isFullSizeView = searchParams.get('full') === '1'
   /** Режим демонстрации шаблонов (выбор темы): показываем только дефолтный дизайн, правки не подставляются */
-  const isTemplateDemo = isPreview && !isEditMode
+  const isTemplateDemo = isPreview && !isEditMode && !isFullSizeView
   const slugForDrafts =
     urlSlug || (typeof window !== 'undefined' ? window.localStorage.getItem('publicSlug') : null) || 'salon'
   const readPublic = (key: string, fallback = '') => {
@@ -574,11 +577,13 @@ function PublicPage() {
     const themeRaw =
       localStorage.getItem('draft_publicHeaderTheme') ?? localStorage.getItem('publicHeaderTheme') ?? 'hair'
     const theme = themeRaw.startsWith('premium-') ? themeRaw.replace('premium-', '') : themeRaw
-    // Только черновики этой темы и этого салона — тот же slug, что и при записи
-    return localStorage.getItem(`draft_${key}_${slugForDrafts}_${theme}`) ?? fallback
+    // Адрес и карта для премиум-шаблонов хранятся отдельно (по полному id темы), чтобы не переходить на другие шаблоны
+    const addressMapKeys = ['publicFooterAddress', 'publicAddress', 'publicMapEmbedUrl']
+    const themeForKey = addressMapKeys.includes(key) ? themeRaw : theme
+    return localStorage.getItem(`draft_${key}_${slugForDrafts}_${themeForKey}`) ?? fallback
   }
 
-  const themeFromUrl = new URLSearchParams(location.search).get('theme')
+  const themeFromUrl = searchParams.get('theme')
   const publicHeaderThemeRaw =
     (themeFromUrl === 'premium-hair' || themeFromUrl === 'premium-barber')
       ? themeFromUrl
@@ -829,17 +834,28 @@ function PublicPage() {
     return junkPattern.test(t) || (t.length > 12 && !hasCyrillic && (t.match(/[aeiou]/gi)?.length ?? 0) < 2)
   }
 
+  const draftNameKey = typeof window !== 'undefined' && !isTemplateDemo && slugForDrafts && publicHeaderTheme
+    ? `draft_publicName_${slugForDrafts}_${publicHeaderTheme}`
+    : null
+  const draftNameRaw = draftNameKey != null && typeof window !== 'undefined' ? window.localStorage.getItem(draftNameKey) : null
   const rawName =
     isTemplateDemo
       ? FOOTER_DEFAULT_NAME
-      : readPublic('publicName') ||
-        (isPreview ? FOOTER_DEFAULT_NAME : null) ||
-        localStorage.getItem('businessName') ||
-        HAIR_THEME_DEFAULT_NAME ||
-        t('defaultSalonName')
-  const publicName = isJunkHeaderText(rawName) ? FOOTER_DEFAULT_NAME : rawName
+      : draftNameRaw !== null
+        ? draftNameRaw
+        : readPublic('publicName') ||
+          (isPreview ? FOOTER_DEFAULT_NAME : null) ||
+          localStorage.getItem('businessName') ||
+          HAIR_THEME_DEFAULT_NAME ||
+          t('defaultSalonName')
+  const publicName =
+    rawName === '' && isPreview && !isTemplateDemo
+      ? ''
+      : isJunkHeaderText(rawName)
+        ? FOOTER_DEFAULT_NAME
+        : rawName
   const useBuiltInTemplate = isTemplateDemo || isPreview
-  const storedName = readPublic('publicName')
+  const storedName = draftNameRaw !== null ? draftNameRaw : readPublic('publicName')
   const isLegacyName = (s: string) => {
     const st = String(s).trim()
     if (!st) return true
@@ -851,7 +867,7 @@ function PublicPage() {
     )
   }
   const headerDisplayName =
-    useBuiltInTemplate && isLegacyName(storedName || '')
+    useBuiltInTemplate && storedName !== '' && isLegacyName(storedName || '')
       ? FOOTER_DEFAULT_NAME
       : publicName
   const rawTagline = (() => {
@@ -865,9 +881,11 @@ function PublicPage() {
     rawTagline === '' ? '' : (isJunkHeaderText(rawTagline) ? HAIR_THEME_DEFAULT_TAGLINE : rawTagline)
   )
   const footerDisplayName =
-    useBuiltInTemplate && isLegacyName(storedName || '')
-      ? FOOTER_DEFAULT_NAME
-      : (readPublic('publicName') ? publicName : FOOTER_DEFAULT_NAME)
+    publicName === ''
+      ? ''
+      : useBuiltInTemplate && isLegacyName(storedName || '')
+        ? FOOTER_DEFAULT_NAME
+        : (publicName || FOOTER_DEFAULT_NAME)
   const storedAddress = readPublic('publicFooterAddress')
   const storedHours = readPublic('publicHours')
   const storedDayOff = readPublic('publicDayOff')
@@ -1934,28 +1952,105 @@ function PublicPage() {
     )
   }
 
-  if (publicHeaderThemeRaw === 'premium-hair') {
-    const heroVideoUrl = readPublic('publicHeroVideo') || defaultHeroVideo
-    const heroImageUrl = readPublic('publicHeroImage') || barberHeaderBg
-    const premiumHeroSubtitle = readPublic('publicPremiumHeroSubtitle') || 'Твой салон красоты'
-    const premiumHeroTitle = readPublic('publicPremiumHeroTitle') || 'Стрижки, укладки\nи уход в одном месте'
-    const premiumHeroContactsLabel = readPublic('publicPremiumHeroContactsLabel') || 'Контакты'
-    const premiumBookLabel = readPublic('publicPremiumBookLabel') || t('bookOnline')
-    const premiumGoldColor = readPublic('publicPremiumGoldColor') || undefined
-    const premiumHeaderBgColor = readPublic('publicPremiumHeaderBgColor') || undefined
+  if (publicHeaderThemeRaw === 'premium-hair' || publicHeaderThemeRaw === 'premium-barber') {
+    const nameDraftKey = typeof window !== 'undefined' && !isTemplateDemo ? `draft_publicName_${slugForDrafts}_${publicHeaderTheme}` : null
+    const premiumSiteNameRaw = nameDraftKey != null && typeof window !== 'undefined' ? window.localStorage.getItem(nameDraftKey) : null
+    const premiumSiteName = premiumSiteNameRaw !== null ? premiumSiteNameRaw : headerDisplayName
+    const heroVideoUrl = isTemplateDemo ? defaultHeroVideo : (readPublic('publicHeroVideo') || defaultHeroVideo)
+    const heroImageUrl = isTemplateDemo ? barberHeaderBg : (readPublic('publicHeroImage') || barberHeaderBg)
+    const draftHeroSubtitle =
+      typeof window !== 'undefined' && !isTemplateDemo
+        ? window.localStorage.getItem(`draft_publicPremiumHeroSubtitle_${slugForDrafts}_${publicHeaderTheme}`)
+        : null
+    const draftHeroTitle =
+      typeof window !== 'undefined' && !isTemplateDemo
+        ? window.localStorage.getItem(`draft_publicPremiumHeroTitle_${slugForDrafts}_${publicHeaderTheme}`)
+        : null
+    const premiumHeroSubtitle = isTemplateDemo ? 'Твой салон красоты' : (draftHeroSubtitle !== null ? draftHeroSubtitle : 'Твой салон красоты')
+    const premiumHeroTitle = isTemplateDemo ? 'Стрижки, укладки\nи уход в одном месте' : (draftHeroTitle !== null ? draftHeroTitle : 'Стрижки, укладки\nи уход в одном месте')
+    const premiumHeroContactsLabel = isTemplateDemo ? 'Контакты' : (readPublic('publicPremiumHeroContactsLabel') || 'Контакты')
+    const premiumBookLabel = isTemplateDemo ? t('bookOnline') : (readPublic('publicPremiumBookLabel') || t('bookOnline'))
+    const premiumGoldColor = isTemplateDemo ? undefined : (readPublic('publicPremiumGoldColor') || undefined)
+    const premiumHeaderBgColor = isTemplateDemo ? undefined : (readPublic('publicPremiumHeaderBgColor') || undefined)
+    const premiumHeaderBgGlow = isTemplateDemo ? undefined : (readPublic('publicPremiumHeaderBgGlow') || undefined)
+    const premiumHeaderNavColor = isTemplateDemo ? undefined : (readPublic('publicPremiumHeaderNavColor') || undefined)
+    const premiumHeaderTitleColor = isTemplateDemo ? undefined : (readPublic('publicPremiumHeaderTitleColor') || undefined)
+    const premiumHeroSubtitleColor = isTemplateDemo ? undefined : (readPublic('publicPremiumHeroSubtitleColor') || undefined)
+    const premiumHeroTitleColor = isTemplateDemo ? undefined : (readPublic('publicPremiumHeroTitleColor') || undefined)
+    const premiumHeroButton1BorderColor = isTemplateDemo ? undefined : (readPublic('publicPremiumHeroButton1BorderColor') || undefined)
+    const premiumHeroButton2BorderColor = isTemplateDemo ? undefined : (readPublic('publicPremiumHeroButton2BorderColor') || undefined)
+    const premiumHeroButton1Glow = isTemplateDemo ? undefined : (readPublic('publicPremiumHeroButton1Glow') || undefined)
+    const premiumHeroButton2Glow = isTemplateDemo ? undefined : (readPublic('publicPremiumHeroButton2Glow') || undefined)
+    const ABOUT_TITLE_DEFAULT = 'О салоне'
+    const ABOUT_DESC_DEFAULT = 'Уютное пространство для стрижек, укладок и ухода. Качественный сервис и спокойная атмосфера — без суеты и очередей.'
+    const ABOUT_THIRD_DEFAULT = 'Услуги для всей семьи'
+    const rawAboutTitle = !isTemplateDemo ? readPublic('publicAboutSalonTitle', ABOUT_TITLE_DEFAULT) : null
+    const rawAboutDesc = !isTemplateDemo ? readPublic('publicAboutSalonDescription', ABOUT_DESC_DEFAULT) : null
+    const rawAboutThird = !isTemplateDemo ? readPublic('publicAboutSalonThirdText', ABOUT_THIRD_DEFAULT) : null
+    const premiumAboutSalonTitle = isTemplateDemo ? ABOUT_TITLE_DEFAULT : (rawAboutTitle === '' ? '' : (rawAboutTitle || ABOUT_TITLE_DEFAULT))
+    const premiumAboutSalonDescription = isTemplateDemo ? ABOUT_DESC_DEFAULT : (rawAboutDesc === '' ? '' : (rawAboutDesc || ABOUT_DESC_DEFAULT))
+    const premiumAboutSalonThirdText = isTemplateDemo ? ABOUT_THIRD_DEFAULT : (rawAboutThird === '' ? '' : (rawAboutThird || ABOUT_THIRD_DEFAULT))
+    const premiumAboutSalonTitleColor = isTemplateDemo ? undefined : (readPublic('publicAboutSalonTitleColor') || undefined)
+    const premiumAboutSalonDescColor = isTemplateDemo ? undefined : (readPublic('publicAboutSalonDescColor') || undefined)
+    const premiumAboutSalonThirdColor = isTemplateDemo ? undefined : (readPublic('publicAboutSalonThirdColor') || undefined)
+    const premiumAboutSalonButtonBorderColor = isTemplateDemo ? undefined : (readPublic('publicAboutSalonButtonBorderColor') || undefined)
+    const premiumAboutSalonPhotoUrls = (() => {
+      if (isTemplateDemo) return undefined
+      const urls: string[] = []
+      for (let i = 1; i <= 10; i++) {
+        const v = readPublic(`publicAboutSalon${i}`)
+        if (v && v !== '__empty__') urls.push(v)
+      }
+      return urls.length > 0 ? urls : undefined
+    })()
+    const WORKS_TITLE_DEFAULT = 'Наши работы'
+    const WORKS_SUBTITLE_DEFAULT = 'Вы заслуживаете выглядеть лучше всех'
+    const draftWorksTitle = typeof window !== 'undefined' && !isTemplateDemo ? window.localStorage.getItem(`draft_publicWorksTitle_${slugForDrafts}_${publicHeaderTheme}`) : null
+    const draftWorksSubtitle = typeof window !== 'undefined' && !isTemplateDemo ? window.localStorage.getItem(`draft_publicWorksSubtitle_${slugForDrafts}_${publicHeaderTheme}`) : null
+    const premiumWorksTitle = isTemplateDemo ? WORKS_TITLE_DEFAULT : (draftWorksTitle != null ? draftWorksTitle : WORKS_TITLE_DEFAULT)
+    const premiumWorksSubtitle = isTemplateDemo ? WORKS_SUBTITLE_DEFAULT : (draftWorksSubtitle != null ? draftWorksSubtitle : WORKS_SUBTITLE_DEFAULT)
+    const premiumWorksTitleColor = isTemplateDemo ? undefined : (readPublic('publicWorksTitleColor') || undefined)
+    const premiumWorksSubtitleColor = isTemplateDemo ? undefined : (readPublic('publicWorksSubtitleColor') || undefined)
+    const premiumWorksPhotoUrls = (() => {
+      if (isTemplateDemo) return undefined
+      const urls: string[] = []
+      for (let i = 1; i <= 10; i++) {
+        const v = readPublic(`publicWorks${i}`)
+        if (v && v !== '__empty__') urls.push(v)
+      }
+      return urls.length > 0 ? urls : undefined
+    })()
+    const premiumServiceCards = (() => {
+      if (isTemplateDemo) return undefined
+      const raw = typeof window !== 'undefined' ? window.localStorage.getItem(`draft_publicServiceCards_${slugForDrafts}_${publicHeaderTheme}`) : null
+      if (raw == null || raw === '') return undefined
+      try {
+        const parsed = JSON.parse(raw) as Array<{ imageUrl?: string; title: string; items: Array<{ name: string; desc: string }> }>
+        return Array.isArray(parsed) && parsed.length > 0 ? parsed : undefined
+      } catch {
+        return undefined
+      }
+    })()
+    const premiumFooterTitleColor = isTemplateDemo ? undefined : (readPublic('publicFooterTitleColor') || undefined)
+    const premiumFooterTextColor = isTemplateDemo ? undefined : (readPublic('publicFooterTextColor') || undefined)
+    const premiumFooterDayOffColor = isTemplateDemo ? undefined : (readPublic('publicFooterDayOffColor') || undefined)
     const savePremiumDraft = (key: string, value: string) => {
       if (typeof window === 'undefined') return
-      const prev = window.localStorage.getItem(`draft_${key}_${slugForDrafts}_${publicHeaderTheme}`) ?? window.localStorage.getItem(key) ?? ''
+      const addressMapKeys = ['publicFooterAddress', 'publicAddress', 'publicMapEmbedUrl']
+      const themeForKey = addressMapKeys.includes(key) ? publicHeaderThemeRaw : publicHeaderTheme
+      const storageKey = `draft_${key}_${slugForDrafts}_${themeForKey}`
+      const prev = window.localStorage.getItem(storageKey) ?? window.localStorage.getItem(key) ?? ''
       try {
-        window.parent?.postMessage?.({ type: 'constructorUndoPush', key, value: prev || null, themeId: publicHeaderThemeRaw }, '*')
+        window.parent?.postMessage?.({ type: 'constructorUndoPush', key, value: prev || null, themeId: themeForKey }, '*')
       } catch { /* ignore */ }
-      window.localStorage.setItem(`draft_${key}_${slugForDrafts}_${publicHeaderTheme}`, value)
+      window.localStorage.setItem(storageKey, value)
       window.localStorage.setItem(`constructorHasUserEdits_${publicHeaderThemeRaw}`, '1')
       draftVersionTrigger()
     }
     return (
+      <>
       <PremiumBarberTemplate
-        siteName={headerDisplayName}
+        siteName={premiumSiteName}
         tagline={publicTagline}
         onBookNow={() => navigate(urlSlug ? `/b/${urlSlug}/booking${location.search ? location.search : ''}` : '/')}
         bookLabel={premiumBookLabel}
@@ -1967,6 +2062,11 @@ function PublicPage() {
         footerLogo={publicLogo || null}
         footerLogoShape={footerLogoDisplayShape}
         footerLogoVisible={publicFooterLogoVisible}
+        footerVisibility={footerVisibility}
+        socialVisibility={socialVisibility}
+        footerTitleColor={premiumFooterTitleColor || undefined}
+        footerTextColor={premiumFooterTextColor || undefined}
+        footerDayOffColor={premiumFooterDayOffColor || undefined}
         telegramUrl={publicTelegram || undefined}
         viberUrl={publicViber || undefined}
         instagramUrl={publicInstagram || undefined}
@@ -1984,15 +2084,31 @@ function PublicPage() {
         onSaveDraft={isPreview && isEditMode ? savePremiumDraft : undefined}
         accentColor={premiumGoldColor || undefined}
         headerBgColor={premiumHeaderBgColor || undefined}
+        headerBgGlow={premiumHeaderBgGlow || undefined}
+        headerNavColor={premiumHeaderNavColor || undefined}
+        headerTitleColor={premiumHeaderTitleColor || undefined}
+        heroSubtitleColor={premiumHeroSubtitleColor || undefined}
+        heroTitleColor={premiumHeroTitleColor || undefined}
+        heroButton1BorderColor={premiumHeroButton1BorderColor || undefined}
+        heroButton2BorderColor={premiumHeroButton2BorderColor || undefined}
+        heroButton1Glow={premiumHeroButton1Glow || undefined}
+        heroButton2Glow={premiumHeroButton2Glow || undefined}
+        aboutSectionTitle={premiumAboutSalonTitle}
+        aboutSectionDescription={premiumAboutSalonDescription}
+        aboutSectionThirdText={premiumAboutSalonThirdText}
+        aboutSectionTitleColor={premiumAboutSalonTitleColor || undefined}
+        aboutSectionDescColor={premiumAboutSalonDescColor || undefined}
+        aboutSectionThirdColor={premiumAboutSalonThirdColor || undefined}
+        aboutSectionButtonBorderColor={premiumAboutSalonButtonBorderColor || undefined}
+        aboutSalonPhotoUrls={premiumAboutSalonPhotoUrls}
+        worksSectionTitle={premiumWorksTitle}
+        worksSectionSubtitle={premiumWorksSubtitle}
+        worksSectionTitleColor={premiumWorksTitleColor || undefined}
+        worksSectionSubtitleColor={premiumWorksSubtitleColor || undefined}
+        worksPhotoUrls={premiumWorksPhotoUrls}
+        serviceCards={premiumServiceCards}
       />
-    )
-  }
-  if (publicHeaderThemeRaw === 'premium-barber') {
-    return (
-      <div className="min-h-screen bg-[#0b0b0b] flex flex-col items-center justify-center text-center px-6">
-        <p className="text-white/90 text-xl sm:text-2xl font-medium">Премиум шаблон</p>
-        <p className="text-white/60 mt-2">Скоро будет новая структура.</p>
-      </div>
+      </>
     )
   }
 
@@ -3264,5 +3380,3 @@ function PublicPage() {
     </div>
   )
 }
-
-export { PublicPage as default }
