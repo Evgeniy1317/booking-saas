@@ -11,6 +11,7 @@ import { useLanguage } from '@/contexts/LanguageContext'
 import {
   HAIR_THEME_DEFAULT_BOOKING_TITLE,
   HAIR_THEME_DEFAULT_BOOKING_SUBTITLE,
+  HAIR_DEFAULTS_BY_LANG,
   DEFAULT_WORLD_MAP_EMBED_URL,
   FOOTER_DEFAULT_ADDRESS,
 } from '@/lib/hair-theme-defaults'
@@ -481,12 +482,13 @@ export default function Settings() {
       'Премиальные услуги, внимательный сервис и атмосфера, в которую хочется возвращаться.',
     ctaText: localStorage.getItem('constructorCtaText') || 'Записаться',
   }))
+  const settingsHairDef = HAIR_DEFAULTS_BY_LANG[(language as 'ru' | 'en' | 'ro')] ?? HAIR_DEFAULTS_BY_LANG.ru
   const [bookingPreview, _setBookingPreview] = useState(() => ({
     title:
-      localStorage.getItem('constructorBookingTitle') || HAIR_THEME_DEFAULT_BOOKING_TITLE,
+      localStorage.getItem('constructorBookingTitle') || settingsHairDef.bookingTitle,
     subtitle:
       localStorage.getItem('constructorBookingSubtitle') ||
-      HAIR_THEME_DEFAULT_BOOKING_SUBTITLE,
+      settingsHairDef.bookingSub,
   }))
   const [headerCtas, setHeaderCtas] = useState(() => ({
     primary: getDraftOrPublic('publicHeaderPrimaryCta', 'Записаться онлайн'),
@@ -1396,19 +1398,13 @@ export default function Settings() {
         </Card>
 
         {/* Notifications */}
-        <Card 
+        <Card
           ref={notificationsRef}
-          className="relative overflow-hidden p-6 border border-primary/30 shadow-[0_18px_40px_rgba(0,0,0,0.25)]"
+          className="relative overflow-hidden rounded-3xl border-0 bg-gradient-to-br from-primary/8 via-card to-primary/5 shadow-2xl shadow-black/20"
         >
-          <div
-            className="absolute inset-0 opacity-60"
-            style={{
-              backgroundImage:
-                'radial-gradient(rgba(59,130,246,0.25) 1px, transparent 1px), linear-gradient(135deg, rgba(59,130,246,0.18), rgba(15,23,42,0.2))',
-              backgroundSize: '18px 18px, 100% 100%',
-            }}
-          />
-          <div className="relative z-10">
+          <div className="absolute top-0 right-0 w-[min(80%,320px)] h-full bg-gradient-to-l from-primary/10 to-transparent pointer-events-none" />
+          <div className="absolute bottom-0 left-0 w-64 h-64 rounded-full bg-primary/10 blur-3xl -translate-x-1/2 translate-y-1/2 pointer-events-none" />
+          <div className="relative z-10 px-6 py-10 sm:px-10 sm:py-12">
           <h3 className="text-lg font-bold mb-6 flex items-center gap-2">
             <Bell className="w-5 h-5" />
             {st('notificationsTitle')}
@@ -1601,44 +1597,37 @@ export default function Settings() {
             </div>
           </div>
           </div>
-
         </Card>
 
         {/* QR block */}
-        <Card className="relative overflow-hidden p-6 border border-primary/30 shadow-[0_18px_40px_rgba(0,0,0,0.25)]">
-          <div
-            className="absolute inset-0 opacity-60"
-            style={{
-              backgroundImage:
-                'radial-gradient(rgba(59,130,246,0.25) 1px, transparent 1px), linear-gradient(135deg, rgba(59,130,246,0.18), rgba(15,23,42,0.2))',
-              backgroundSize: '18px 18px, 100% 100%',
-            }}
-          />
-          <div className="relative z-10">
-          <div className="flex items-center gap-4 mb-6">
-            <h3 className="text-lg font-bold">{st('qrLabel')}</h3>
-          </div>
-          <div className="flex items-start gap-4">
-            <div className="w-32 h-32 border-2 border-dashed border-border/50 rounded-lg flex items-center justify-center bg-card/30 backdrop-blur-sm overflow-hidden">
-              {qrCodeUrl ? (
-                <img src={qrCodeUrl} alt="QR code" className="h-full w-full object-contain" />
-              ) : (
-                <span className="text-muted-foreground text-sm">{st('qrPlaceholder')}</span>
-              )}
+        <Card className="relative overflow-hidden rounded-3xl border-0 bg-gradient-to-br from-primary/8 via-card to-primary/5 shadow-2xl shadow-black/20">
+          <div className="absolute top-0 right-0 w-[min(80%,320px)] h-full bg-gradient-to-l from-primary/10 to-transparent pointer-events-none" />
+          <div className="absolute bottom-0 left-0 w-64 h-64 rounded-full bg-primary/10 blur-3xl -translate-x-1/2 translate-y-1/2 pointer-events-none" />
+          <div className="relative z-10 px-6 py-10 sm:px-10 sm:py-12">
+            <div className="flex items-center gap-4 mb-6">
+              <h3 className="text-lg font-bold">{st('qrLabel')}</h3>
             </div>
-            <div className="space-y-2" />
-          </div>
-          <Button
-            variant="outline"
-            size="lg"
-            className="mt-4 w-full sm:w-auto rounded-full"
-            disabled={!qrCodeUrl}
-            asChild
-          >
-            <a href={qrCodeUrl || '#'} download={`qr-${publicSlug}.png`}>
-              {st('downloadQr')}
-            </a>
-          </Button>
+            <div className="flex items-start gap-4">
+              <div className="w-32 h-32 border-2 border-dashed border-border/50 rounded-lg flex items-center justify-center bg-card/30 backdrop-blur-sm overflow-hidden">
+                {qrCodeUrl ? (
+                  <img src={qrCodeUrl} alt="QR code" className="h-full w-full object-contain" />
+                ) : (
+                  <span className="text-muted-foreground text-sm">{st('qrPlaceholder')}</span>
+                )}
+              </div>
+              <div className="space-y-2" />
+            </div>
+            <Button
+              variant="outline"
+              size="lg"
+              className="mt-4 w-full sm:w-auto rounded-full"
+              disabled={!qrCodeUrl}
+              asChild
+            >
+              <a href={qrCodeUrl || '#'} download={`qr-${publicSlug}.png`}>
+                {st('downloadQr')}
+              </a>
+            </Button>
           </div>
         </Card>
     </PageLayout>

@@ -15,14 +15,14 @@ import coloringHeaderBg from '@/assets/images/constructor-images/загруже�
 import manicureHeaderBg from '@/assets/images/constructor-images/806534aa6d64e65ec11617c1c8df8f8c.jpg'
 import barberHeaderBg from '@/assets/images/constructor-images/загруженное (2).jpg'
 import defaultHeroVideo from '@/assets/images/video/3998440-uhd_4096_2160_25fps.mp4'
-import worksDefault1 from '@/assets/images/constructor-images/998b104a5c45e39378ead8e9c3414675.jpg'
-import worksDefault2 from '@/assets/images/constructor-images/orig (2).jpg'
-import worksDefault3 from '@/assets/images/constructor-images/caa5a2c48f545f5610765afae36e9568.jpg'
-import worksDefault4 from '@/assets/images/constructor-images/360_F_834954163_kERlfdHRLDAJpTGw4LYaGVhvsUH8sXd4.jpg'
-import worksDefault5 from '@/assets/images/constructor-images/istockphoto-1856117770-170667a.jpg'
-import worksCarousel1 from '@/assets/images/constructor-images/c612ebeea6a9ada45aba6c8d7c5db8e9.jpeg'
-import worksCarousel2 from '@/assets/images/constructor-images/ew_HairSociety_Eclat_7-1000x1000.jpg'
-import worksCarousel3 from '@/assets/images/constructor-images/1704.jpg'
+import worksDefault1 from '@/assets/images/premium-images/pexels-pavel-danilyuk-7518736.jpg'
+import worksDefault2 from '@/assets/images/premium-images/pexels-cottonbro-3993451.jpg'
+import worksDefault3 from '@/assets/images/premium-images/pexels-cottonbro-3992875.jpg'
+import worksDefault4 from '@/assets/images/premium-images/pexels-thgusstavo-2061820.jpg'
+import worksDefault5 from '@/assets/images/premium-images/pexels-cottonbro-3998407.jpg'
+import worksCarousel1 from '@/assets/images/constructor-images/pexels-maksgelatin-4663135.jpg'
+import worksCarousel2 from '@/assets/images/constructor-images/pexels-maksgelatin-4663136.jpg'
+import worksCarousel3 from '@/assets/images/constructor-images/pexels-thefullonmonet-28994396.jpg'
 import patternBg from '@/assets/images/seamless-pattern-of-hairdressing-elements-illustration-of-doodle-icons-background-wallpaper-the-concept-of-a-hairdressing-salon-and-a-beauty-salon-vector.jpg'
 import manicurePattern from '@/assets/images/constructor-images/manicure-tools-seamless-pattern-for-nail-studio-or-spa-salon-beauty-routine-background-vector.jpg'
 import manicurePatternAlt from '@/assets/images/constructor-images/manicure-tools-doodle-seamless-pattern-manicure-scissors-gel-polish-woman-hands-white-background_646079-2612.avif'
@@ -41,6 +41,7 @@ import {
   HAIR_THEME_DEFAULT_TAGLINE,
   HAIR_THEME_DEFAULT_BOOKING_TITLE,
   HAIR_THEME_DEFAULT_BOOKING_SUBTITLE,
+  HAIR_DEFAULTS_BY_LANG,
   DEFAULT_LOGO_URL,
   FOOTER_DEFAULT_NAME,
   FOOTER_DEFAULT_ADDRESS,
@@ -48,6 +49,7 @@ import {
   FOOTER_DEFAULT_DAY_OFF,
   FOOTER_DEFAULT_PHONE,
   FOOTER_DEFAULT_EMAIL,
+  FOOTER_DEFAULTS_BY_LANG,
   DEFAULT_WORLD_MAP_EMBED_URL,
 } from '@/lib/hair-theme-defaults'
 
@@ -141,59 +143,97 @@ interface PublicAppointment {
   status?: string
 }
 
-const fallbackServices: PublicService[] = [
-  { id: '1', category: 'Парикмахерская', name: 'Женская стрижка', duration: 60, price: 450, active: true },
-  { id: '2', category: 'Маникюр', name: 'Классический маникюр', duration: 60, price: 400, active: true },
-  { id: '3', category: 'Косметология', name: 'Уход за лицом', duration: 90, price: 800, active: true },
-]
+const fallbackServicesByLang: Record<string, PublicService[]> = {
+  ru: [
+    { id: '1', category: 'Парикмахерская', name: 'Женская стрижка', duration: 60, price: 450, active: true },
+    { id: '2', category: 'Маникюр', name: 'Классический маникюр', duration: 60, price: 400, active: true },
+    { id: '3', category: 'Косметология', name: 'Уход за лицом', duration: 90, price: 800, active: true },
+  ],
+  en: [
+    { id: '1', category: 'Hairdressing', name: 'Women\'s haircut', duration: 60, price: 450, active: true },
+    { id: '2', category: 'Manicure', name: 'Classic manicure', duration: 60, price: 400, active: true },
+    { id: '3', category: 'Cosmetology', name: 'Facial care', duration: 90, price: 800, active: true },
+  ],
+  ro: [
+    { id: '1', category: 'Coafură', name: 'Tunsoare damă', duration: 60, price: 450, active: true },
+    { id: '2', category: 'Manichiură', name: 'Manichiură clasică', duration: 60, price: 400, active: true },
+    { id: '3', category: 'Cosmetologie', name: 'Îngrijire facială', duration: 90, price: 800, active: true },
+  ],
+}
 
-const fallbackStaff: PublicStaff[] = [
-  {
-    id: '1',
-    name: 'Анна Петреску',
-    category: 'Стилист',
-    description: 'Мягкие техники окрашивания и уход',
-    color: '#3b82f6',
-    services: ['Женская стрижка', 'Уход за лицом'],
-    workingDays: ['Понедельник', 'Среда', 'Пятница', 'Суббота'],
-    workingHours: { start: '10:00', end: '18:00' },
-    active: true,
-  },
-  {
-    id: '2',
-    name: 'Елена Бондарь',
-    category: 'Мастер маникюра',
-    description: 'Комбинированный маникюр и дизайн',
-    color: '#ec4899',
-    services: ['Классический маникюр'],
-    workingDays: ['Вторник', 'Четверг', 'Суббота'],
-    workingHours: { start: '09:00', end: '17:00' },
-    active: true,
-  },
-]
+const fallbackStaffByLang: Record<string, PublicStaff[]> = {
+  ru: [
+    {
+      id: '1', name: 'Анна Петреску', category: 'Стилист',
+      description: 'Мягкие техники окрашивания и уход', color: '#3b82f6',
+      services: ['Женская стрижка', 'Уход за лицом'],
+      workingDays: ['Понедельник', 'Среда', 'Пятница', 'Суббота'],
+      workingHours: { start: '10:00', end: '18:00' }, active: true,
+    },
+    {
+      id: '2', name: 'Елена Бондарь', category: 'Мастер маникюра',
+      description: 'Комбинированный маникюр и дизайн', color: '#ec4899',
+      services: ['Классический маникюр'],
+      workingDays: ['Вторник', 'Четверг', 'Суббота'],
+      workingHours: { start: '09:00', end: '17:00' }, active: true,
+    },
+  ],
+  en: [
+    {
+      id: '1', name: 'Anna Petrescu', category: 'Stylist',
+      description: 'Soft coloring techniques and care', color: '#3b82f6',
+      services: ['Women\'s haircut', 'Facial care'],
+      workingDays: ['Monday', 'Wednesday', 'Friday', 'Saturday'],
+      workingHours: { start: '10:00', end: '18:00' }, active: true,
+    },
+    {
+      id: '2', name: 'Elena Bondar', category: 'Manicure specialist',
+      description: 'Combined manicure and nail design', color: '#ec4899',
+      services: ['Classic manicure'],
+      workingDays: ['Tuesday', 'Thursday', 'Saturday'],
+      workingHours: { start: '09:00', end: '17:00' }, active: true,
+    },
+  ],
+  ro: [
+    {
+      id: '1', name: 'Anna Petrescu', category: 'Stilist',
+      description: 'Tehnici delicate de colorare și îngrijire', color: '#3b82f6',
+      services: ['Tunsoare damă', 'Îngrijire facială'],
+      workingDays: ['Luni', 'Miercuri', 'Vineri', 'Sâmbătă'],
+      workingHours: { start: '10:00', end: '18:00' }, active: true,
+    },
+    {
+      id: '2', name: 'Elena Bondar', category: 'Specialist manichiură',
+      description: 'Manichiură combinată și design', color: '#ec4899',
+      services: ['Manichiură clasică'],
+      workingDays: ['Marți', 'Joi', 'Sâmbătă'],
+      workingHours: { start: '09:00', end: '17:00' }, active: true,
+    },
+  ],
+}
 
-const loadServices = (): PublicService[] => {
+const loadServices = (lang: string = 'ru'): PublicService[] => {
   try {
     const stored = localStorage.getItem('services')
     if (stored) {
       return JSON.parse(stored)
     }
   } catch (e) {
-    console.error('Ошибка загрузки услуг:', e)
+    console.error('Error loading services:', e)
   }
-  return fallbackServices
+  return fallbackServicesByLang[lang] ?? fallbackServicesByLang.ru
 }
 
-const loadStaff = (): PublicStaff[] => {
+const loadStaff = (lang: string = 'ru'): PublicStaff[] => {
   try {
     const stored = localStorage.getItem('staff')
     if (stored) {
       return JSON.parse(stored)
     }
   } catch (e) {
-    console.error('Ошибка загрузки мастеров:', e)
+    console.error('Error loading staff:', e)
   }
-  return fallbackStaff
+  return fallbackStaffByLang[lang] ?? fallbackStaffByLang.ru
 }
 
 const formatDateInput = (date: Date) => {
@@ -213,7 +253,7 @@ const loadAppointments = (): PublicAppointment[] => {
       }
     }
   } catch (e) {
-    console.error('Ошибка загрузки записей:', e)
+    console.error('Error loading appointments:', e)
   }
   return []
 }
@@ -366,6 +406,18 @@ const uiText = {
     chooseTimeShort: 'Выберите время',
     chooseServiceHint: 'Выберите услугу',
     viewBooking: 'Посмотреть свою запись',
+    bookNow: 'Записаться',
+    contacts: 'Контакты',
+    addrLabel: 'АДРЕС',
+    schedLabel: 'ГРАФИК',
+    phoneLabel2: 'ТЕЛЕФОН',
+    emailLabel2: 'ПОЧТА',
+    worksGallery: 'Галерея работ',
+    goToConstructor: 'Перейти в конструктор',
+    deletePhoto: 'Удалить',
+    closeModal: 'Закрыть',
+    hideSocial: 'Скрыть',
+    hideBlock: 'Скрыть блок',
   },
   en: {
     addSalonPhoto: 'Add salon photo',
@@ -437,6 +489,18 @@ const uiText = {
     chooseTimeShort: 'Choose time',
     chooseServiceHint: 'Choose a service',
     viewBooking: 'View your booking',
+    bookNow: 'Book now',
+    contacts: 'Contacts',
+    addrLabel: 'ADDRESS',
+    schedLabel: 'SCHEDULE',
+    phoneLabel2: 'PHONE',
+    emailLabel2: 'EMAIL',
+    worksGallery: 'Works gallery',
+    goToConstructor: 'Go to constructor',
+    deletePhoto: 'Delete',
+    closeModal: 'Close',
+    hideSocial: 'Hide',
+    hideBlock: 'Hide block',
   },
   ro: {
     addSalonPhoto: 'Adăugați o fotografie a salonului',
@@ -508,6 +572,18 @@ const uiText = {
     chooseTimeShort: 'Alegeți ora',
     chooseServiceHint: 'Alegeți un serviciu',
     viewBooking: 'Vezi programarea ta',
+    bookNow: 'Programează',
+    contacts: 'Contacte',
+    addrLabel: 'ADRESĂ',
+    schedLabel: 'PROGRAM',
+    phoneLabel2: 'TELEFON',
+    emailLabel2: 'EMAIL',
+    worksGallery: 'Galeria lucrărilor',
+    goToConstructor: 'Mergi la constructor',
+    deletePhoto: 'Șterge',
+    closeModal: 'Închide',
+    hideSocial: 'Ascunde',
+    hideBlock: 'Ascunde bloc',
   },
 } as const
 
@@ -526,6 +602,30 @@ const ViberIcon = ({ className = '' }: { className?: string }) => (
       fill="currentColor"
       d="M6.6 10.1c1.4 2.7 3.6 4.9 6.3 6.3l2.1-2.1c.3-.3.7-.4 1.1-.3 1.2.4 2.5.6 3.9.6.6 0 1 .4 1 1v3.4c0 .6-.4 1-1 1C10.6 20 4 13.4 4 5c0-.6.4-1 1-1h3.4c.6 0 1 .4 1 1 0 1.3.2 2.6.6 3.9.1.4 0 .8-.3 1.1l-2.1 2.1z"
     />
+  </svg>
+)
+
+const FacebookIcon = ({ className = '' }: { className?: string }) => (
+  <svg viewBox="0 0 24 24" aria-hidden="true" className={className}>
+    <path fill="currentColor" d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
+  </svg>
+)
+
+const WhatsAppIcon = ({ className = '' }: { className?: string }) => (
+  <svg viewBox="0 0 24 24" aria-hidden="true" className={className}>
+    <path fill="currentColor" d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" />
+  </svg>
+)
+
+const TwitterIcon = ({ className = '' }: { className?: string }) => (
+  <svg viewBox="0 0 24 24" aria-hidden="true" className={className}>
+    <path fill="currentColor" d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+  </svg>
+)
+
+const TikTokIcon = ({ className = '' }: { className?: string }) => (
+  <svg viewBox="0 0 24 24" aria-hidden="true" className={className}>
+    <path fill="currentColor" d="M12.525.02c1.31-.02 2.61-.01 3.91-.02.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.05-2.89-.35-4.2-.97-.57-.26-1.1-.59-1.62-.93-.01 2.92.01 5.84-.02 8.75-.08 1.4-.54 2.79-1.35 3.94-1.31 1.92-3.58 3.17-5.91 3.21-1.43.08-2.86-.31-4.08-1.03-2.02-1.19-3.44-3.37-3.65-5.71-.02-.5-.03-1-.01-1.49.18-1.9 1.12-3.72 2.58-4.96 1.66-1.44 3.98-2.13 6.15-1.72.02 1.48-.04 2.96-.04 4.44-.99-.32-2.15-.23-3.02.37-.63.41-1.11 1.04-1.36 1.75-.21.51-.15 1.07-.14 1.61.24 1.64 1.82 3.02 3.5 2.87 1.12-.01 2.19-.66 2.77-1.61.19-.33.4-.67.41-1.06.1-1.79.06-3.57.07-5.36.01-4.03-.01-8.05.02-12.07z" />
   </svg>
 )
 
@@ -553,8 +653,8 @@ export default function PublicPage() {
   }
   const steps = uiText[publicLang].steps
   const weekdaysShort = uiText[publicLang].weekdaysShort
-  const services = useMemo(() => loadServices(), [])
-  const staff = useMemo(() => loadStaff(), [])
+  const services = useMemo(() => loadServices(publicLang), [publicLang])
+  const staff = useMemo(() => loadStaff(publicLang), [publicLang])
   const activeServices = services.filter((service) => service.active)
   const activeStaff = staff.filter((member) => member.active)
   const isMobile = useIsMobile()
@@ -611,6 +711,7 @@ export default function PublicPage() {
   const [activeGalleryImage, setActiveGalleryImage] = useState<string | null>(null)
   const bookingSectionRef = useRef<HTMLDivElement>(null)
   const mapSectionRef = useRef<HTMLDivElement>(null)
+  const ctaSectionRef = useRef<HTMLDivElement>(null)
   const headerEditContainerRef = useRef<HTMLDivElement>(null)
   const headerSectionRef = useRef<HTMLElement>(null)
   const gallerySectionRef = useRef<HTMLElement>(null)
@@ -664,6 +765,7 @@ export default function PublicPage() {
           booking: bookingSectionRef,
           works: worksSectionRef,
           map: mapSectionRef,
+          cta: ctaSectionRef as React.RefObject<HTMLElement | null>,
           footer: footerSectionRef,
         }
         const ref = map[e.data.sectionId]
@@ -682,21 +784,28 @@ export default function PublicPage() {
       { id: 'booking', ref: bookingSectionRef },
       { id: 'works', ref: worksSectionRef },
       { id: 'map', ref: mapSectionRef },
+      { id: 'cta', ref: ctaSectionRef as React.RefObject<HTMLElement | null> },
       { id: 'footer', ref: footerSectionRef },
     ]
     let lastSent = ''
     const timer = window.setInterval(() => {
+      const viewHeight = window.innerHeight
+      const scrollBottom = window.scrollY + viewHeight
+      const pageHeight = document.documentElement.scrollHeight
+      const nearBottom = pageHeight - scrollBottom < 60
+
       let best = ''
       let bestRatio = 0
       for (const { id, ref } of sections) {
         const el = ref.current
         if (!el) continue
         const rect = el.getBoundingClientRect()
-        const viewHeight = window.innerHeight
         const visibleTop = Math.max(0, rect.top)
         const visibleBottom = Math.min(viewHeight, rect.bottom)
         const visible = Math.max(0, visibleBottom - visibleTop)
-        const ratio = visible / Math.min(rect.height, viewHeight)
+        // For the footer, if we're near the bottom of the page give it a full ratio
+        const effectiveHeight = (id === 'footer' && nearBottom) ? 1 : Math.min(rect.height, viewHeight)
+        const ratio = visible / Math.max(1, effectiveHeight)
         if (ratio > bestRatio) {
           bestRatio = ratio
           best = id
@@ -870,15 +979,16 @@ export default function PublicPage() {
     useBuiltInTemplate && storedName !== '' && isLegacyName(storedName || '')
       ? FOOTER_DEFAULT_NAME
       : publicName
+  const hairLangDef = HAIR_DEFAULTS_BY_LANG[publicLang] ?? HAIR_DEFAULTS_BY_LANG.ru
   const rawTagline = (() => {
-    if (isTemplateDemo) return HAIR_THEME_DEFAULT_TAGLINE
-    if (typeof window === 'undefined') return HAIR_THEME_DEFAULT_TAGLINE || ''
+    if (isTemplateDemo) return hairLangDef.tagline
+    if (typeof window === 'undefined') return hairLangDef.tagline || ''
     const taglineKey = `draft_publicTagline_${slugForDrafts}_${publicHeaderTheme}`
     const stored = window.localStorage.getItem(taglineKey)
-    return stored !== null ? stored : (HAIR_THEME_DEFAULT_TAGLINE || t('defaultTagline'))
+    return stored !== null ? stored : (hairLangDef.tagline || t('defaultTagline'))
   })()
   const publicTagline = clampHeaderSubtitleLines(
-    rawTagline === '' ? '' : (isJunkHeaderText(rawTagline) ? HAIR_THEME_DEFAULT_TAGLINE : rawTagline)
+    rawTagline === '' ? '' : (isJunkHeaderText(rawTagline) ? hairLangDef.tagline : rawTagline)
   )
   const footerDisplayName =
     publicName === ''
@@ -903,55 +1013,77 @@ export default function PublicPage() {
     if (t === FOOTER_DEFAULT_ADDRESS) return true
     return t.split(/[\s,]+/).length <= 1 && t.length < 25
   }
-  /** Адрес для карты: в конструкторе редактируют publicAddress, во футере — publicFooterAddress; для превью учитываем оба */
-  const mapSourceAddress = (readPublic('publicAddress') || storedAddress || '').trim()
+  /** Адрес для карты: в конструкторе редактируют publicAddress, во футере — publicFooterAddress; для превью учитываем оба.
+   *  В режиме редактирования используем только явно установленный адрес (null-safe чтение), чтобы не показывать устаревшие данные. */
+  const mapSourceAddress = (() => {
+    if (isPreview && isEditMode && typeof window !== 'undefined') {
+      // Читаем напрямую из localStorage с явной проверкой на null (не fallback '')
+      const themeRaw =
+        localStorage.getItem('draft_publicHeaderTheme') ?? localStorage.getItem('publicHeaderTheme') ?? 'hair'
+      const addressMapTheme = themeRaw  // адрес всегда хранится по полному id темы
+      const slug = slugForDrafts
+      const v = localStorage.getItem(`draft_publicAddress_${slug}_${addressMapTheme}`)
+        ?? localStorage.getItem(`draft_publicFooterAddress_${slug}_${addressMapTheme}`)
+      return (v ?? '').trim()
+    }
+    return (readPublic('publicAddress') || storedAddress || '').trim()
+  })()
   const isLegacyHours = (s: string) => !s || String(s).trim() === ''
   const isLegacyDayOff = (s: string) => !s || String(s).trim() === ''
+  const fld = FOOTER_DEFAULTS_BY_LANG[publicLang] ?? FOOTER_DEFAULTS_BY_LANG.ru
   const footerDisplayAddress =
     useBuiltInTemplate && isLegacyAddress(storedAddress || '')
-      ? FOOTER_DEFAULT_ADDRESS
-      : (storedAddress || FOOTER_DEFAULT_ADDRESS)
+      ? fld.address
+      : (storedAddress || fld.address)
   const footerDisplayHours =
     useBuiltInTemplate && isLegacyHours(storedHours || '')
-      ? FOOTER_DEFAULT_HOURS
-      : (storedHours || FOOTER_DEFAULT_HOURS)
+      ? fld.hours
+      : (storedHours || fld.hours)
   const footerDisplayDayOff =
     useBuiltInTemplate && isLegacyDayOff(storedDayOff || '')
-      ? FOOTER_DEFAULT_DAY_OFF
-      : (storedDayOff || FOOTER_DEFAULT_DAY_OFF)
+      ? fld.dayOff
+      : (storedDayOff || fld.dayOff)
   const footerDisplayPhone =
     useBuiltInTemplate && isLegacyPhone(storedPhone || '')
-      ? FOOTER_DEFAULT_PHONE
-      : (storedPhone || FOOTER_DEFAULT_PHONE)
+      ? fld.phone
+      : (storedPhone || fld.phone)
   const footerDisplayEmail =
     useBuiltInTemplate && isLegacyEmail(storedEmail || '')
-      ? FOOTER_DEFAULT_EMAIL
-      : (storedEmail || FOOTER_DEFAULT_EMAIL)
+      ? fld.email
+      : (storedEmail || fld.email)
   const publicLogoRaw = readPublic('publicLogo')
-  /** Старые сохранённые логотипы (data URL) подменяем на дефолтный файл */
+  /** Старый логотип для хедера (data URL) подменяем на дефолтный файл, чтобы не тянуть огромные data URL */
   const publicLogo =
     publicLogoRaw && publicLogoRaw.startsWith('data:')
       ? DEFAULT_LOGO_URL
       : (publicLogoRaw || DEFAULT_LOGO_URL)
+  /** Логотип футера: сначала пытаемся взять отдельный publicFooterLogo, потом общий publicLogoRaw; data URL допускаются */
+  const publicFooterLogoRaw = readPublic('publicFooterLogo') || publicLogoRaw || ''
+  const publicFooterLogo = publicFooterLogoRaw
+  /** Формы логотипов: футер по умолчанию наследует форму основного логотипа */
   const publicLogoShape =
     (readPublic('publicLogoShape') as 'circle' | 'rounded' | 'square') || 'circle'
   const publicFooterLogoShape =
     (readPublic('publicFooterLogoShape') as 'circle' | 'rounded' | 'square') || publicLogoShape
   const footerLogoDisplayShape = publicFooterLogoShape
-  const publicPhone = readPublic('publicPhone') || FOOTER_DEFAULT_PHONE
-  const publicEmail = readPublic('publicEmail') || FOOTER_DEFAULT_EMAIL
+  const publicPhone = readPublic('publicPhone') || fld.phone
+  const publicEmail = readPublic('publicEmail') || fld.email
   const publicTelegram = readPublic('publicTelegram') || ''
   const publicViber = readPublic('publicViber') || ''
   const publicInstagram = readPublic('publicInstagram') || ''
-  const publicFooterAddress = readPublic('publicFooterAddress') || FOOTER_DEFAULT_ADDRESS
+  const publicFacebook = readPublic('publicFacebook') || ''
+  const publicWhatsapp = readPublic('publicWhatsapp') || ''
+  const publicTwitter = readPublic('publicTwitter') || ''
+  const publicTiktok = readPublic('publicTiktok') || ''
+  const publicFooterAddress = readPublic('publicFooterAddress') || fld.address
   const rawBookingTitle = readPublic('publicBookingTitle') || ''
   const rawBookingSubtitle = readPublic('publicBookingSubtitle') || ''
   const isTypoBookingTitle = /Запп+ись|клтаврр/.test(rawBookingTitle)
   const isTypoBookingSubtitle = /Вберите|специа{2,}листа/.test(rawBookingSubtitle)
   const publicBookingTitle =
-    !rawBookingTitle || isTypoBookingTitle ? HAIR_THEME_DEFAULT_BOOKING_TITLE : rawBookingTitle
+    !rawBookingTitle || isTypoBookingTitle ? hairLangDef.bookingTitle : rawBookingTitle
   const publicBookingSubtitle =
-    !rawBookingSubtitle || isTypoBookingSubtitle ? HAIR_THEME_DEFAULT_BOOKING_SUBTITLE : rawBookingSubtitle
+    !rawBookingSubtitle || isTypoBookingSubtitle ? hairLangDef.bookingSub : rawBookingSubtitle
   const publicHeaderPrimaryCta = readPublic('publicHeaderPrimaryCta') || ''
   const publicHeaderSecondaryCta = readPublic('publicHeaderSecondaryCta') || ''
   const publicHeaderExtraText = readPublic('publicHeaderExtraText') || ''
@@ -1476,7 +1608,8 @@ export default function PublicPage() {
         : 'linear-gradient(180deg, rgba(0, 0, 0, 0.78), rgba(0, 0, 0, 0.85))'
   const bodyBackgroundColor =
     bodyBackground.type === 'color' ? bodyBackground.color : undefined
-  const publicAddress = readPublic('publicAddress') || publicFooterAddress
+  const publicAddressRaw = readPublic('publicAddress')
+  const publicAddress = publicAddressRaw !== '' ? (publicAddressRaw || publicFooterAddress) : ''
   const footerVisibility = (() => {
     const stored = readPublic('publicFooterVisibility')
     const defaults = { address: true, schedule: true, dayOff: true, phone: true, email: true }
@@ -1531,7 +1664,7 @@ export default function PublicPage() {
   const socialVisibility = (() => {
     const stored = readPublic('publicSocialVisibility')
     if (!stored) {
-      return { telegram: true, viber: true, instagram: true }
+      return { telegram: true, viber: true, instagram: true, facebook: true, whatsapp: true, twitter: true, tiktok: true }
     }
     try {
       const parsed = JSON.parse(stored)
@@ -1539,14 +1672,18 @@ export default function PublicPage() {
         telegram: parsed?.telegram !== false,
         viber: parsed?.viber !== false,
         instagram: parsed?.instagram !== false,
+        facebook: parsed?.facebook !== false,
+        whatsapp: parsed?.whatsapp !== false,
+        twitter: parsed?.twitter !== false,
+        tiktok: parsed?.tiktok !== false,
       }
     } catch {
-      return { telegram: true, viber: true, instagram: true }
+      return { telegram: true, viber: true, instagram: true, facebook: true, whatsapp: true, twitter: true, tiktok: true }
     }
   })()
   const publicPlaceName = readPublic('publicPlaceName') || ''
-  const publicHours = readPublic('publicHours') || FOOTER_DEFAULT_HOURS
-  const publicDayOff = readPublic('publicDayOff') || FOOTER_DEFAULT_DAY_OFF
+  const publicHours = readPublic('publicHours') || fld.hours
+  const publicDayOff = readPublic('publicDayOff') || fld.dayOff
   const mapLat = Number.parseFloat(readPublic('publicMapLat') || '')
   const mapLng = Number.parseFloat(readPublic('publicMapLng') || '')
   const hasCoordsRaw = Number.isFinite(mapLat) && Number.isFinite(mapLng)
@@ -1704,7 +1841,7 @@ export default function PublicPage() {
         localStorage.setItem('appointments', JSON.stringify([newAppointment]))
       }
     } catch (e) {
-      console.error('Ошибка сохранения записи:', e)
+      console.error('Error saving appointment:', e)
       localStorage.setItem('appointments', JSON.stringify([newAppointment]))
     }
 
@@ -1952,12 +2089,74 @@ export default function PublicPage() {
     )
   }
 
+  /** Переводы дефолтных значений контента премиум-шаблона */
+  const premiumDefaults = {
+    ru: {
+      heroSubtitle: 'Твой салон красоты',
+      heroTitle: 'Стрижки, укладки\nи уход в одном месте',
+      tagline: 'Премиум барбершоп и груминг для мужчин',
+      aboutTitle: 'О салоне',
+      aboutDesc: 'Уютное пространство для стрижек, укладок и ухода. Качественный сервис и спокойная атмосфера — без суеты и очередей.',
+      aboutThird: 'Услуги для всей семьи',
+      worksTitle: 'Наши работы',
+      worksSub: 'Вы заслуживаете выглядеть лучше всех',
+      servicesTitle: 'Наши услуги',
+      servicesSub: 'Стрижки, уход и процедуры в уютной атмосфере, работаем с качественными средствами',
+      ctaTitle: 'Готовы выглядеть лучше?',
+      ctaSub: 'Запишитесь на приём',
+      mapLeft: 'Адрес твоего салона',
+      mapRight: 'Город в котором твой салон находится',
+      defaultHours: 'Пн–Сб 9:00–21:00',
+      defaultDayOff: 'Вс — выходной',
+    },
+    en: {
+      heroSubtitle: 'Your beauty salon',
+      heroTitle: 'Haircuts, styling\nand care in one place',
+      tagline: 'Premium barbershop & grooming for men',
+      aboutTitle: 'About the salon',
+      aboutDesc: 'A cozy space for haircuts, styling and care. Quality service and a calm atmosphere — no rush, no queues.',
+      aboutThird: 'Services for the whole family',
+      worksTitle: 'Our works',
+      worksSub: 'You deserve to look your best',
+      servicesTitle: 'Our services',
+      servicesSub: 'Haircuts, care and treatments in a cozy atmosphere, using high-quality products',
+      ctaTitle: 'Ready to look better?',
+      ctaSub: 'Book an appointment',
+      mapLeft: 'Your salon address',
+      mapRight: 'City where your salon is located',
+      defaultHours: 'Mon–Sat 9:00–21:00',
+      defaultDayOff: 'Sun — closed',
+    },
+    ro: {
+      heroSubtitle: 'Salonul tău de frumusețe',
+      heroTitle: 'Tunsori, coafuri\nși îngrijire într-un singur loc',
+      tagline: 'Barbershop premium și grooming pentru bărbați',
+      aboutTitle: 'Despre salon',
+      aboutDesc: 'Un spațiu confortabil pentru tunsori, coafuri și îngrijire. Servicii de calitate într-o atmosferă liniștită.',
+      aboutThird: 'Servicii pentru toată familia',
+      worksTitle: 'Lucrările noastre',
+      worksSub: 'Meritați să arătați cel mai bine',
+      servicesTitle: 'Serviciile noastre',
+      servicesSub: 'Tunsori, îngrijire și proceduri într-o atmosferă confortabilă, cu produse de calitate',
+      ctaTitle: 'Ești gata să arăți mai bine?',
+      ctaSub: 'Programează-te',
+      mapLeft: 'Adresa salonului tău',
+      mapRight: 'Orașul în care se află salonul',
+      defaultHours: 'Lu–Sa 9:00–21:00',
+      defaultDayOff: 'Du — zi liberă',
+    },
+  } as const
+  const pd = premiumDefaults[publicLang] ?? premiumDefaults.ru
+
   if (publicHeaderThemeRaw === 'premium-hair' || publicHeaderThemeRaw === 'premium-barber') {
     const nameDraftKey = typeof window !== 'undefined' && !isTemplateDemo ? `draft_publicName_${slugForDrafts}_${publicHeaderTheme}` : null
     const premiumSiteNameRaw = nameDraftKey != null && typeof window !== 'undefined' ? window.localStorage.getItem(nameDraftKey) : null
     const premiumSiteName = premiumSiteNameRaw !== null ? premiumSiteNameRaw : headerDisplayName
-    const heroVideoUrl = isTemplateDemo ? defaultHeroVideo : (readPublic('publicHeroVideo') || defaultHeroVideo)
-    const heroImageUrl = isTemplateDemo ? barberHeaderBg : (readPublic('publicHeroImage') || barberHeaderBg)
+    const userHeroVideo = isTemplateDemo ? null : (readPublic('publicHeroVideo') || null)
+    const userHeroImage = isTemplateDemo ? null : (readPublic('publicHeroImage') || null)
+    // Если пользователь загрузил фото — не показываем дефолтное видео поверх него
+    const heroVideoUrl = isTemplateDemo ? defaultHeroVideo : (userHeroVideo || (userHeroImage ? null : defaultHeroVideo))
+    const heroImageUrl = isTemplateDemo ? barberHeaderBg : (userHeroImage || barberHeaderBg)
     const draftHeroSubtitle =
       typeof window !== 'undefined' && !isTemplateDemo
         ? window.localStorage.getItem(`draft_publicPremiumHeroSubtitle_${slugForDrafts}_${publicHeaderTheme}`)
@@ -1966,10 +2165,10 @@ export default function PublicPage() {
       typeof window !== 'undefined' && !isTemplateDemo
         ? window.localStorage.getItem(`draft_publicPremiumHeroTitle_${slugForDrafts}_${publicHeaderTheme}`)
         : null
-    const premiumHeroSubtitle = isTemplateDemo ? 'Твой салон красоты' : (draftHeroSubtitle !== null ? draftHeroSubtitle : 'Твой салон красоты')
-    const premiumHeroTitle = isTemplateDemo ? 'Стрижки, укладки\nи уход в одном месте' : (draftHeroTitle !== null ? draftHeroTitle : 'Стрижки, укладки\nи уход в одном месте')
-    const premiumHeroContactsLabel = isTemplateDemo ? 'Контакты' : (readPublic('publicPremiumHeroContactsLabel') || 'Контакты')
-    const premiumBookLabel = isTemplateDemo ? t('bookOnline') : (readPublic('publicPremiumBookLabel') || t('bookOnline'))
+    const premiumHeroSubtitle = isTemplateDemo ? pd.heroSubtitle : (draftHeroSubtitle !== null ? draftHeroSubtitle : pd.heroSubtitle)
+    const premiumHeroTitle = isTemplateDemo ? pd.heroTitle : (draftHeroTitle !== null ? draftHeroTitle : pd.heroTitle)
+    const premiumHeroContactsLabel = isTemplateDemo ? uiText[publicLang].contacts : (readPublic('publicPremiumHeroContactsLabel') || uiText[publicLang].contacts)
+    const premiumBookLabel = isTemplateDemo ? uiText[publicLang].bookNow : (readPublic('publicPremiumBookLabel') || uiText[publicLang].bookNow)
     const premiumGoldColor = isTemplateDemo ? undefined : (readPublic('publicPremiumGoldColor') || undefined)
     const premiumHeaderBgColor = isTemplateDemo ? undefined : (readPublic('publicPremiumHeaderBgColor') || undefined)
     const premiumHeaderBgGlow = isTemplateDemo ? undefined : (readPublic('publicPremiumHeaderBgGlow') || undefined)
@@ -1981,15 +2180,12 @@ export default function PublicPage() {
     const premiumHeroButton2BorderColor = isTemplateDemo ? undefined : (readPublic('publicPremiumHeroButton2BorderColor') || undefined)
     const premiumHeroButton1Glow = isTemplateDemo ? undefined : (readPublic('publicPremiumHeroButton1Glow') || undefined)
     const premiumHeroButton2Glow = isTemplateDemo ? undefined : (readPublic('publicPremiumHeroButton2Glow') || undefined)
-    const ABOUT_TITLE_DEFAULT = 'О салоне'
-    const ABOUT_DESC_DEFAULT = 'Уютное пространство для стрижек, укладок и ухода. Качественный сервис и спокойная атмосфера — без суеты и очередей.'
-    const ABOUT_THIRD_DEFAULT = 'Услуги для всей семьи'
-    const rawAboutTitle = !isTemplateDemo ? readPublic('publicAboutSalonTitle', ABOUT_TITLE_DEFAULT) : null
-    const rawAboutDesc = !isTemplateDemo ? readPublic('publicAboutSalonDescription', ABOUT_DESC_DEFAULT) : null
-    const rawAboutThird = !isTemplateDemo ? readPublic('publicAboutSalonThirdText', ABOUT_THIRD_DEFAULT) : null
-    const premiumAboutSalonTitle = isTemplateDemo ? ABOUT_TITLE_DEFAULT : (rawAboutTitle === '' ? '' : (rawAboutTitle || ABOUT_TITLE_DEFAULT))
-    const premiumAboutSalonDescription = isTemplateDemo ? ABOUT_DESC_DEFAULT : (rawAboutDesc === '' ? '' : (rawAboutDesc || ABOUT_DESC_DEFAULT))
-    const premiumAboutSalonThirdText = isTemplateDemo ? ABOUT_THIRD_DEFAULT : (rawAboutThird === '' ? '' : (rawAboutThird || ABOUT_THIRD_DEFAULT))
+    const rawAboutTitle = !isTemplateDemo ? readPublic('publicAboutSalonTitle', pd.aboutTitle) : null
+    const rawAboutDesc = !isTemplateDemo ? readPublic('publicAboutSalonDescription', pd.aboutDesc) : null
+    const rawAboutThird = !isTemplateDemo ? readPublic('publicAboutSalonThirdText', pd.aboutThird) : null
+    const premiumAboutSalonTitle = isTemplateDemo ? pd.aboutTitle : (rawAboutTitle === '' ? '' : (rawAboutTitle || pd.aboutTitle))
+    const premiumAboutSalonDescription = isTemplateDemo ? pd.aboutDesc : (rawAboutDesc === '' ? '' : (rawAboutDesc || pd.aboutDesc))
+    const premiumAboutSalonThirdText = isTemplateDemo ? pd.aboutThird : (rawAboutThird === '' ? '' : (rawAboutThird || pd.aboutThird))
     const premiumAboutSalonTitleColor = isTemplateDemo ? undefined : (readPublic('publicAboutSalonTitleColor') || undefined)
     const premiumAboutSalonDescColor = isTemplateDemo ? undefined : (readPublic('publicAboutSalonDescColor') || undefined)
     const premiumAboutSalonThirdColor = isTemplateDemo ? undefined : (readPublic('publicAboutSalonThirdColor') || undefined)
@@ -2003,12 +2199,10 @@ export default function PublicPage() {
       }
       return urls.length > 0 ? urls : undefined
     })()
-    const WORKS_TITLE_DEFAULT = 'Наши работы'
-    const WORKS_SUBTITLE_DEFAULT = 'Вы заслуживаете выглядеть лучше всех'
     const draftWorksTitle = typeof window !== 'undefined' && !isTemplateDemo ? window.localStorage.getItem(`draft_publicWorksTitle_${slugForDrafts}_${publicHeaderTheme}`) : null
     const draftWorksSubtitle = typeof window !== 'undefined' && !isTemplateDemo ? window.localStorage.getItem(`draft_publicWorksSubtitle_${slugForDrafts}_${publicHeaderTheme}`) : null
-    const premiumWorksTitle = isTemplateDemo ? WORKS_TITLE_DEFAULT : (draftWorksTitle != null ? draftWorksTitle : WORKS_TITLE_DEFAULT)
-    const premiumWorksSubtitle = isTemplateDemo ? WORKS_SUBTITLE_DEFAULT : (draftWorksSubtitle != null ? draftWorksSubtitle : WORKS_SUBTITLE_DEFAULT)
+    const premiumWorksTitle = isTemplateDemo ? pd.worksTitle : (draftWorksTitle != null ? draftWorksTitle : pd.worksTitle)
+    const premiumWorksSubtitle = isTemplateDemo ? pd.worksSub : (draftWorksSubtitle != null ? draftWorksSubtitle : pd.worksSub)
     const premiumWorksTitleColor = isTemplateDemo ? undefined : (readPublic('publicWorksTitleColor') || undefined)
     const premiumWorksSubtitleColor = isTemplateDemo ? undefined : (readPublic('publicWorksSubtitleColor') || undefined)
     const premiumWorksPhotoUrls = (() => {
@@ -2034,6 +2228,68 @@ export default function PublicPage() {
     const premiumFooterTitleColor = isTemplateDemo ? undefined : (readPublic('publicFooterTitleColor') || undefined)
     const premiumFooterTextColor = isTemplateDemo ? undefined : (readPublic('publicFooterTextColor') || undefined)
     const premiumFooterDayOffColor = isTemplateDemo ? undefined : (readPublic('publicFooterDayOffColor') || undefined)
+    const readDraftNullable = (key: string): string | null => {
+      if (typeof window === 'undefined' || isTemplateDemo) return null
+      const addressMapKeys = ['publicFooterAddress', 'publicAddress', 'publicMapEmbedUrl']
+      const themeForKey = addressMapKeys.includes(key) ? publicHeaderThemeRaw : publicHeaderTheme
+      return window.localStorage.getItem(`draft_${key}_${slugForDrafts}_${themeForKey}`)
+    }
+    const footerLangDef = FOOTER_DEFAULTS_BY_LANG[publicLang] ?? FOOTER_DEFAULTS_BY_LANG.ru
+    const premiumFooterAddress = (() => {
+      const v = readDraftNullable('publicFooterAddress')
+      return v !== null ? v : footerLangDef.address
+    })()
+    const premiumFooterPhone = (() => {
+      const v = readDraftNullable('publicPhone')
+      return v !== null ? v : footerLangDef.phone
+    })()
+    const premiumFooterHours = (() => {
+      const v = readDraftNullable('publicHours')
+      return v !== null ? v : footerLangDef.hours
+    })()
+    const premiumFooterDayOff = (() => {
+      const v = readDraftNullable('publicDayOff')
+      return v !== null ? v : footerLangDef.dayOff
+    })()
+    const premiumFooterEmail = (() => {
+      const v = readDraftNullable('publicEmail')
+      return v !== null ? v : footerLangDef.email
+    })()
+    const footerNameDraftKey = typeof window !== 'undefined' && !isTemplateDemo
+      ? `draft_publicFooterSiteName_${slugForDrafts}_${publicHeaderTheme}` : null
+    const premiumFooterSiteNameRaw = footerNameDraftKey != null && typeof window !== 'undefined'
+      ? window.localStorage.getItem(footerNameDraftKey) : null
+    const premiumFooterSiteName = premiumFooterSiteNameRaw !== null ? premiumFooterSiteNameRaw : premiumSiteName
+    const premiumCtaVisible = (() => {
+      const v = readDraftNullable('publicCtaBlockVisible')
+      return v !== null ? v !== '0' : true
+    })()
+    const premiumServicesTitleRaw = readDraftNullable('publicServicesSectionTitle')
+    const premiumServicesTitle = premiumServicesTitleRaw !== null ? premiumServicesTitleRaw : pd.servicesTitle
+    const premiumServicesSubtitleRaw = readDraftNullable('publicServicesSectionSubtitle')
+    const premiumServicesSubtitle = premiumServicesSubtitleRaw !== null ? premiumServicesSubtitleRaw : pd.servicesSub
+    const premiumServicesTitleColor = isTemplateDemo ? undefined : (readPublic('publicServicesTitleColor') || undefined)
+    const premiumServicesSubtitleColor = isTemplateDemo ? undefined : (readPublic('publicServicesSubtitleColor') || undefined)
+    const premiumServicesCardTitleColor = isTemplateDemo ? undefined : (readPublic('publicServicesCardTitleColor') || undefined)
+    const premiumServicesProcNameColor = isTemplateDemo ? undefined : (readPublic('publicServicesProcNameColor') || undefined)
+    const premiumServicesProcDescColor = isTemplateDemo ? undefined : (readPublic('publicServicesProcDescColor') || undefined)
+    const premiumServicesPhotosHidden = (() => {
+      const v = readDraftNullable('publicServicesPhotosHidden')
+      return v !== null ? v === '1' : false
+    })()
+    const premiumCtaTitleRaw = readDraftNullable('publicCtaTitle')
+    const premiumCtaTitle = premiumCtaTitleRaw !== null ? premiumCtaTitleRaw : pd.ctaTitle
+    const premiumCtaSubtitleRaw = readDraftNullable('publicCtaSubtitle')
+    const premiumCtaSubtitle = premiumCtaSubtitleRaw !== null ? premiumCtaSubtitleRaw : pd.ctaSub
+    const premiumCtaSparkleColor = isTemplateDemo ? undefined : (readPublic('publicCtaSparkleColor') || undefined)
+    const premiumCtaTitleColor = isTemplateDemo ? undefined : (readPublic('publicCtaTitleColor') || undefined)
+    const premiumCtaSubtitleColor = isTemplateDemo ? undefined : (readPublic('publicCtaSubtitleColor') || undefined)
+    const premiumCtaButtonBorderColor = isTemplateDemo ? undefined : (readPublic('publicCtaButtonBorderColor') || undefined)
+    const premiumMapLabelLeftRaw = readDraftNullable('publicMapLabelLeft')
+    const premiumMapLabelLeft = premiumMapLabelLeftRaw !== null ? premiumMapLabelLeftRaw : pd.mapLeft
+    const premiumMapLabelRightRaw = readDraftNullable('publicMapLabelRight')
+    const premiumMapLabelRight = premiumMapLabelRightRaw !== null ? premiumMapLabelRightRaw : pd.mapRight
+    const premiumMapLabelColor = isTemplateDemo ? undefined : (readPublic('publicMapLabelColor') || undefined)
     const savePremiumDraft = (key: string, value: string) => {
       if (typeof window === 'undefined') return
       const addressMapKeys = ['publicFooterAddress', 'publicAddress', 'publicMapEmbedUrl']
@@ -2051,15 +2307,16 @@ export default function PublicPage() {
       <>
       <PremiumBarberTemplate
         siteName={premiumSiteName}
-        tagline={publicTagline}
+        footerSiteName={premiumFooterSiteName}
+        tagline={publicTagline || pd.tagline}
         onBookNow={() => navigate(urlSlug ? `/b/${urlSlug}/booking${location.search ? location.search : ''}` : '/')}
         bookLabel={premiumBookLabel}
-        footerAddress={publicFooterAddress}
-        footerPhone={publicPhone}
-        footerHours={publicHours}
-        footerDayOff={footerVisibility.dayOff ? footerDisplayDayOff : undefined}
-        footerEmail={publicEmail}
-        footerLogo={publicLogo || null}
+        footerAddress={premiumFooterAddress}
+        footerPhone={premiumFooterPhone}
+        footerHours={premiumFooterHours}
+        footerDayOff={footerVisibility.dayOff ? premiumFooterDayOff : undefined}
+        footerEmail={premiumFooterEmail}
+        footerLogo={isTemplateDemo ? null : (publicFooterLogo || null)}
         footerLogoShape={footerLogoDisplayShape}
         footerLogoVisible={publicFooterLogoVisible}
         footerVisibility={footerVisibility}
@@ -2070,10 +2327,15 @@ export default function PublicPage() {
         telegramUrl={publicTelegram || undefined}
         viberUrl={publicViber || undefined}
         instagramUrl={publicInstagram || undefined}
-        addressLabel={t('addressLabel')}
-        scheduleLabel={t('scheduleLabel')}
-        phoneLabel={t('phoneLabel')}
-        emailLabel={t('emailLabel')}
+        facebookUrl={publicFacebook || undefined}
+        whatsappUrl={publicWhatsapp || undefined}
+        twitterUrl={publicTwitter || undefined}
+        tiktokUrl={publicTiktok || undefined}
+        addressLabel={uiText[publicLang].addrLabel}
+        scheduleLabel={uiText[publicLang].schedLabel}
+        phoneLabel={uiText[publicLang].phoneLabel2}
+        emailLabel={uiText[publicLang].emailLabel2}
+        lang={publicLang}
         mapEmbedUrl={googleMapUrl}
         heroVideoUrl={heroVideoUrl || undefined}
         heroImageUrl={heroImageUrl || undefined}
@@ -2107,7 +2369,72 @@ export default function PublicPage() {
         worksSectionSubtitleColor={premiumWorksSubtitleColor || undefined}
         worksPhotoUrls={premiumWorksPhotoUrls}
         serviceCards={premiumServiceCards}
+        servicesSectionTitle={premiumServicesTitle}
+        servicesSectionSubtitle={premiumServicesSubtitle}
+        servicesTitleColor={premiumServicesTitleColor}
+        servicesSubtitleColor={premiumServicesSubtitleColor}
+        servicesCardTitleColor={premiumServicesCardTitleColor}
+        servicesProcNameColor={premiumServicesProcNameColor}
+        servicesProcDescColor={premiumServicesProcDescColor}
+        servicesPhotosHidden={premiumServicesPhotosHidden}
+        ctaBlockVisible={premiumCtaVisible}
+        ctaTitle={premiumCtaTitle}
+        ctaSubtitle={premiumCtaSubtitle}
+        ctaSparkleColor={premiumCtaSparkleColor}
+        ctaTitleColor={premiumCtaTitleColor}
+        ctaSubtitleColor={premiumCtaSubtitleColor}
+        ctaButtonBorderColor={premiumCtaButtonBorderColor}
+        mapLabelLeft={premiumMapLabelLeft}
+        mapLabelRight={premiumMapLabelRight}
+        mapLabelColor={premiumMapLabelColor}
+        sectionRefs={{
+          header: headerSectionRef,
+          gallery: gallerySectionRef,
+          booking: bookingSectionRef,
+          works: worksSectionRef,
+          map: mapSectionRef,
+          cta: ctaSectionRef,
+          footer: footerSectionRef,
+        }}
       />
+      {/* Кнопка выбора языка для премиум-шаблона */}
+      <div className="fixed bottom-6 left-6 z-[200]">
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setIsLangOpen((prev) => !prev)}
+            className="h-11 w-11 rounded-full bg-black/70 border border-white/20 shadow-lg backdrop-blur-md flex items-center justify-center hover:bg-black/90 transition"
+            aria-label="Language"
+          >
+            <img
+              src={publicLang === 'ru' ? flagRu : publicLang === 'en' ? flagEn : flagRo}
+              alt={publicLang === 'ru' ? 'Русский' : publicLang === 'en' ? 'English' : 'Română'}
+              className="h-6 w-6 rounded-full"
+            />
+          </button>
+          {isLangOpen && (
+            <div className="absolute bottom-full left-0 mb-3 flex flex-col gap-2">
+              {([
+                { code: 'ru' as const, icon: flagRu, label: 'Русский' },
+                { code: 'en' as const, icon: flagEn, label: 'English' },
+                { code: 'ro' as const, icon: flagRo, label: 'Română' },
+              ] as const)
+                .filter((item) => item.code !== publicLang)
+                .map((item) => (
+                  <button
+                    key={item.code}
+                    type="button"
+                    onClick={() => { setLang(item.code); setIsLangOpen(false) }}
+                    className="h-11 w-11 rounded-full border border-white/20 bg-black/70 hover:bg-black/90 shadow-lg backdrop-blur-md flex items-center justify-center transition"
+                    aria-label={item.label}
+                  >
+                    <img src={item.icon} alt={item.label} className="h-6 w-6 rounded-full" />
+                  </button>
+                ))}
+            </div>
+          )}
+        </div>
+      </div>
       </>
     )
   }
@@ -2632,7 +2959,7 @@ export default function PublicPage() {
                             removePhoto()
                           }}
                           className="absolute top-3 right-3 z-30 h-10 w-10 sm:h-12 sm:w-12 rounded-full bg-red-500 text-white flex items-center justify-center hover:bg-red-600 shadow-lg border-2 border-white/30 transition cursor-pointer"
-                          aria-label="Удалить"
+                          aria-label={t('deletePhoto')}
                         >
                           <X className="h-5 w-5 sm:h-6 sm:w-6 stroke-[2.5]" />
                         </button>
@@ -2807,7 +3134,7 @@ export default function PublicPage() {
           <section ref={worksSectionRef} className="flex justify-center">
             <div className="w-full max-w-6xl">
               <h2 className="text-center text-2xl sm:text-3xl font-display font-semibold tracking-tight text-foreground mb-4 sm:mb-5">
-                Галерея работ
+                {t('worksGallery')}
               </h2>
               <div
                 style={{
@@ -2955,7 +3282,7 @@ export default function PublicPage() {
                     type="button"
                     onClick={() => setActiveGalleryImage(null)}
                     className="absolute top-3 right-3 h-9 w-9 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-black/80"
-                    aria-label="Закрыть"
+                    aria-label={t('closeModal')}
                   >
                     <X className="h-4 w-4" />
                   </button>
@@ -3086,9 +3413,42 @@ export default function PublicPage() {
                       'bg-gradient-to-r from-[#F58529]/90 via-[#DD2A7B]/85 to-[#515BD4]/90 text-white hover:brightness-110 border border-white/25',
                     icon: Instagram,
                   },
+                  {
+                    key: 'facebook',
+                    label: 'Facebook',
+                    value: publicFacebook,
+                    className:
+                      'bg-gradient-to-r from-[#1877F2]/90 to-[#0C5DC7]/90 text-white hover:brightness-110 border border-white/25',
+                    icon: FacebookIcon,
+                  },
+                  {
+                    key: 'whatsapp',
+                    label: 'WhatsApp',
+                    value: publicWhatsapp,
+                    className:
+                      'bg-gradient-to-r from-[#25D366]/90 to-[#128C7E]/90 text-white hover:brightness-110 border border-white/25',
+                    icon: WhatsAppIcon,
+                  },
+                  {
+                    key: 'twitter',
+                    label: '',
+                    value: publicTwitter,
+                    className:
+                      'bg-[#000000] text-white hover:brightness-110 border border-white/25',
+                    icon: TwitterIcon,
+                    iconClass: 'h-6 w-6',
+                  },
+                  {
+                    key: 'tiktok',
+                    label: 'TikTok',
+                    value: publicTiktok,
+                    className:
+                      'bg-[#010101] text-white hover:brightness-110 border border-white/25',
+                    icon: TikTokIcon,
+                  },
                 ]
                   .filter(({ key, value }) => Boolean(value) && socialVisibility[key as keyof typeof socialVisibility])
-                  .map(({ key, label, value, className, icon: Icon }) => {
+                  .map(({ key, label, value, className, icon: Icon, iconClass }: any) => {
                     const canEditFooter = isPreview && isEditMode && typeof window !== 'undefined'
                     return (
                       <div key={label} className="relative">
@@ -3098,11 +3458,13 @@ export default function PublicPage() {
                             onClick={() => {
                               if (typeof window === 'undefined') return
                               const storageKey =
-                                key === 'telegram'
-                                  ? 'publicTelegram'
-                                  : key === 'viber'
-                                    ? 'publicViber'
-                                    : 'publicInstagram'
+                                key === 'telegram' ? 'publicTelegram'
+                                  : key === 'viber' ? 'publicViber'
+                                  : key === 'instagram' ? 'publicInstagram'
+                                  : key === 'facebook' ? 'publicFacebook'
+                                  : key === 'whatsapp' ? 'publicWhatsapp'
+                                  : key === 'twitter' ? 'publicTwitter'
+                                  : 'publicTiktok'
                               const previousValue = window.localStorage.getItem(`draft_${storageKey}_${slugForDrafts}_${publicHeaderTheme}`) ?? window.localStorage.getItem(storageKey) ?? ''
                               window.localStorage.setItem(`draft_${storageKey}_${slugForDrafts}_${publicHeaderTheme}`, '')
                               window.localStorage.setItem(`constructorHasUserEdits_${publicHeaderTheme}`, '1')
@@ -3114,7 +3476,7 @@ export default function PublicPage() {
                               }
                             }}
                             className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-black/70 border border-border/60 text-muted-foreground hover:text-foreground hover:bg-black/80 flex items-center justify-center z-10"
-                            aria-label="Скрыть"
+                            aria-label={t('hideSocial')}
                           >
                             <X className="h-3 w-3" />
                           </button>
@@ -3128,8 +3490,8 @@ export default function PublicPage() {
                             className
                           )}
                         >
-                          <Icon className="h-5 w-5" />
-                          {label}
+                          <Icon className={iconClass || "h-5 w-5"} />
+                          {label || null}
                         </a>
                       </div>
                     )
@@ -3219,7 +3581,7 @@ export default function PublicPage() {
                                 }
                               }}
                               className="absolute -top-2 -right-2 h-7 w-7 rounded-full bg-black/70 border border-border/60 text-muted-foreground hover:text-foreground hover:bg-black/80 flex items-center justify-center z-10 cursor-pointer"
-                              aria-label="Скрыть блок"
+                              aria-label={t('hideBlock')}
                             >
                               <X className="h-3.5 w-3.5" />
                             </button>
@@ -3373,7 +3735,7 @@ export default function PublicPage() {
             to="/constructor"
             className="inline-flex items-center gap-2 px-4 py-3 rounded-xl bg-primary text-primary-foreground font-semibold shadow-lg hover:bg-primary/90 transition-colors"
           >
-            Перейти в конструктор
+            {t('goToConstructor')}
           </Link>
         </div>
       )}
