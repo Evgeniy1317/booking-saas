@@ -145,9 +145,9 @@ interface PublicAppointment {
 
 const fallbackServicesByLang: Record<string, PublicService[]> = {
   ru: [
-    { id: '1', category: 'Парикмахерская', name: 'Женская стрижка', duration: 60, price: 450, active: true },
-    { id: '2', category: 'Маникюр', name: 'Классический маникюр', duration: 60, price: 400, active: true },
-    { id: '3', category: 'Косметология', name: 'Уход за лицом', duration: 90, price: 800, active: true },
+  { id: '1', category: 'Парикмахерская', name: 'Женская стрижка', duration: 60, price: 450, active: true },
+  { id: '2', category: 'Маникюр', name: 'Классический маникюр', duration: 60, price: 400, active: true },
+  { id: '3', category: 'Косметология', name: 'Уход за лицом', duration: 90, price: 800, active: true },
   ],
   en: [
     { id: '1', category: 'Hairdressing', name: 'Women\'s haircut', duration: 60, price: 450, active: true },
@@ -166,15 +166,15 @@ const fallbackStaffByLang: Record<string, PublicStaff[]> = {
     {
       id: '1', name: 'Анна Петреску', category: 'Стилист',
       description: 'Мягкие техники окрашивания и уход', color: '#3b82f6',
-      services: ['Женская стрижка', 'Уход за лицом'],
-      workingDays: ['Понедельник', 'Среда', 'Пятница', 'Суббота'],
+    services: ['Женская стрижка', 'Уход за лицом'],
+    workingDays: ['Понедельник', 'Среда', 'Пятница', 'Суббота'],
       workingHours: { start: '10:00', end: '18:00' }, active: true,
     },
     {
       id: '2', name: 'Елена Бондарь', category: 'Мастер маникюра',
       description: 'Комбинированный маникюр и дизайн', color: '#ec4899',
-      services: ['Классический маникюр'],
-      workingDays: ['Вторник', 'Четверг', 'Суббота'],
+    services: ['Классический маникюр'],
+    workingDays: ['Вторник', 'Четверг', 'Суббота'],
       workingHours: { start: '09:00', end: '17:00' }, active: true,
     },
   ],
@@ -954,9 +954,9 @@ export default function PublicPage() {
         ? draftNameRaw
         : readPublic('publicName') ||
           (isPreview ? FOOTER_DEFAULT_NAME : null) ||
-          localStorage.getItem('businessName') ||
+    localStorage.getItem('businessName') ||
           HAIR_THEME_DEFAULT_NAME ||
-          t('defaultSalonName')
+    t('defaultSalonName')
   const publicName =
     rawName === '' && isPreview && !isTemplateDemo
       ? ''
@@ -1885,7 +1885,8 @@ export default function PublicPage() {
               resetForm()
               successTimeoutRef.current = null
               if (location.pathname.endsWith('/booking')) {
-                navigate(urlSlug ? `/b/${urlSlug}${location.search || '?theme=premium-hair'}` : '/')
+                const returnTo = new URLSearchParams(location.search).get('returnTo')
+                navigate(returnTo || (urlSlug ? `/b/${urlSlug}${location.search || '?theme=premium-hair'}` : '/'))
               }
             }, 1800)
           }}
@@ -2027,7 +2028,8 @@ export default function PublicPage() {
 
   const isBookingPage = location.pathname.endsWith('/booking')
   if (isBookingPage) {
-    const backUrl = urlSlug ? `/b/${urlSlug}${location.search || '?theme=premium-hair'}` : '/'
+    const returnTo = searchParams.get('returnTo')
+    const backUrl = returnTo || (urlSlug ? `/b/${urlSlug}${location.search || '?theme=premium-hair'}` : '/')
     return (
       <div className="min-h-screen bg-background flex flex-col">
         {canUseDOM && successOverlay ? createPortal(successOverlay, document.body) : null}
@@ -2606,7 +2608,7 @@ export default function PublicPage() {
                       )}
                     >
                       <img src={publicLogo} alt="Logo" className="h-full w-full object-cover" />
-                    </div>
+              </div>
                   )}
                   <h1
                     className={cn(
@@ -2646,10 +2648,10 @@ export default function PublicPage() {
                       )}
                     >
                       <img src={publicLogo} alt="Logo" className="h-full w-full object-cover" />
-                    </div>
+                      </div>
                   )}
                   <h1
-                    className={cn(
+                      className={cn(
                       'w-full text-center font-semibold tracking-[0.08em] text-white drop-shadow-[0_12px_34px_rgba(0,0,0,0.5)] whitespace-nowrap overflow-visible max-w-[90%] mx-auto',
                       publicHeaderTheme === 'coloring'
                         ? 'font-coloring-title'
@@ -2699,8 +2701,8 @@ export default function PublicPage() {
                           )}
                         >
                           <img src={publicLogo} alt="Logo" className="h-full w-full object-cover" />
-                        </div>
-                      )}
+                    </div>
+                  )}
                       {publicHeaderLogoPlacement !== 'corner-left-title' && (
                         <h1
                           className={cn(
@@ -2714,7 +2716,7 @@ export default function PublicPage() {
                           {headerDisplayName}
                         </h1>
                       )}
-                    </div>
+                  </div>
                   ) : (
                     <>
                       {publicLogo && publicHeaderLogoVisible && (
@@ -2729,7 +2731,7 @@ export default function PublicPage() {
                           )}
                         >
                           <img src={publicLogo} alt="Logo" className="h-full w-full object-cover" />
-                        </div>
+                    </div>
                       )}
                       <h1
                         className="w-full text-center font-serif font-semibold tracking-[0.08em] text-white drop-shadow-[0_12px_34px_rgba(0,0,0,0.5)] whitespace-nowrap overflow-visible max-w-[90%] mx-auto"
@@ -2740,7 +2742,7 @@ export default function PublicPage() {
                     </>
                   )}
                   <p
-                    className={cn(
+                        className={cn(
                       'mt-3 sm:mt-4 text-base sm:text-lg md:text-2xl text-white/80 inline-block',
                       'text-center mx-auto',
                       'whitespace-pre leading-[1.35] overflow-visible'
@@ -2753,13 +2755,13 @@ export default function PublicPage() {
               )}
               {(publicHeaderTheme === 'hair' || publicHeaderTheme === 'cosmetology' || publicHeaderTheme === 'custom' || publicHeaderTheme === 'barber' || publicHeaderTheme === 'coloring' || publicHeaderTheme === 'manicure') && (
                 <div
-                  className={cn(
+                        className={cn(
                     'flex flex-col sm:flex-row gap-4 sm:gap-6 mt-6 sm:mt-10',
                     'justify-center'
                   )}
                 >
                   <Button
-                    className={cn(
+                              className={cn(
                       publicHeaderPrimaryCtaShape === 'round' ? 'rounded-full' : 'rounded-none',
                       'h-14 sm:h-16 md:h-[4.5rem] px-8 sm:px-12 md:px-14 text-base sm:text-lg md:text-xl border backdrop-blur-xl shadow-[0_12px_30px_rgba(0,0,0,0.35)] w-full sm:w-auto inline-flex items-center gap-2',
                       headerPrimaryCustom ? '' : 'bg-primary/35 text-white border-primary/50 hover:bg-primary/45'
@@ -2793,8 +2795,8 @@ export default function PublicPage() {
                     />
                     {publicHeaderPrimaryCta || t('bookOnline')}
                   </Button>
-                  <Button
-                    variant="outline"
+                    <Button
+                      variant="outline"
                     className={cn(
                       publicHeaderSecondaryCtaShape === 'round' ? 'rounded-full' : 'rounded-none',
                       'h-14 sm:h-16 md:h-[4.5rem] px-8 sm:px-12 md:px-14 text-base sm:text-lg md:text-xl backdrop-blur-xl w-full sm:w-auto inline-flex items-center gap-2',
@@ -2818,7 +2820,7 @@ export default function PublicPage() {
                             }
                         : undefined
                     }
-                    onClick={() => {
+                      onClick={() => {
                       mapSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
                     }}
                   >
@@ -2827,13 +2829,13 @@ export default function PublicPage() {
                       style={{ width: 28, height: 28, color: headerSecondaryCustom ? headerSecondaryColor.text : 'rgba(255,255,255,0.8)' }}
                     />
                     {publicHeaderSecondaryCta || t('whereToFindQuestion')}
-                  </Button>
+                    </Button>
                 </div>
-              )}
+                  )}
             </div>
-            )}
-          </div>
-        </div>
+                  )}
+                </div>
+              </div>
       </header>
       <div className="h-20 sm:h-24 md:h-28 bg-gradient-to-b from-black/70 via-black/40 to-transparent" />
 
@@ -2878,7 +2880,7 @@ export default function PublicPage() {
                   {publicGalleryTitle}
                 </h2>
               )}
-            </div>
+                </div>
             <div className="w-full grid grid-cols-[1.4fr_1fr_1fr] grid-rows-2 gap-3 sm:gap-4 md:gap-5 lg:gap-6 h-[60vh] min-h-[400px] sm:h-[65vh] sm:min-h-[440px] md:h-[70vh] md:min-h-[500px] lg:h-[75vh] lg:min-h-[560px] xl:h-[80vh] xl:min-h-[600px]">
               {[
                 { index: 0, className: 'row-span-2 col-span-1' },
@@ -2920,7 +2922,7 @@ export default function PublicPage() {
                 return (
                   <div
                     key={`public-salon-photos-${slot.index}`}
-                    className={cn(
+                        className={cn(
                       'relative min-h-0 min-w-0',
                       canEdit ? 'overflow-visible' : 'overflow-hidden',
                       canEdit && !displayImage && 'border-2 border-dashed border-white/50 bg-black/20',
@@ -2963,7 +2965,7 @@ export default function PublicPage() {
                         >
                           <X className="h-5 w-5 sm:h-6 sm:w-6 stroke-[2.5]" />
                         </button>
-                      </div>
+                    </div>
                     )}
                     {canEdit && !displayImage ? (
                       <>
@@ -2999,14 +3001,14 @@ export default function PublicPage() {
                         >
                           <span className="flex items-center justify-center w-16 h-16 sm:w-20 sm:h-20 rounded-full border-2 border-dashed border-white/60">
                             <Plus className="h-8 w-8 sm:h-10 sm:w-10" />
-                          </span>
+                  </span>
                         </button>
                       </>
                     ) : null}
-                  </div>
+                </div>
                 )
               })}
-            </div>
+              </div>
           </section>
         )}
 
@@ -3154,8 +3156,8 @@ export default function PublicPage() {
                   onItemClick={(image) => setActiveGalleryImage(image)}
                 />
               </div>
-            </div>
-          </section>
+          </div>
+        </section>
         )}
 
         </div>
@@ -3296,7 +3298,7 @@ export default function PublicPage() {
 
         <div className="h-6 md:h-10" />
         {sectionVisibility.map && (
-          <section ref={mapSectionRef} className="w-full space-y-4">
+        <section ref={mapSectionRef} className="w-full space-y-4">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">
@@ -3321,7 +3323,7 @@ export default function PublicPage() {
               referrerPolicy="no-referrer-when-downgrade"
             />
           </div>
-          </section>
+        </section>
         )}
 
         </div>
@@ -3330,26 +3332,26 @@ export default function PublicPage() {
       <footer ref={footerSectionRef} className="w-full">
         <div className="w-full bg-gradient-to-b from-[#0b0b0b] via-[#0b0b0b] to-[#111111] shadow-[0_-30px_70px_rgba(0,0,0,0.5)]">
           <div className="w-full px-6 sm:px-10 lg:px-16 pt-12 pb-24">
-            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6 -mt-4">
-              <div className="flex items-center gap-5">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6 -mt-4">
+            <div className="flex items-center gap-5">
                 {publicFooterLogoVisible && (
                   publicLogo ? (
-                    <div
-                      className={cn(
-                        'h-20 w-20 overflow-hidden border border-border/40 bg-background/60 shadow-inner',
+                <div
+                  className={cn(
+                    'h-20 w-20 overflow-hidden border border-border/40 bg-background/60 shadow-inner',
                         footerLogoDisplayShape === 'circle'
                           ? 'rounded-full'
                           : footerLogoDisplayShape === 'rounded'
                             ? 'rounded-xl'
                             : 'rounded-none'
-                      )}
-                    >
-                      <img src={publicLogo} alt="Logo" className="h-full w-full object-cover" />
-                    </div>
-                  ) : (
-                    <div
-                      className={cn(
-                        'h-20 w-20 border border-border/40 bg-background/60',
+                  )}
+                >
+                  <img src={publicLogo} alt="Logo" className="h-full w-full object-cover" />
+                </div>
+              ) : (
+                <div
+                  className={cn(
+                    'h-20 w-20 border border-border/40 bg-background/60',
                         footerLogoDisplayShape === 'circle'
                           ? 'rounded-full'
                           : footerLogoDisplayShape === 'rounded'
@@ -3385,34 +3387,34 @@ export default function PublicPage() {
                       {footerDisplayName}
                     </p>
                   )}
-                </div>
               </div>
-              <div className="flex flex-wrap gap-4 w-full justify-center sm:justify-end mt-2 sm:mt-0">
-                {[
-                  {
+            </div>
+            <div className="flex flex-wrap gap-4 w-full justify-center sm:justify-end mt-2 sm:mt-0">
+              {[
+                {
                     key: 'telegram',
-                    label: 'Telegram',
-                    value: publicTelegram,
-                    className:
-                      'bg-gradient-to-r from-[#1FA2FF]/90 via-[#12D8FA]/80 to-[#1FA2FF]/90 text-white hover:brightness-110 border border-white/25',
-                    icon: TelegramIcon,
-                  },
-                  {
+                  label: 'Telegram',
+                  value: publicTelegram,
+                  className:
+                    'bg-gradient-to-r from-[#1FA2FF]/90 via-[#12D8FA]/80 to-[#1FA2FF]/90 text-white hover:brightness-110 border border-white/25',
+                  icon: TelegramIcon,
+                },
+                {
                     key: 'viber',
-                    label: 'Viber',
-                    value: publicViber,
-                    className:
-                      'bg-gradient-to-r from-[#7F00FF]/90 to-[#E100FF]/85 text-white hover:brightness-110 border border-white/25',
-                    icon: ViberIcon,
-                  },
-                  {
+                  label: 'Viber',
+                  value: publicViber,
+                  className:
+                    'bg-gradient-to-r from-[#7F00FF]/90 to-[#E100FF]/85 text-white hover:brightness-110 border border-white/25',
+                  icon: ViberIcon,
+                },
+                {
                     key: 'instagram',
-                    label: 'Instagram',
-                    value: publicInstagram,
-                    className:
-                      'bg-gradient-to-r from-[#F58529]/90 via-[#DD2A7B]/85 to-[#515BD4]/90 text-white hover:brightness-110 border border-white/25',
-                    icon: Instagram,
-                  },
+                  label: 'Instagram',
+                  value: publicInstagram,
+                  className:
+                    'bg-gradient-to-r from-[#F58529]/90 via-[#DD2A7B]/85 to-[#515BD4]/90 text-white hover:brightness-110 border border-white/25',
+                  icon: Instagram,
+                },
                   {
                     key: 'facebook',
                     label: 'Facebook',
@@ -3482,24 +3484,24 @@ export default function PublicPage() {
                           </button>
                         )}
                         <a
-                          href={value}
-                          target="_blank"
-                          rel="noreferrer"
-                          className={cn(
-                            'h-12 w-36 rounded-full text-base font-semibold transition inline-flex items-center justify-center gap-2 shadow-[0_10px_24px_rgba(0,0,0,0.28)] backdrop-blur-md',
-                            className
-                          )}
-                        >
+                    href={value}
+                    target="_blank"
+                    rel="noreferrer"
+                    className={cn(
+                      'h-12 w-36 rounded-full text-base font-semibold transition inline-flex items-center justify-center gap-2 shadow-[0_10px_24px_rgba(0,0,0,0.28)] backdrop-blur-md',
+                      className
+                    )}
+                  >
                           <Icon className={iconClass || "h-5 w-5"} />
                           {label || null}
-                        </a>
+                  </a>
                       </div>
                     )
                   })}
-              </div>
             </div>
+          </div>
 
-            <div className="mt-20">
+          <div className="mt-20">
               <div className="flex flex-nowrap items-start justify-between gap-3 sm:gap-4 md:gap-6 text-center">
                 {(
                   [
@@ -3586,7 +3588,7 @@ export default function PublicPage() {
                               <X className="h-3.5 w-3.5" />
                             </button>
                           )}
-                          <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground min-h-[18px]">
+                <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground min-h-[18px]">
                             {item.label}
                           </p>
                           {canEditFooter ? (
@@ -3638,15 +3640,15 @@ export default function PublicPage() {
                               )}
                             </>
                           )}
-                        </div>
+              </div>
                         {index < arr.length - 1 && (
                           <div className="hidden sm:block h-10 w-px shrink-0 bg-primary/30 mx-2 md:mx-4" />
                         )}
-                      </div>
+              </div>
                     )
                   })}
-              </div>
             </div>
+          </div>
           </div>
         </div>
       </footer>

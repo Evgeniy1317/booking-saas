@@ -1379,7 +1379,10 @@ export default function Settings() {
                 variant="default"
                 size="lg"
                 className="rounded-xl h-11 px-6 font-semibold shadow-lg shadow-primary/20 hover:shadow-primary/30 transition-shadow gap-2"
-                onClick={() => navigate('/constructor')}
+                onClick={() => {
+                  const bt = localStorage.getItem('businessType') || ''
+                  navigate(bt === 'massage' ? '/constructor-massage' : '/constructor')
+                }}
               >
                 <PenLine className="h-4 w-4" />
                 Конструктор

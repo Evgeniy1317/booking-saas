@@ -14,6 +14,8 @@ import Settings from './pages/dashboard/Settings'
 import Analytics from './pages/dashboard/Analytics'
 import PublicPage from './pages/PublicPage'
 import ConstructorPage from './pages/ConstructorPage'
+import MassageConstructorPage from './pages/MassageConstructorPage'
+import MassagePreviewPage from './pages/MassagePreviewPage'
 
 function App() {
   return (
@@ -21,6 +23,8 @@ function App() {
       <Routes>
         <Route path="/" element={<Landing />} />
         <Route path="/constructor" element={<ConstructorPage />} />
+        <Route path="/constructor-massage" element={<MassageConstructorPage />} />
+        <Route path="/massage-preview" element={<MassagePreviewPage />} />
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
         <Route path="/dashboard" element={<DashboardLayout />}>

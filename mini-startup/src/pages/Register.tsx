@@ -112,10 +112,10 @@ export default function Register() {
       // TODO: Подключить Supabase позже
       console.log('Register data:', formData)
       
-      // Сохраняем данные в localStorage для использования в админке
       localStorage.setItem('userEmail', formData.email)
       localStorage.setItem('fullName', formData.fullName)
       localStorage.setItem('businessName', formData.businessName)
+      localStorage.setItem('businessType', formData.businessType)
       
       // Симуляция задержки
       await new Promise(resolve => setTimeout(resolve, 1000))

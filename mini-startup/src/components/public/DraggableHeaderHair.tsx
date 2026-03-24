@@ -657,7 +657,7 @@ export default function DraggableHeaderHair({
             rows={Math.max(1, (displayTagline.match(/\n/g)?.length ?? 0) + 1)}
             placeholder="Введите текст (Shift+Enter — новая строка)"
             className={cn(
-              'block resize-none overflow-x-auto overflow-y-auto rounded border-0 bg-transparent py-0.5 text-white/80 placeholder:text-white/40 outline-none focus:ring-2 focus:ring-white/40 focus:ring-offset-0 min-w-[120px] max-w-[90vw] [scrollbar-width:none] [ms-overflow-style:none] [&::-webkit-scrollbar]:hidden',
+              'block resize-none overflow-x-auto overflow-y-auto rounded border-0 bg-transparent py-0.5 text-white/80 placeholder:text-white/40 outline-none focus:ring-2 focus:ring-white/40 focus:ring-offset-0 min-w-[120px] max-w-[90vw] scrollbar-hide',
               taglineSizeClass,
               isTaglineAtCorner ? 'pl-0 pr-1' : 'px-1'
             )}

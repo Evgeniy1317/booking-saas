@@ -69,6 +69,7 @@ import {
   FOOTER_DEFAULT_ADDRESS,
   FOOTER_DEFAULTS_BY_LANG,
 } from '@/lib/hair-theme-defaults'
+import { compressImageForLogo } from '@/lib/compress-image'
 
 /** Дефолтные фото для слотов 1–3 карусели «Галерея работ» — отображаются в сайдбаре и в превью, пока не заданы свои */
 const WORKS_CAROUSEL_DEFAULTS = [worksCarousel1, worksCarousel2, worksCarousel3]
@@ -76,45 +77,6 @@ const WORKS_CAROUSEL_DEFAULTS = [worksCarousel1, worksCarousel2, worksCarousel3]
 const ABOUT_SALON_DEFAULTS = [aboutSalon1, aboutSalon2, aboutSalon3]
 /** Дефолтные фото для блока «Salon photos» (обычные шаблоны) — слоты 1–5 по умолчанию */
 const SALON_PHOTOS_DEFAULTS = [salonPhoto1, salonPhoto2, salonPhoto3, salonPhoto4, salonPhoto5]
-
-/** Сжимает изображение для логотипа, чтобы влезало в localStorage и отображалось (в т.ч. большие картинки из ChatGPT) */
-function compressImageForLogo(dataUrl: string, onDone: (dataUrl: string) => void): void {
-  const MAX_LENGTH = 450000
-  if (dataUrl.length <= MAX_LENGTH) {
-    onDone(dataUrl)
-    return
-  }
-  const img = new Image()
-  img.crossOrigin = 'anonymous'
-  img.onload = () => {
-    const max = 800
-    let w = img.width
-    let h = img.height
-    if (w > max || h > max) {
-      if (w > h) {
-        h = Math.round((h * max) / w)
-        w = max
-      } else {
-        w = Math.round((w * max) / h)
-        h = max
-      }
-    }
-    const canvas = document.createElement('canvas')
-    canvas.width = w
-    canvas.height = h
-    const ctx = canvas.getContext('2d')
-    if (!ctx) {
-      onDone(dataUrl)
-      return
-    }
-    ctx.drawImage(img, 0, 0, w, h)
-    let result = canvas.toDataURL('image/png')
-    if (result.length > MAX_LENGTH) result = canvas.toDataURL('image/jpeg', 0.88)
-    onDone(result)
-  }
-  img.onerror = () => onDone(dataUrl)
-  img.src = dataUrl
-}
 
 const BODY_BACKGROUND_OPTIONS = [
   { id: 'bg-1', type: 'image' as const, url: patternBg },
@@ -1056,7 +1018,7 @@ export default function ConstructorPage() {
               <X className="h-4 w-4" />
             </Button>
           </div>
-          <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-3 flex flex-col gap-4 [scrollbar-width:none] [&::-webkit-scrollbar]:[display:none] min-h-0">
+          <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-3 flex flex-col gap-4 scrollbar-hide min-h-0">
             {panelStage === 'themes' && (
               <>
                 <div className="flex flex-col items-center">
