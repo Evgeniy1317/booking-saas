@@ -68,6 +68,11 @@ export default function MassagePreviewPage() {
       massageGalTitle={d('publicMassageGalTitle') || undefined}
       massageGalSub={d('publicMassageGalSub') || undefined}
       massageGalleryJson={d('publicMassageGalleryJson') || undefined}
+      massageSubsTitle={d('publicMassageSubsTitle') || undefined}
+      massageSubsJson={d('publicMassageSubsJson') || undefined}
+      massageSubsCtaUrl={d('publicMassageSubsCtaUrl') || undefined}
+      massageSubsCtaHidden={d('publicMassageSubsCtaHidden') || undefined}
+      massageSubsHidden={d('publicMassageSubsHidden') || undefined}
     />
   )
 }

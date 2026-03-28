@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
+import { useState, useEffect, useRef, useMemo, useCallback, type MouseEvent } from 'react'
 import { cn } from '@/lib/utils'
 import type { MassageThemeColors } from '@/lib/massage-theme-palette'
 import { resolveMassageThemeColor } from '@/lib/massage-theme-palette'
@@ -64,6 +64,16 @@ interface MassageTemplateProps {
   massageGalTitle?: string
   massageGalSub?: string
   massageGalleryJson?: string
+  /** Блок «Абонементы» */
+  massageSubsTitle?: string
+  /** JSON списка { items: { id, templateIndex }[] } */
+  massageSubsJson?: string
+  /** Ссылка для кнопки «Участвовать в акции» (иначе — onBookNow) */
+  massageSubsCtaUrl?: string
+  /** 'true' — скрыть кнопку акции в карточках */
+  massageSubsCtaHidden?: string
+  /** 'true' — скрыть блок и пункт меню «Абонементы» */
+  massageSubsHidden?: string
 }
 
 const UI: Record<Lang, Record<string, string>> = {
@@ -93,6 +103,7 @@ const UI: Record<Lang, Record<string, string>> = {
     galleryNewSection: 'Новая секция',
     subsTitle: 'НАШИ АБОНЕМЕНТЫ',
     subsCta: 'УЧАСТВОВАТЬ В АКЦИИ →',
+    subsEmptyHint: 'Добавьте абонементы в панели справа.',
     catTitle: 'КАТАЛОГ НАШИХ ТОВАРОВ',
     catDiscount: '% Скидка',
     currency: '$',
@@ -136,6 +147,7 @@ const UI: Record<Lang, Record<string, string>> = {
     galleryNewSection: 'New section',
     subsTitle: 'OUR SUBSCRIPTIONS',
     subsCta: 'JOIN PROMOTION →',
+    subsEmptyHint: 'Add subscriptions in the right panel.',
     catTitle: 'OUR PRODUCT CATALOG',
     catDiscount: '% Off',
     currency: '$',
@@ -179,6 +191,7 @@ const UI: Record<Lang, Record<string, string>> = {
     galleryNewSection: 'Secțiune nouă',
     subsTitle: 'ABONAMENTELE NOASTRE',
     subsCta: 'PARTICIPĂ LA PROMOȚIE →',
+    subsEmptyHint: 'Adăugați abonamente în panoul din dreapta.',
     catTitle: 'CATALOGUL PRODUSELOR NOASTRE',
     catDiscount: '% Reducere',
     currency: 'lei',
@@ -387,6 +400,52 @@ const SUBS: Record<Lang, { title: string; desc: string; pct: string }[]> = {
     { title: 'ABONAMENT 50 ȘEDINȚE', desc: 'Program nelimitat pentru clienți fideli', pct: '50%' },
   ],
 }
+
+export const MASSAGE_SUBSCRIPTION_PRESETS = SUBS
+
+export type MassageSubscriptionItemMerged = {
+  id: string
+  templateIndex: number
+  title?: string
+  desc?: string
+}
+
+export function mergeMassageSubscriptionsFromDraft(lang: Lang, raw?: string): MassageSubscriptionItemMerged[] {
+  const catalog = SUBS[lang] ?? SUBS.ru
+  const defaultItems = (): MassageSubscriptionItemMerged[] =>
+    catalog.map((_, i) => ({ id: `sub-${i}`, templateIndex: i }))
+  if (!raw?.trim()) return defaultItems()
+  try {
+    const parsed = JSON.parse(raw) as { items?: unknown }
+    if (!parsed || !Array.isArray(parsed.items)) return defaultItems()
+    const out: MassageSubscriptionItemMerged[] = []
+    const seenTemplateIndexes = new Set<number>()
+    for (const row of parsed.items) {
+      const r = row as { id?: unknown; templateIndex?: unknown; title?: unknown; desc?: unknown }
+      const id = typeof r.id === 'string' && r.id ? r.id : `sub-${out.length}`
+      const ti =
+        typeof r.templateIndex === 'number' && Number.isFinite(r.templateIndex)
+          ? Math.max(0, Math.min(catalog.length - 1, Math.floor(r.templateIndex)))
+          : 0
+      // Один пресет скидки должен быть только один раз.
+      if (seenTemplateIndexes.has(ti)) continue
+      seenTemplateIndexes.add(ti)
+      const title = typeof r.title === 'string' ? r.title.slice(0, 220) : undefined
+      const desc = typeof r.desc === 'string' ? r.desc.slice(0, 320) : undefined
+      out.push({ id, templateIndex: ti, title, desc })
+    }
+    return out
+  } catch {
+    return defaultItems()
+  }
+}
+
+export function serializeMassageSubscriptionsForDraft(merged: MassageSubscriptionItemMerged[]): string {
+  return JSON.stringify({ items: merged })
+}
+
+export const MASSAGE_SUBSCRIPTION_PRESET_COUNT = SUBS.ru.length
+
 const SUBS_VISIBLE = 3
 
 const PRODUCTS: Record<Lang, { name: string; brand: string; price: number; oldPrice: number; info: string[] }[]> = {
@@ -482,6 +541,7 @@ const MAX_ABOUT_TEXT = 2500
 const MAX_ABOUT_MISSION = 600
 const MAX_GAL_TITLE = 600
 const MAX_GAL_SUB = 400
+const MAX_SUBS_TITLE = 200
 
 function normalizeHeroText(s: string): string {
   return s.replace(/\r\n/g, '\n')
@@ -654,6 +714,11 @@ export default function MassageTemplate({
   massageGalTitle: massageGalTitleProp,
   massageGalSub: massageGalSubProp,
   massageGalleryJson: massageGalleryJsonProp,
+  massageSubsTitle: massageSubsTitleProp,
+  massageSubsJson: massageSubsJsonProp,
+  massageSubsCtaUrl: massageSubsCtaUrlProp,
+  massageSubsCtaHidden: massageSubsCtaHiddenProp,
+  massageSubsHidden: massageSubsHiddenProp,
 }: MassageTemplateProps) {
   const t = UI[lang] ?? UI.ru
   const theme = massageThemeColors
@@ -661,11 +726,11 @@ export default function MassageTemplate({
   const galTitleCol = col('galTitle')
   const galSubCol = col('galSub')
   const galTabActiveCol = col('galTabActive')
+  const subsCtaTextCol = col('subsCtaText')
   const galTabsFallback = GAL_TABS[lang] ?? GAL_TABS.ru
   const logoShapeClass =
     headerLogoShape === 'square' ? 'rounded-none' : headerLogoShape === 'rounded' ? 'rounded-xl' : 'rounded-full'
   const showHeaderLogo = headerLogoVisible !== false && !!headerLogoUrl && headerLogoUrl.length > 0
-  const nav = NAV[lang] ?? NAV.ru
   const displayServices = useMemo(
     () => mergeMassageServicesFromDraft(lang, massageServicesJson),
     [lang, massageServicesJson]
@@ -713,6 +778,53 @@ export default function MassageTemplate({
     [lang, massageGalleryJsonProp]
   )
 
+  const subsCatalog = SUBS[lang] ?? SUBS.ru
+  const displaySubItems = useMemo(
+    () => mergeMassageSubscriptionsFromDraft(lang, massageSubsJsonProp),
+    [lang, massageSubsJsonProp]
+  )
+  const displaySubs = useMemo(
+    () =>
+      displaySubItems.map(item => {
+        const row = subsCatalog[item.templateIndex] ?? subsCatalog[0]
+        return {
+          ...row,
+          id: item.id,
+          templateIndex: item.templateIndex,
+          title: item.title != null ? item.title : row.title,
+          desc: item.desc != null ? item.desc : row.desc,
+        }
+      }),
+    [displaySubItems, subsCatalog]
+  )
+
+  const subsBlockHidden = massageSubsHiddenProp === 'true'
+  const navItems = useMemo(() => {
+    const labels = NAV[lang] ?? NAV.ru
+    const pairs = labels.map((label, i) => ({ label, id: NAV_IDS[i] }))
+    if (subsBlockHidden) return pairs.filter(p => p.id !== 'promos')
+    return pairs
+  }, [lang, subsBlockHidden])
+
+  const removeSubItem = useCallback(
+    (id: string) => {
+      if (!onSaveDraft) return
+      const current = mergeMassageSubscriptionsFromDraft(lang, massageSubsJsonProp)
+      const next = current.filter(row => row.id !== id)
+      onSaveDraft('publicMassageSubsJson', serializeMassageSubscriptionsForDraft(next))
+    },
+    [lang, massageSubsJsonProp, onSaveDraft]
+  )
+  const patchSubItem = useCallback(
+    (index: number, patch: Partial<MassageSubscriptionItemMerged>) => {
+      if (!onSaveDraft) return
+      const current = mergeMassageSubscriptionsFromDraft(lang, massageSubsJsonProp)
+      const next = current.map((row, i) => (i === index ? { ...row, ...patch } : row))
+      onSaveDraft('publicMassageSubsJson', serializeMassageSubscriptionsForDraft(next))
+    },
+    [lang, massageSubsJsonProp, onSaveDraft]
+  )
+
   const removeGallerySection = useCallback(
     (index: number) => {
       if (!onSaveDraft) return
@@ -724,7 +836,6 @@ export default function MassageTemplate({
     [lang, massageGalleryJsonProp, onSaveDraft]
   )
 
-  const subs = SUBS[lang] ?? SUBS.ru
   const products = PRODUCTS[lang] ?? PRODUCTS.ru
   const specs = SPECS[lang] ?? SPECS.ru
 
@@ -750,6 +861,11 @@ export default function MassageTemplate({
     massageGalTitleProp != null && massageGalTitleProp.trim() !== '' ? massageGalTitleProp : t.galTitle
   const galSubDisplay =
     massageGalSubProp != null && massageGalSubProp.trim() !== '' ? massageGalSubProp : t.galSub
+
+  const subsTitleDisplay =
+    massageSubsTitleProp != null && massageSubsTitleProp.trim() !== ''
+      ? massageSubsTitleProp
+      : t.subsTitle
 
   const rootRef = useRef<HTMLDivElement>(null)
   const topBarRef = useRef<HTMLDivElement>(null)
@@ -799,10 +915,18 @@ export default function MassageTemplate({
   const [galSlide, setGalSlide] = useState(galCanScroll ? galTotal : 0)
   const [galSmooth, setGalSmooth] = useState(true)
 
-  const subsTotal = subs.length
+  const subsTotal = displaySubs.length
   const subsCanScroll = subsTotal > SUBS_VISIBLE
   const [subsSlide, setSubsSlide] = useState(subsCanScroll ? subsTotal : 0)
   const [subsSmooth, setSubsSmooth] = useState(true)
+
+  const handleSubsCtaClick = (e: MouseEvent<HTMLButtonElement>) => {
+    e.preventDefault()
+    const url = massageSubsCtaUrlProp?.trim()
+    if (url) window.open(url, '_blank', 'noopener,noreferrer')
+    else onBookNow?.()
+  }
+  const subsCtaHidden = massageSubsCtaHiddenProp === 'true'
 
   const CAT_VISIBLE = 4
   const catTotal = products.length
@@ -862,6 +986,10 @@ export default function MassageTemplate({
   useEffect(() => {
     if (!subsSmooth) requestAnimationFrame(() => requestAnimationFrame(() => setSubsSmooth(true)))
   }, [subsSmooth])
+
+  useEffect(() => {
+    setSubsSlide(subsCanScroll ? subsTotal : 0)
+  }, [subsTotal, subsCanScroll])
 
   useEffect(() => {
     const scrollParent = rootRef.current?.closest('[data-scroll-container]') as HTMLElement | null
@@ -1114,14 +1242,15 @@ export default function MassageTemplate({
         style={{ backgroundColor: col('navBg') }}
       >
         <div className="max-w-7xl mx-auto px-6 flex items-center justify-center gap-8 py-3.5 overflow-x-auto scrollbar-hide">
-          {nav.map((item, i) => (
+          {navItems.map(({ label, id }) => (
             <button
-              key={i}
-              onClick={() => scrollTo(NAV_IDS[i])}
+              key={id}
+              type="button"
+              onClick={() => scrollTo(id)}
               className="whitespace-nowrap text-sm transition-colors font-medium tracking-wide hover:opacity-80"
               style={{ fontFamily: 'inherit', color: col('navLink') }}
             >
-              {item}
+              {label}
             </button>
           ))}
         </div>
@@ -1789,10 +1918,35 @@ export default function MassageTemplate({
       </section>
 
       {/* ============ SUBSCRIPTIONS ============ */}
+      {!subsBlockHidden && (
       <section id="promos" className="py-16 bg-white">
         <div className="max-w-7xl mx-auto px-4">
-          <h2 className="text-3xl md:text-5xl italic font-bold text-[#1a1a1a]">{t.subsTitle}</h2>
+          <h2
+            className={cn(
+              'text-3xl md:text-5xl italic font-bold max-w-4xl',
+              isEditMode && 'border-b border-dashed border-b-pink-300 cursor-text'
+            )}
+            style={{ color: '#1a1a1a' }}
+            contentEditable={!!isEditMode}
+            suppressContentEditableWarning
+            onKeyDown={e => {
+              if (!isEditMode) return
+              if (e.key === 'Enter' && !e.shiftKey) e.preventDefault()
+            }}
+            onInput={e => isEditMode && enforceHeroMaxLength(e.currentTarget, MAX_SUBS_TITLE)}
+            onBlur={e =>
+              isEditMode &&
+              onSaveDraft?.('publicMassageSubsTitle', clipHeroText(e.currentTarget.innerText ?? '', MAX_SUBS_TITLE))
+            }
+          >
+            {subsTitleDisplay}
+          </h2>
           <div className="mt-10 relative">
+            {displaySubs.length === 0 && isEditMode ? (
+              <p className="text-sm text-muted-foreground border border-dashed border-border/60 rounded-2xl p-6 text-center">
+                {t.subsEmptyHint}
+              </p>
+            ) : displaySubs.length === 0 ? null : (
             <div className="overflow-hidden rounded-2xl">
               <div
                 className="flex"
@@ -1802,45 +1956,110 @@ export default function MassageTemplate({
                 }}
                 onTransitionEnd={handleSubsTransEnd}
               >
-                {[...subs, ...subs, ...subs].map((sub, i) => {
-                  const realIdx = i % subs.length
-                  const isPink = realIdx === 0
+                {(subsCanScroll ? [...displaySubs, ...displaySubs, ...displaySubs] : displaySubs).map((sub, i) => {
+                  const realIdx = subsCanScroll ? i % displaySubs.length : i
+                  const isPrimary = realIdx === 0
                   return (
                     <div
-                      key={i}
+                      key={`${sub.id}-${i}`}
                       className="shrink-0 px-2.5"
                       style={{ width: `${100 / SUBS_VISIBLE}%` }}
                     >
                       <div
                         className="rounded-2xl p-6 flex flex-col justify-between relative overflow-hidden h-full min-h-[220px]"
-                        style={{ background: isPink ? `linear-gradient(135deg, ${PINK}, ${PINK_DARK})` : '#2D2D2D' }}
+                        style={{ background: isPrimary ? '#3a3a3a' : '#2D2D2D' }}
                       >
+                        {isEditMode && (
+                          <button
+                            type="button"
+                            className="absolute top-2 right-2 z-20 flex h-8 w-8 items-center justify-center rounded-full border-2 border-red-500 bg-white text-xl font-semibold leading-none text-red-600 shadow-sm hover:bg-red-50 hover:border-red-600 hover:text-red-700"
+                            aria-label={t.svcDeleteCard}
+                            onClick={e => {
+                              e.preventDefault()
+                              e.stopPropagation()
+                              removeSubItem(sub.id)
+                            }}
+                          >
+                            ×
+                          </button>
+                        )}
                         <span
                           className="absolute right-4 bottom-2 font-bold select-none pointer-events-none"
-                          style={{ fontSize: '6rem', lineHeight: 1, opacity: 0.08, color: 'white' }}
+                          style={{
+                            fontSize: '6rem',
+                            lineHeight: 1,
+                            opacity: 0.08,
+                            color: 'white',
+                          }}
                         >
                           {sub.pct}
                         </span>
                         <div className="relative z-10">
-                          <h3 className="text-white italic text-base font-bold tracking-wide">{sub.title}</h3>
-                          <p className="text-white/50 text-xs mt-2" style={{ fontFamily: 'sans-serif' }}>{sub.desc}</p>
+                          <h3
+                            className={cn(
+                              'italic text-base font-bold tracking-wide whitespace-pre-line',
+                              isEditMode && 'border-b border-dashed border-white/40 cursor-text'
+                            )}
+                            style={{ color: 'white' }}
+                            contentEditable={!!isEditMode}
+                            suppressContentEditableWarning
+                            onKeyDown={e => {
+                              if (!isEditMode) return
+                              if (e.key === 'Enter' && !e.shiftKey) e.preventDefault()
+                            }}
+                            onInput={e => isEditMode && enforceHeroMaxLength(e.currentTarget, 220)}
+                            onBlur={e =>
+                              isEditMode &&
+                              patchSubItem(realIdx, { title: clipHeroText(e.currentTarget.innerText ?? '', 220) })
+                            }
+                          >
+                            {sub.title}
+                          </h3>
+                          <p
+                            className={cn(
+                              'text-xs mt-2 whitespace-pre-line',
+                              isEditMode && 'border-b border-dashed border-white/30 cursor-text'
+                            )}
+                            style={{ fontFamily: 'sans-serif', color: 'rgba(255,255,255,0.5)' }}
+                            contentEditable={!!isEditMode}
+                            suppressContentEditableWarning
+                            onKeyDown={e => {
+                              if (!isEditMode) return
+                              if (e.key === 'Enter' && !e.shiftKey) e.preventDefault()
+                            }}
+                            onInput={e => isEditMode && enforceHeroMaxLength(e.currentTarget, 320)}
+                            onBlur={e =>
+                              isEditMode &&
+                              patchSubItem(realIdx, { desc: clipHeroText(e.currentTarget.innerText ?? '', 320) })
+                            }
+                          >
+                            {sub.desc}
+                          </p>
                         </div>
-                        <button
-                          onClick={onBookNow}
-                          className="text-xs font-bold mt-4 relative z-10 text-left hover:underline"
-                          style={{ color: isPink ? 'white' : PINK, fontFamily: 'sans-serif' }}
-                        >
-                          {t.subsCta}
-                        </button>
+                        {!subsCtaHidden && (
+                          <button
+                            type="button"
+                            onClick={handleSubsCtaClick}
+                            className="text-xs font-bold mt-4 relative z-10 text-left hover:underline"
+                            style={{
+                              color: subsCtaTextCol,
+                              fontFamily: 'sans-serif',
+                            }}
+                          >
+                            {t.subsCta}
+                          </button>
+                        )}
                       </div>
                     </div>
                   )
                 })}
               </div>
             </div>
-            {subsCanScroll && (
+            )}
+            {displaySubs.length > 0 && subsCanScroll && (
               <>
                 <button
+                  type="button"
                   className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-3 w-11 h-11 rounded-full flex items-center justify-center transition-colors shadow-md"
                   style={{ background: PINK_LIGHT, color: PINK }}
                   onMouseEnter={e => { e.currentTarget.style.background = PINK; e.currentTarget.style.color = 'white' }}
@@ -1850,6 +2069,7 @@ export default function MassageTemplate({
                   <ChevL />
                 </button>
                 <button
+                  type="button"
                   className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-3 w-11 h-11 rounded-full flex items-center justify-center transition-colors shadow-md"
                   style={{ background: PINK_LIGHT, color: PINK }}
                   onMouseEnter={e => { e.currentTarget.style.background = PINK; e.currentTarget.style.color = 'white' }}
@@ -1863,6 +2083,7 @@ export default function MassageTemplate({
           </div>
         </div>
       </section>
+      )}
 
       {/* ============ CATALOG ============ */}
       <section id="catalog" className="py-20 md:py-28">

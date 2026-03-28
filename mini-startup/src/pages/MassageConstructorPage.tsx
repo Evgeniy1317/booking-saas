@@ -7,6 +7,7 @@ import {
   PanelRightOpen,
   X,
   ChevronLeft,
+  ChevronDown,
   Pencil,
   RotateCcw,
   Undo2,
@@ -27,6 +28,10 @@ import MassageTemplate, {
   MASSAGE_GALLERY_MAX_SECTIONS,
   MASSAGE_GALLERY_PHOTOS_PER_SECTION,
   MASSAGE_GALLERY_TAB_LABEL_MAX,
+  mergeMassageSubscriptionsFromDraft,
+  serializeMassageSubscriptionsForDraft,
+  MASSAGE_SUBSCRIPTION_PRESETS,
+  MASSAGE_SUBSCRIPTION_PRESET_COUNT,
 } from '@/components/public/MassageTemplate'
 import { compressImageForLogo, compressImageForHeroBg } from '@/lib/compress-image'
 import {
@@ -155,6 +160,21 @@ const UI: Record<Lang, Record<string, string>> = {
     colorGalTitle: 'Заголовок',
     colorGalSub: 'Подзаголовок',
     colorGalTabActive: 'Вкладки секций (один цвет)',
+    subsBlockHint:
+      'Заголовок блока редактируйте в превью. Добавляйте абонементы по скидке, ссылку на кнопку — ниже.',
+    subsHideBlock: 'Скрыть блок «Абонементы» на сайте',
+    subsHideCta: 'Скрыть кнопку акции в карточках',
+    subsCtaUrl: 'Ссылка на кнопку акции',
+    subsAddPreset: 'Добавить абонемент',
+    subsPickPlaceholder: 'Выберите вариант (скидка)',
+    subsList: 'Список',
+    subsColorSection: 'Цвета абонементов',
+    colorSubsBlockTitle: 'Заголовок блока',
+    colorSubsCardTitle: 'Карточка — заголовок',
+    colorSubsCardDesc: 'Карточка — подзаголовок',
+    colorSubsCardBgFrom: 'Карточка — фон (старт)',
+    colorSubsCardBgTo: 'Карточка — фон (конец)',
+    colorSubsCtaText: 'Кнопка акции — текст',
   },
   en: {
     constructorTitle: 'Site Constructor',
@@ -237,6 +257,21 @@ const UI: Record<Lang, Record<string, string>> = {
     colorGalTitle: 'Title',
     colorGalSub: 'Subtitle',
     colorGalTabActive: 'Section tabs (one color)',
+    subsBlockHint:
+      'Edit the block title in the preview. Add subscriptions by discount; set the promo button link below.',
+    subsHideBlock: 'Hide the Subscriptions block on the site',
+    subsHideCta: 'Hide promo button in cards',
+    subsCtaUrl: 'Promo button link',
+    subsAddPreset: 'Add subscription',
+    subsPickPlaceholder: 'Choose option (discount)',
+    subsList: 'List',
+    subsColorSection: 'Subscription colors',
+    colorSubsBlockTitle: 'Block title',
+    colorSubsCardTitle: 'Card — title',
+    colorSubsCardDesc: 'Card — subtitle',
+    colorSubsCardBgFrom: 'Card — background (from)',
+    colorSubsCardBgTo: 'Card — background (to)',
+    colorSubsCtaText: 'Promo button — text',
   },
   ro: {
     constructorTitle: 'Constructor site',
@@ -266,6 +301,7 @@ const UI: Record<Lang, Record<string, string>> = {
     heroBgUpload: 'Încarcă fundalul',
     heroBgChange: 'Înlocuiește fundalul',
     removeBg: 'Elimină fundalul',
+    remove: 'Elimină',
     colorTopBar: 'Fundal bară superioară',
     colorNav: 'Fundal meniu navigare',
     colorNavLinks: 'Linkuri meniu',
@@ -311,6 +347,21 @@ const UI: Record<Lang, Record<string, string>> = {
     colorGalTitle: 'Titlu',
     colorGalSub: 'Subtitlu',
     colorGalTabActive: 'File secțiuni (o culoare)',
+    subsBlockHint:
+      'Titlul blocului îl editați în previzualizare. Adăugați abonamente după reducere; linkul butonului — mai jos.',
+    subsHideBlock: 'Ascunde blocul „Abonamente” pe site',
+    subsHideCta: 'Ascunde butonul promoției în carduri',
+    subsCtaUrl: 'Link buton promoție',
+    subsAddPreset: 'Adaugă abonament',
+    subsPickPlaceholder: 'Alegeți varianta (reducere)',
+    subsList: 'Listă',
+    subsColorSection: 'Culori abonamente',
+    colorSubsBlockTitle: 'Titlu bloc',
+    colorSubsCardTitle: 'Card — titlu',
+    colorSubsCardDesc: 'Card — subtitlu',
+    colorSubsCardBgFrom: 'Card — fundal (start)',
+    colorSubsCardBgTo: 'Card — fundal (final)',
+    colorSubsCtaText: 'Buton promoție — text',
   },
 }
 
@@ -386,6 +437,8 @@ export default function MassageConstructorPage() {
   const [highlightBlockId, setHighlightBlockId] = useState<string | null>('header')
   const [poll, setPoll] = useState(0)
   const [undoStack, setUndoStack] = useState<UndoEntry[]>([])
+  const [isSubsPresetOpen, setIsSubsPresetOpen] = useState(false)
+  const subsPresetDropdownRef = useRef<HTMLDivElement | null>(null)
   const siteName = typeof window !== 'undefined' ? (localStorage.getItem('businessName') || '') : ''
 
   const draft = useCallback((key: string) => getMassageDraft(key), [poll]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -596,6 +649,27 @@ export default function MassageConstructorPage() {
     [sLang, setDraft]
   )
 
+  const removeSubItem = useCallback(
+    (id: string) => {
+      const cur = mergeMassageSubscriptionsFromDraft(sLang, getMassageDraft('publicMassageSubsJson'))
+      const next = cur.filter(row => row.id !== id)
+      setDraft('publicMassageSubsJson', serializeMassageSubscriptionsForDraft(next))
+    },
+    [sLang, setDraft]
+  )
+
+  const addSubPreset = useCallback(
+    (templateIndex: number) => {
+      const cur = mergeMassageSubscriptionsFromDraft(sLang, getMassageDraft('publicMassageSubsJson'))
+      if (cur.some(x => x.templateIndex === templateIndex)) return
+      const uniqCount = new Set(cur.map(x => x.templateIndex)).size
+      if (uniqCount >= MASSAGE_SUBSCRIPTION_PRESET_COUNT) return
+      const next = [...cur, { id: `sub-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, templateIndex }]
+      setDraft('publicMassageSubsJson', serializeMassageSubscriptionsForDraft(next))
+    },
+    [sLang, setDraft]
+  )
+
   const hasDrafts = typeof window !== 'undefined' && (() => {
     for (let i = 0; i < localStorage.length; i++) {
       if (localStorage.key(i)?.startsWith(MASSAGE_DRAFT_PREFIX)) return true
@@ -615,6 +689,23 @@ export default function MassageConstructorPage() {
     if (selectedBlockId != null) setSelectedBlockId(null)
     else goBackToThemes()
   }
+
+  useEffect(() => {
+    if (!isSubsPresetOpen) return
+    const onDocDown = (e: MouseEvent) => {
+      if (!subsPresetDropdownRef.current) return
+      const target = e.target as Node | null
+      if (target && !subsPresetDropdownRef.current.contains(target)) {
+        setIsSubsPresetOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', onDocDown)
+    return () => document.removeEventListener('mousedown', onDocDown)
+  }, [isSubsPresetOpen])
+
+  useEffect(() => {
+    if (selectedBlockId !== 'subscriptions') setIsSubsPresetOpen(false)
+  }, [selectedBlockId])
 
   return (
     <div className="h-screen flex flex-col bg-background text-foreground overflow-hidden">
@@ -697,6 +788,11 @@ export default function MassageConstructorPage() {
                       massageGalTitle: draft('publicMassageGalTitle') || undefined,
                       massageGalSub: draft('publicMassageGalSub') || undefined,
                       massageGalleryJson: draft('publicMassageGalleryJson') || undefined,
+                      massageSubsTitle: draft('publicMassageSubsTitle') || undefined,
+                      massageSubsJson: draft('publicMassageSubsJson') || undefined,
+                      massageSubsCtaUrl: draft('publicMassageSubsCtaUrl') || undefined,
+                      massageSubsCtaHidden: draft('publicMassageSubsCtaHidden') || undefined,
+                      massageSubsHidden: draft('publicMassageSubsHidden') || undefined,
                       onSaveDraft: setDraft,
                     }
                   : {})}
@@ -1484,11 +1580,165 @@ export default function MassageConstructorPage() {
                   )
                 })()}
 
+                {selectedBlockId === 'subscriptions' && (() => {
+                  const mergedSubs = mergeMassageSubscriptionsFromDraft(sLang, draft('publicMassageSubsJson'))
+                  const presets = MASSAGE_SUBSCRIPTION_PRESETS[sLang] ?? MASSAGE_SUBSCRIPTION_PRESETS.ru
+                  const availableIdx = Array.from({ length: MASSAGE_SUBSCRIPTION_PRESET_COUNT }, (_, i) => i).filter(
+                    i => !mergedSubs.some(m => m.templateIndex === i)
+                  )
+                  return (
+                    <div className="flex w-full flex-col gap-3">
+                      <p className="text-xs text-muted-foreground leading-relaxed px-1 shrink-0">{s.subsBlockHint}</p>
+                      <label className="flex items-center gap-2 cursor-pointer text-sm shrink-0">
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4 rounded border-border"
+                          checked={draft('publicMassageSubsHidden') === 'true'}
+                          onChange={e => setDraft('publicMassageSubsHidden', e.target.checked ? 'true' : 'false')}
+                        />
+                        <span>{s.subsHideBlock}</span>
+                      </label>
+                      <label className="flex items-center gap-2 cursor-pointer text-sm shrink-0">
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4 rounded border-border"
+                          checked={draft('publicMassageSubsCtaHidden') === 'true'}
+                          onChange={e => setDraft('publicMassageSubsCtaHidden', e.target.checked ? 'true' : 'false')}
+                        />
+                        <span>{s.subsHideCta}</span>
+                      </label>
+                      <div className="space-y-1.5 shrink-0">
+                        <label className="text-xs text-muted-foreground" htmlFor="massage-subs-cta-url">
+                          {s.subsCtaUrl}
+                        </label>
+                        <input
+                          id="massage-subs-cta-url"
+                          type="url"
+                          value={draft('publicMassageSubsCtaUrl')}
+                          onChange={e => setDraft('publicMassageSubsCtaUrl', e.target.value)}
+                          placeholder="https://"
+                          className="w-full px-2.5 py-2 rounded-lg border border-border/50 text-sm bg-card/40 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+                        />
+                      </div>
+                      <div className="space-y-2 shrink-0">
+                        <span className="text-xs font-medium text-foreground">{s.subsAddPreset}</span>
+                        <div ref={subsPresetDropdownRef} className="relative">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="w-full h-10 justify-between bg-card/40 backdrop-blur-sm border-border/50"
+                            onClick={() => setIsSubsPresetOpen(v => !v)}
+                            disabled={availableIdx.length === 0}
+                          >
+                            <span className="text-sm text-muted-foreground">
+                              {availableIdx.length > 0 ? s.subsPickPlaceholder : sLang === 'ru' ? 'Все варианты уже добавлены' : sLang === 'ro' ? 'Toate variantele sunt deja adăugate' : 'All options already added'}
+                            </span>
+                            <ChevronDown className={cn('w-4 h-4 transition-transform', isSubsPresetOpen && 'rotate-180')} />
+                          </Button>
+                          {isSubsPresetOpen && availableIdx.length > 0 && (
+                            <div className="absolute z-50 w-full mt-1 backdrop-blur-2xl bg-card border border-border/50 rounded-lg shadow-2xl shadow-black/20 overflow-hidden">
+                              <div className="py-1 max-h-60 overflow-y-auto scrollbar-hide">
+                                {availableIdx.map(i => (
+                                  <button
+                                    key={i}
+                                    type="button"
+                                    onClick={() => {
+                                      addSubPreset(i)
+                                      setIsSubsPresetOpen(false)
+                                    }}
+                                    className="w-full px-3 py-2.5 text-left text-sm text-foreground hover:bg-accent/10 transition-colors"
+                                  >
+                                    <span className="font-semibold">{presets[i].pct}</span>
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <span className="text-xs font-semibold text-foreground">{s.subsList}</span>
+                        <ul className="space-y-2">
+                          {mergedSubs.map((row) => {
+                            const p = presets[row.templateIndex] ?? presets[0]
+                            return (
+                              <li
+                                key={row.id}
+                                className="flex items-start gap-2 rounded-lg border border-border/50 bg-card/30 p-2.5"
+                              >
+                                <div className="min-w-0 flex-1 text-xs">
+                                  <span className="font-semibold text-foreground">{p.pct}</span>
+                                  <span className="text-muted-foreground"> — </span>
+                                  <span className="text-foreground/90">{p.title}</span>
+                                </div>
+                                <button
+                                  type="button"
+                                  className="group relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-red-500/70 bg-red-500/10 text-red-600 shadow-sm transition-all hover:-translate-y-px hover:border-red-500 hover:bg-red-500/15 hover:shadow-md"
+                                  aria-label={s.remove}
+                                  onClick={() => removeSubItem(row.id)}
+                                >
+                                  <span className="inline-flex h-4 w-4 items-center justify-center text-[18px] font-medium leading-none translate-y-[-0.5px] transition-transform group-hover:scale-105">×</span>
+                                </button>
+                              </li>
+                            )
+                          })}
+                        </ul>
+                      </div>
+                      <section className="space-y-3 shrink-0 border-t border-border/50 pt-3 mt-1">
+                        <h4 className="text-sm font-semibold text-foreground">{s.subsColorSection}</h4>
+                        <MassageColorRow
+                          label={s.colorSubsBlockTitle}
+                          colorKey="subsBlockTitle"
+                          currentId={curColor('subsBlockTitle')}
+                          onPick={setThemeColor}
+                          byDefaultLabel={s.byDefault}
+                        />
+                        <MassageColorRow
+                          label={s.colorSubsCardTitle}
+                          colorKey="subsCardTitle"
+                          currentId={curColor('subsCardTitle')}
+                          onPick={setThemeColor}
+                          byDefaultLabel={s.byDefault}
+                        />
+                        <MassageColorRow
+                          label={s.colorSubsCardDesc}
+                          colorKey="subsCardDesc"
+                          currentId={curColor('subsCardDesc')}
+                          onPick={setThemeColor}
+                          byDefaultLabel={s.byDefault}
+                        />
+                        <MassageColorRow
+                          label={s.colorSubsCardBgFrom}
+                          colorKey="subsCardBgFrom"
+                          currentId={curColor('subsCardBgFrom')}
+                          onPick={setThemeColor}
+                          byDefaultLabel={s.byDefault}
+                        />
+                        <MassageColorRow
+                          label={s.colorSubsCardBgTo}
+                          colorKey="subsCardBgTo"
+                          currentId={curColor('subsCardBgTo')}
+                          onPick={setThemeColor}
+                          byDefaultLabel={s.byDefault}
+                        />
+                        <MassageColorRow
+                          label={s.colorSubsCtaText}
+                          colorKey="subsCtaText"
+                          currentId={curColor('subsCtaText')}
+                          onPick={setThemeColor}
+                          byDefaultLabel={s.byDefault}
+                        />
+                      </section>
+                    </div>
+                  )
+                })()}
+
                 {selectedBlockId !== null &&
                   selectedBlockId !== 'header' &&
                   selectedBlockId !== 'services' &&
                   selectedBlockId !== 'about' &&
-                  selectedBlockId !== 'gallery' && (
+                  selectedBlockId !== 'gallery' &&
+                  selectedBlockId !== 'subscriptions' && (
                   <div className="flex flex-col items-center justify-center gap-4 text-center py-12">
                     <div className="h-14 w-14 rounded-2xl bg-muted/40 border border-border/50 flex items-center justify-center">
                       <svg className="h-6 w-6 text-muted-foreground/50" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>

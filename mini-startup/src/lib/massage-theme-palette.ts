@@ -54,6 +54,20 @@ export type MassageThemeColors = {
   galSub?: string
   /** Галерея: активная вкладка секции (фон и обводка; текст белый) */
   galTabActive?: string
+  /** Абонементы: заголовок блока */
+  subsBlockTitle?: string
+  /** Абонементы: заголовок карточки */
+  subsCardTitle?: string
+  /** Абонементы: подзаголовок карточки */
+  subsCardDesc?: string
+  /** Абонементы: фон карточки — старт градиента */
+  subsCardBgFrom?: string
+  /** Абонементы: фон карточки — конец градиента */
+  subsCardBgTo?: string
+  /** Абонементы: кнопка акции — текст */
+  subsCtaText?: string
+  /** Абонементы: кнопка акции — фон */
+  subsCtaBg?: string
 }
 
 const DEFAULTS: Record<keyof MassageThemeColors, string> = {
@@ -81,6 +95,13 @@ const DEFAULTS: Record<keyof MassageThemeColors, string> = {
   galTitle: '#1a1a1a',
   galSub: '#9ca3af',
   galTabActive: '#D4908F',
+  subsBlockTitle: '#1a1a1a',
+  subsCardTitle: '#FFFFFF',
+  subsCardDesc: '#F6E8EE',
+  subsCardBgFrom: '#C7B7FF',
+  subsCardBgTo: '#FDA4AF',
+  subsCtaText: '#FFFFFF',
+  subsCtaBg: '#D4908F',
 }
 
 function hexFromId(id: string | undefined, fallbackHex: string): string {
@@ -128,6 +149,13 @@ export function parseMassageThemeColors(json: string | undefined): MassageThemeC
       'galTitle',
       'galSub',
       'galTabActive',
+      'subsBlockTitle',
+      'subsCardTitle',
+      'subsCardDesc',
+      'subsCardBgFrom',
+      'subsCardBgTo',
+      'subsCtaText',
+      'subsCtaBg',
     ]
     for (const k of keys) {
       const v = o[k]
