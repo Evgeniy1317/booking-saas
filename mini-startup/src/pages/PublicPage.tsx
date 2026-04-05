@@ -9,11 +9,12 @@ import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { PublicBookingFormSection } from '@/components/public/PublicBookingFormSection'
 import { cn } from '@/lib/utils'
-import heroImage from '@/assets/images/barber-wallpaper-black-marble-background.jpg'
-import cosmetologyHeaderBg from '@/assets/images/constructor-images/загруженное.png'
-import coloringHeaderBg from '@/assets/images/constructor-images/загруженное (1).png'
-import manicureHeaderBg from '@/assets/images/constructor-images/806534aa6d64e65ec11617c1c8df8f8c.jpg'
-import barberHeaderBg from '@/assets/images/constructor-images/загруженное (2).jpg'
+import heroImage from '@/assets/images/constructor-images/pexels-emirhan-sayar-478511598-35844822.jpg'
+import cosmetologyHeaderBg from '@/assets/images/constructor-images/pexels-jose-antonio-otegui-auzmendi-2150489988-31261686.jpg'
+import coloringHeaderBg from '@/assets/images/constructor-images/pexels-jibarofoto-3093007.jpg'
+import manicureHeaderBg from '@/assets/images/constructor-images/pexels-cottonbro-6941115.jpg'
+import barberRegularHeroBg from '@/assets/images/constructor-images/pexels-nickoloui-1319459.jpg'
+import barberPremiumHeroBg from '@/assets/images/constructor-images/загруженное (2).jpg'
 import defaultHeroVideo from '@/assets/images/video/3998440-uhd_4096_2160_25fps.mp4'
 import worksDefault1 from '@/assets/images/premium-images/pexels-pavel-danilyuk-7518736.jpg'
 import worksDefault2 from '@/assets/images/premium-images/pexels-cottonbro-3993451.jpg'
@@ -52,6 +53,8 @@ import {
   FOOTER_DEFAULTS_BY_LANG,
   DEFAULT_WORLD_MAP_EMBED_URL,
 } from '@/lib/hair-theme-defaults'
+import { PREMIUM_PUBLIC_DEFAULTS_BY_LANG } from '@/lib/premium-public-defaults'
+import { isOrdinaryDraggableHeaderTheme } from '@/lib/ordinary-draggable-header-themes'
 
 /** 5 фотографий по умолчанию для блока «Фотографии салона» (интерьеры шаблонов), порядок слотов 1–5 */
 const DEFAULT_WORKS_IMAGES = [
@@ -418,6 +421,7 @@ const uiText = {
     closeModal: 'Закрыть',
     hideSocial: 'Скрыть',
     hideBlock: 'Скрыть блок',
+    language: 'Язык',
   },
   en: {
     addSalonPhoto: 'Add salon photo',
@@ -501,6 +505,7 @@ const uiText = {
     closeModal: 'Close',
     hideSocial: 'Hide',
     hideBlock: 'Hide block',
+    language: 'Language',
   },
   ro: {
     addSalonPhoto: 'Adăugați o fotografie a salonului',
@@ -584,6 +589,7 @@ const uiText = {
     closeModal: 'Închide',
     hideSocial: 'Ascunde',
     hideBlock: 'Ascunde bloc',
+    language: 'Limba',
   },
 } as const
 
@@ -629,6 +635,28 @@ const TikTokIcon = ({ className = '' }: { className?: string }) => (
   </svg>
 )
 
+const CONSTRUCTOR_FULL_PREVIEW_STORAGE = '__constructorFullPreview'
+
+/** Запись из конструктора перед «Полный размер» — подставляем slug/тему и черновики, если query обрезан */
+function readConstructorFullPreviewIntent(urlSlug: string | undefined): {
+  t: number
+  slug: string
+  theme: string
+} | null {
+  if (typeof window === 'undefined' || !urlSlug) return null
+  try {
+    const raw = window.localStorage.getItem(CONSTRUCTOR_FULL_PREVIEW_STORAGE)
+    if (!raw) return null
+    const o = JSON.parse(raw) as { t: number; slug: string; theme: string }
+    if (typeof o.t !== 'number' || typeof o.slug !== 'string' || typeof o.theme !== 'string') return null
+    if (Date.now() - o.t > 20_000) return null
+    if (o.slug !== urlSlug) return null
+    return o
+  } catch {
+    return null
+  }
+}
+
 export default function PublicPage() {
   const [publicLang, setPublicLang] = useState<PublicLang>(() => {
     const stored = localStorage.getItem('publicLang') as PublicLang | null
@@ -660,22 +688,57 @@ export default function PublicPage() {
   const isMobile = useIsMobile()
   const location = useLocation()
   const { slug: urlSlug } = useParams<{ slug: string }>()
+  const fullPreviewIntent = useMemo(() => readConstructorFullPreviewIntent(urlSlug), [urlSlug])
+  const hasFullPreviewIntent = fullPreviewIntent !== null
   const searchParams = new URLSearchParams(location.search)
-  const isPreview = searchParams.get('preview') === '1'
+  /** Свежая метка из конструктора — даёт preview+черновики, даже если в адресе нет ?preview=1 */
+  const isPreview =
+    searchParams.get('preview') === '1' ||
+    hasFullPreviewIntent
   const isEditMode = searchParams.get('edit') === '1'
-  /** Открытие «Полный размер» из конструктора — показывать черновики, не дефолт */
-  const isFullSizeView = searchParams.get('full') === '1'
-  /** Режим демонстрации шаблонов (выбор темы): показываем только дефолтный дизайн, правки не подставляются */
-  const isTemplateDemo = isPreview && !isEditMode && !isFullSizeView
+  /** Полный просмотр из конструктора: допускаем full=1 и full=true (некоторые браузеры/редиректы) */
+  const fullParam = searchParams.get('full')
+  const isFullSizeView = fullParam === '1' || fullParam === 'true'
+  /** Явная метка ссылки из конструктора — черновики, даже если full потерялся в URL */
+  const constructorPreviewDraft = searchParams.get('constructorPreview') === '1'
+  /** Конструктор: кнопка «Мобильный вид» — те же правила, что на телефоне (узкий iframe + этот параметр) */
+  const constructorMobilePreview = searchParams.get('mobileFrame') === '1'
+  const headerLayoutBranchRaw = searchParams.get('headerLayoutBranch')
+  const headerLayoutBranchQuery =
+    headerLayoutBranchRaw === 'mobile' || headerLayoutBranchRaw === 'desktop' ? headerLayoutBranchRaw : null
+  /** Демо только на экране выбора темы: превью без редактирования и без режима черновиков конструктора */
+  const wantsConstructorDrafts =
+    isEditMode ||
+    isFullSizeView ||
+    constructorPreviewDraft ||
+    hasFullPreviewIntent
+  const isTemplateDemo = isPreview && !wantsConstructorDrafts
+  /** Скрыть кнопки превью (полный просмотр / явный constructorPreview) */
+  const hidePreviewChrome =
+    isFullSizeView || constructorPreviewDraft || (hasFullPreviewIntent && !isEditMode)
+  /** Из ссылки «Полный размер» — совпадает с ключами draft_* в конструкторе */
+  const draftSlugParam = searchParams.get('draftSlug')
+  const draftThemeParam = searchParams.get('draftTheme')
   const slugForDrafts =
-    urlSlug || (typeof window !== 'undefined' ? window.localStorage.getItem('publicSlug') : null) || 'salon'
+    fullPreviewIntent?.slug ||
+    (isPreview && draftSlugParam ? draftSlugParam : '') ||
+    urlSlug ||
+    (typeof window !== 'undefined' ? window.localStorage.getItem('publicSlug') : null) ||
+    'salon'
   const readPublic = (key: string, fallback = '') => {
     if (!isPreview) return localStorage.getItem(key) ?? fallback
-    if (key === 'publicHeaderTheme')
+    if (key === 'publicHeaderTheme') {
+      if (fullPreviewIntent?.theme) return fullPreviewIntent.theme
+      if (constructorPreviewDraft && draftThemeParam) return draftThemeParam
       return localStorage.getItem('draft_publicHeaderTheme') ?? localStorage.getItem('publicHeaderTheme') ?? fallback
+    }
     if (isTemplateDemo) return localStorage.getItem(key) ?? fallback
     const themeRaw =
-      localStorage.getItem('draft_publicHeaderTheme') ?? localStorage.getItem('publicHeaderTheme') ?? 'hair'
+      fullPreviewIntent?.theme ||
+      (constructorPreviewDraft && draftThemeParam ? draftThemeParam : null) ||
+      (localStorage.getItem('draft_publicHeaderTheme') ??
+        localStorage.getItem('publicHeaderTheme') ??
+        'hair')
     const theme = themeRaw.startsWith('premium-') ? themeRaw.replace('premium-', '') : themeRaw
     // Адрес и карта для премиум-шаблонов хранятся отдельно (по полному id темы), чтобы не переходить на другие шаблоны
     const addressMapKeys = ['publicFooterAddress', 'publicAddress', 'publicMapEmbedUrl']
@@ -687,7 +750,11 @@ export default function PublicPage() {
   const publicHeaderThemeRaw =
     (themeFromUrl === 'premium-hair' || themeFromUrl === 'premium-barber')
       ? themeFromUrl
-      : (readPublic('publicHeaderTheme') || 'hair')
+      : fullPreviewIntent?.theme
+        ? fullPreviewIntent.theme
+        : constructorPreviewDraft && draftThemeParam
+          ? draftThemeParam
+          : readPublic('publicHeaderTheme') || 'hair'
   const publicHeaderTheme = publicHeaderThemeRaw.startsWith('premium-')
     ? publicHeaderThemeRaw.replace('premium-', '')
     : publicHeaderThemeRaw
@@ -851,6 +918,60 @@ export default function PublicPage() {
     }
   }, [])
 
+  /** Полный размер в отдельной вкладке: те же CSS, что у превью в iframe (ширина title/tagline и т.д.) */
+  useEffect(() => {
+    if (typeof window === 'undefined' || window.self !== window.top) return
+    const parity =
+      isPreview &&
+      wantsConstructorDrafts &&
+      (isFullSizeView || constructorPreviewDraft || hasFullPreviewIntent)
+    if (!parity) return
+    document.documentElement.classList.add('preview-embed')
+    return () => document.documentElement.classList.remove('preview-embed')
+  }, [
+    isPreview,
+    wantsConstructorDrafts,
+    isFullSizeView,
+    constructorPreviewDraft,
+    hasFullPreviewIntent,
+  ])
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return
+    document.documentElement.classList.toggle('constructor-mobile-frame', constructorMobilePreview)
+    return () => document.documentElement.classList.remove('constructor-mobile-frame')
+  }, [constructorMobilePreview])
+
+  /** Полный экран из конструктора в моб. режиме: узкий layout viewport — как в iframe, без отдельного окна (те же @media max-width). */
+  useEffect(() => {
+    if (typeof document === 'undefined') return
+    const meta = document.querySelector('meta[name="viewport"]')
+    if (!meta) return
+    const defaultContent = 'width=device-width, initial-scale=1.0'
+    const narrow =
+      typeof window !== 'undefined' && window.matchMedia('(max-width: 639px)').matches
+    const applyNarrowViewport =
+      isPreview &&
+      (isFullSizeView || constructorPreviewDraft || hasFullPreviewIntent) &&
+      constructorMobilePreview &&
+      !isEditMode &&
+      !narrow
+    const previous = meta.getAttribute('content') || defaultContent
+    if (applyNarrowViewport) {
+      meta.setAttribute('content', 'width=430, initial-scale=1, viewport-fit=cover')
+    }
+    return () => {
+      if (applyNarrowViewport) meta.setAttribute('content', previous)
+    }
+  }, [
+    isPreview,
+    isFullSizeView,
+    constructorPreviewDraft,
+    hasFullPreviewIntent,
+    constructorMobilePreview,
+    isEditMode,
+  ])
+
   useEffect(() => {
     if (typeof document === 'undefined') return
     if (!showSuccess) return
@@ -947,9 +1068,15 @@ export default function PublicPage() {
     ? `draft_publicName_${slugForDrafts}_${publicHeaderTheme}`
     : null
   const draftNameRaw = draftNameKey != null && typeof window !== 'undefined' ? window.localStorage.getItem(draftNameKey) : null
+  /** Название в футере — отдельный черновик от hero (draft_publicName) */
+  const draftFooterNameKey = typeof window !== 'undefined' && !isTemplateDemo && slugForDrafts && publicHeaderTheme
+    ? `draft_publicFooterName_${slugForDrafts}_${publicHeaderTheme}`
+    : null
+  const draftFooterNameRaw =
+    draftFooterNameKey != null && typeof window !== 'undefined' ? window.localStorage.getItem(draftFooterNameKey) : null
   const rawName =
     isTemplateDemo
-      ? FOOTER_DEFAULT_NAME
+      ? t('defaultSalonName')
       : draftNameRaw !== null
         ? draftNameRaw
         : readPublic('publicName') ||
@@ -957,30 +1084,50 @@ export default function PublicPage() {
     localStorage.getItem('businessName') ||
           HAIR_THEME_DEFAULT_NAME ||
     t('defaultSalonName')
+  /** В превью конструктора при наличии черновика имя берём как в storage (в т.ч. пустая строка и 1–2 символа), иначе isJunkHeaderText сбрасывает ввод в дефолт */
   const publicName =
     rawName === '' && isPreview && !isTemplateDemo
       ? ''
-      : isJunkHeaderText(rawName)
-        ? FOOTER_DEFAULT_NAME
-        : rawName
+      : draftNameKey != null && draftNameRaw !== null && isPreview && !isTemplateDemo
+        ? draftNameRaw
+        : isJunkHeaderText(rawName)
+          ? t('defaultSalonName')
+          : rawName
   const useBuiltInTemplate = isTemplateDemo || isPreview
   const storedName = draftNameRaw !== null ? draftNameRaw : readPublic('publicName')
+  const defaultSalonNameSet = useMemo(
+    () =>
+      new Set([
+        FOOTER_DEFAULT_NAME,
+        uiText.ru.defaultSalonName,
+        uiText.en.defaultSalonName,
+        uiText.ro.defaultSalonName,
+        HAIR_THEME_DEFAULT_NAME,
+        'Березницкий',
+      ]),
+    []
+  )
   const isLegacyName = (s: string) => {
     const st = String(s).trim()
     if (!st) return true
-    if (st === FOOTER_DEFAULT_NAME) return true
-    return (
-      st === HAIR_THEME_DEFAULT_NAME ||
-      st === 'Березницкий' ||
-      st === t('defaultSalonName')
-    )
+    if (defaultSalonNameSet.has(st)) return true
+    return st === t('defaultSalonName')
   }
   const headerDisplayName =
     useBuiltInTemplate && storedName !== '' && isLegacyName(storedName || '')
-      ? FOOTER_DEFAULT_NAME
+      ? t('defaultSalonName')
       : publicName
+  const isPremiumTheme = publicHeaderThemeRaw === 'premium-hair' || publicHeaderThemeRaw === 'premium-barber'
+  const premiumPd = PREMIUM_PUBLIC_DEFAULTS_BY_LANG[publicLang] ?? PREMIUM_PUBLIC_DEFAULTS_BY_LANG.ru
   const hairLangDef = HAIR_DEFAULTS_BY_LANG[publicLang] ?? HAIR_DEFAULTS_BY_LANG.ru
   const rawTagline = (() => {
+    if (isPremiumTheme) {
+      if (isTemplateDemo) return premiumPd.tagline
+      if (typeof window === 'undefined') return premiumPd.tagline
+      const taglineKey = `draft_publicTagline_${slugForDrafts}_${publicHeaderTheme}`
+      const stored = window.localStorage.getItem(taglineKey)
+      return stored !== null ? stored : (premiumPd.tagline || t('defaultTagline'))
+    }
     if (isTemplateDemo) return hairLangDef.tagline
     if (typeof window === 'undefined') return hairLangDef.tagline || ''
     const taglineKey = `draft_publicTagline_${slugForDrafts}_${publicHeaderTheme}`
@@ -988,14 +1135,37 @@ export default function PublicPage() {
     return stored !== null ? stored : (hairLangDef.tagline || t('defaultTagline'))
   })()
   const publicTagline = clampHeaderSubtitleLines(
-    rawTagline === '' ? '' : (isJunkHeaderText(rawTagline) ? hairLangDef.tagline : rawTagline)
-  )
-  const footerDisplayName =
-    publicName === ''
+    rawTagline === ''
       ? ''
-      : useBuiltInTemplate && isLegacyName(storedName || '')
-        ? FOOTER_DEFAULT_NAME
-        : (publicName || FOOTER_DEFAULT_NAME)
+      : (isJunkHeaderText(rawTagline) ? (isPremiumTheme ? premiumPd.tagline : hairLangDef.tagline) : rawTagline)
+  )
+  const rawFooterName =
+    isTemplateDemo
+      ? t('defaultSalonName')
+      : draftFooterNameRaw !== null
+        ? draftFooterNameRaw
+        : readPublic('publicFooterName') ||
+          readPublic('publicName') ||
+          (isPreview ? t('defaultSalonName') : null) ||
+          localStorage.getItem('businessName') ||
+          HAIR_THEME_DEFAULT_NAME ||
+          t('defaultSalonName')
+  const footerName =
+    rawFooterName === '' && isPreview && !isTemplateDemo
+      ? ''
+      : draftFooterNameKey != null && draftFooterNameRaw !== null && isPreview && !isTemplateDemo
+        ? draftFooterNameRaw
+        : isJunkHeaderText(rawFooterName)
+          ? t('defaultSalonName')
+          : rawFooterName
+  const storedFooterName =
+    draftFooterNameRaw !== null ? draftFooterNameRaw : readPublic('publicFooterName') || readPublic('publicName')
+  const footerDisplayName =
+    footerName === ''
+      ? ''
+      : useBuiltInTemplate && isLegacyName(storedFooterName || '')
+        ? t('defaultSalonName')
+        : (footerName || t('defaultSalonName'))
   const storedAddress = readPublic('publicFooterAddress')
   const storedHours = readPublic('publicHours')
   const storedDayOff = readPublic('publicDayOff')
@@ -1442,16 +1612,25 @@ export default function PublicPage() {
       : null
   const headerColorsEnabled = publicHeaderTheme !== 'custom'
   /** В режиме редактирования темы «Парикмахерская»: сначала дефолтные цвета; после перетаскивания или смены цвета в сайдбаре — выбранные */
-  const isDraggableHeaderTheme = ['hair', 'barber', 'cosmetology', 'coloring', 'manicure'].includes(publicHeaderTheme)
+  const isDraggableHeaderTheme = isOrdinaryDraggableHeaderTheme(publicHeaderTheme)
   const headerLayoutStorageKey = isDraggableHeaderTheme
     ? `draft_headerLayout${publicHeaderTheme.charAt(0).toUpperCase() + publicHeaderTheme.slice(1)}_v6`
     : 'draft_headerLayoutHair_v6'
+  /** Черновик раскладки: одинаково для hair, barber, cosmetology, coloring, manicure (ключи draft_headerLayout*). */
+  const hasOrdinaryHeaderLayoutDraft =
+    isDraggableHeaderTheme &&
+    typeof window !== 'undefined' &&
+    (!!localStorage.getItem(headerLayoutStorageKey) ||
+      !!localStorage.getItem(`${headerLayoutStorageKey}_mobile`))
+  /** Только hair: старый флаг «трогали хедер» без отдельного ключа темы */
+  const hasHairLegacyCustomizedFlag =
+    publicHeaderTheme === 'hair' &&
+    typeof window !== 'undefined' &&
+    !!localStorage.getItem('draft_headerHairCustomized')
   const hasHeaderCustomized =
-    publicHeaderTheme !== 'hair' ||
-    (typeof window !== 'undefined' &&
-      (!!localStorage.getItem('draft_headerHairCustomized') ||
-        !!localStorage.getItem('draft_headerLayoutHair_v6') ||
-        (publicHeaderTheme !== 'hair' && isDraggableHeaderTheme && !!localStorage.getItem(headerLayoutStorageKey)))) ||
+    (isDraggableHeaderTheme && publicHeaderTheme !== 'hair') ||
+    hasOrdinaryHeaderLayoutDraft ||
+    hasHairLegacyCustomizedFlag ||
     publicHeaderBarberColors.title !== 'default' ||
     publicHeaderBarberColors.subtitle !== 'default' ||
     publicHeaderBarberColors.primary !== 'default' ||
@@ -1468,10 +1647,18 @@ export default function PublicPage() {
     publicHeaderManicureColors.subtitle !== 'default' ||
     publicHeaderManicureColors.primary !== 'default' ||
     publicHeaderManicureColors.secondary !== 'default'
+  /** Полный просмотр / черновики без edit=1: тот же хиро, что после перетаскивания (не статичная сетка) */
+  const showDraggableHeroReadOnly =
+    isDraggableHeaderTheme &&
+    wantsConstructorDrafts &&
+    !isTemplateDemo &&
+    !isEditMode
+  const useDraggableHeaderHero = isDraggableHeaderTheme && (isEditMode || showDraggableHeroReadOnly)
   /** Кастомные цвета на сохранённой странице; в превью — при редактировании или в демо шаблона */
   const applyHeaderColors =
     !isPreview ||
     (isEditMode && !isHeaderDragging && hasHeaderCustomized) ||
+    (showDraggableHeroReadOnly && !isHeaderDragging && hasHeaderCustomized) ||
     (isTemplateDemo && (publicHeaderTheme === 'barber' || publicHeaderTheme === 'cosmetology' || publicHeaderTheme === 'coloring' || publicHeaderTheme === 'manicure'))
   const headerTitleStyle =
     headerColorsEnabled && applyHeaderColors && publicHeaderTheme === 'barber'
@@ -1709,7 +1896,7 @@ export default function PublicPage() {
     : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(googleSearchQuery || googleMapQuery)}&hl=en`
   const heroBackgroundDefault =
     publicHeaderTheme === 'barber'
-      ? barberHeaderBg
+      ? barberRegularHeroBg
       : publicHeaderTheme === 'cosmetology'
         ? cosmetologyHeaderBg
         : publicHeaderTheme === 'coloring'
@@ -2091,64 +2278,7 @@ export default function PublicPage() {
     )
   }
 
-  /** Переводы дефолтных значений контента премиум-шаблона */
-  const premiumDefaults = {
-    ru: {
-      heroSubtitle: 'Твой салон красоты',
-      heroTitle: 'Стрижки, укладки\nи уход в одном месте',
-      tagline: 'Премиум барбершоп и груминг для мужчин',
-      aboutTitle: 'О салоне',
-      aboutDesc: 'Уютное пространство для стрижек, укладок и ухода. Качественный сервис и спокойная атмосфера — без суеты и очередей.',
-      aboutThird: 'Услуги для всей семьи',
-      worksTitle: 'Наши работы',
-      worksSub: 'Вы заслуживаете выглядеть лучше всех',
-      servicesTitle: 'Наши услуги',
-      servicesSub: 'Стрижки, уход и процедуры в уютной атмосфере, работаем с качественными средствами',
-      ctaTitle: 'Готовы выглядеть лучше?',
-      ctaSub: 'Запишитесь на приём',
-      mapLeft: 'Адрес твоего салона',
-      mapRight: 'Город в котором твой салон находится',
-      defaultHours: 'Пн–Сб 9:00–21:00',
-      defaultDayOff: 'Вс — выходной',
-    },
-    en: {
-      heroSubtitle: 'Your beauty salon',
-      heroTitle: 'Haircuts, styling\nand care in one place',
-      tagline: 'Premium barbershop & grooming for men',
-      aboutTitle: 'About the salon',
-      aboutDesc: 'A cozy space for haircuts, styling and care. Quality service and a calm atmosphere — no rush, no queues.',
-      aboutThird: 'Services for the whole family',
-      worksTitle: 'Our works',
-      worksSub: 'You deserve to look your best',
-      servicesTitle: 'Our services',
-      servicesSub: 'Haircuts, care and treatments in a cozy atmosphere, using high-quality products',
-      ctaTitle: 'Ready to look better?',
-      ctaSub: 'Book an appointment',
-      mapLeft: 'Your salon address',
-      mapRight: 'City where your salon is located',
-      defaultHours: 'Mon–Sat 9:00–21:00',
-      defaultDayOff: 'Sun — closed',
-    },
-    ro: {
-      heroSubtitle: 'Salonul tău de frumusețe',
-      heroTitle: 'Tunsori, coafuri\nși îngrijire într-un singur loc',
-      tagline: 'Barbershop premium și grooming pentru bărbați',
-      aboutTitle: 'Despre salon',
-      aboutDesc: 'Un spațiu confortabil pentru tunsori, coafuri și îngrijire. Servicii de calitate într-o atmosferă liniștită.',
-      aboutThird: 'Servicii pentru toată familia',
-      worksTitle: 'Lucrările noastre',
-      worksSub: 'Meritați să arătați cel mai bine',
-      servicesTitle: 'Serviciile noastre',
-      servicesSub: 'Tunsori, îngrijire și proceduri într-o atmosferă confortabilă, cu produse de calitate',
-      ctaTitle: 'Ești gata să arăți mai bine?',
-      ctaSub: 'Programează-te',
-      mapLeft: 'Adresa salonului tău',
-      mapRight: 'Orașul în care se află salonul',
-      defaultHours: 'Lu–Sa 9:00–21:00',
-      defaultDayOff: 'Du — zi liberă',
-    },
-  } as const
-  const pd = premiumDefaults[publicLang] ?? premiumDefaults.ru
+  const pd = PREMIUM_PUBLIC_DEFAULTS_BY_LANG[publicLang] ?? PREMIUM_PUBLIC_DEFAULTS_BY_LANG.ru
 
   if (publicHeaderThemeRaw === 'premium-hair' || publicHeaderThemeRaw === 'premium-barber') {
     const nameDraftKey = typeof window !== 'undefined' && !isTemplateDemo ? `draft_publicName_${slugForDrafts}_${publicHeaderTheme}` : null
@@ -2158,7 +2288,7 @@ export default function PublicPage() {
     const userHeroImage = isTemplateDemo ? null : (readPublic('publicHeroImage') || null)
     // Если пользователь загрузил фото — не показываем дефолтное видео поверх него
     const heroVideoUrl = isTemplateDemo ? defaultHeroVideo : (userHeroVideo || (userHeroImage ? null : defaultHeroVideo))
-    const heroImageUrl = isTemplateDemo ? barberHeaderBg : (userHeroImage || barberHeaderBg)
+    const heroImageUrl = isTemplateDemo ? barberPremiumHeroBg : (userHeroImage || barberPremiumHeroBg)
     const draftHeroSubtitle =
       typeof window !== 'undefined' && !isTemplateDemo
         ? window.localStorage.getItem(`draft_publicPremiumHeroSubtitle_${slugForDrafts}_${publicHeaderTheme}`)
@@ -2406,7 +2536,7 @@ export default function PublicPage() {
             type="button"
             onClick={() => setIsLangOpen((prev) => !prev)}
             className="h-11 w-11 rounded-full bg-black/70 border border-white/20 shadow-lg backdrop-blur-md flex items-center justify-center hover:bg-black/90 transition"
-            aria-label="Language"
+            aria-label={t('language')}
           >
             <img
               src={publicLang === 'ru' ? flagRu : publicLang === 'en' ? flagEn : flagRo}
@@ -2441,8 +2571,22 @@ export default function PublicPage() {
     )
   }
 
+  const showGoToConstructor =
+    isPreview &&
+    !isEditMode &&
+    !hidePreviewChrome &&
+    typeof window !== 'undefined' &&
+    window.top === window
+  const goToConstructorMobile = showGoToConstructor && isMobile
+
   return (
-    <div className="min-h-screen bg-gradient-to-b from-background via-background to-card text-foreground overflow-x-hidden">
+    <div
+      className={cn(
+        'min-h-screen bg-gradient-to-b from-background via-background to-card text-foreground overflow-x-hidden',
+        goToConstructorMobile && 'pt-[calc(3.35rem+env(safe-area-inset-top,0px))]'
+      )}
+      data-salon-theme={publicHeaderTheme}
+    >
       {showLoading && (
         <div className="fixed inset-0 z-[200] flex flex-col items-center justify-center bg-[#0b0b0b]">
           <div className="relative flex items-center justify-center">
@@ -2464,12 +2608,25 @@ export default function PublicPage() {
           backgroundPosition: 'center',
         }}
       >
-      <header ref={headerSectionRef} className="relative overflow-hidden">
+      <header
+        ref={headerSectionRef}
+        className={cn(
+          'relative',
+          isDraggableHeaderTheme
+            ? 'overflow-x-hidden overflow-y-visible sm:overflow-hidden'
+            : 'overflow-hidden'
+        )}
+      >
         <div
           ref={headerEditContainerRef}
           className={cn(
-            'w-full bg-center flex items-start overflow-hidden',
-            'min-h-[520px] sm:min-h-[620px] md:min-h-[760px] lg:min-h-[860px]'
+            'w-full bg-center flex items-start',
+            isDraggableHeaderTheme
+              ? 'overflow-x-hidden overflow-y-visible sm:overflow-hidden'
+              : 'overflow-hidden',
+            'min-h-[520px] sm:min-h-[620px] md:min-h-[760px] lg:min-h-[860px]',
+            isDraggableHeaderTheme &&
+              cn('salon-hair-hero', (isEditMode || showDraggableHeroReadOnly) && 'salon-hair-hero--edit')
           )}
           style={{
             backgroundImage: heroBackgroundUrl
@@ -2525,7 +2682,7 @@ export default function PublicPage() {
                 </div>
               )}
               <h1
-                className="text-5xl sm:text-6xl md:text-7xl lg:text-8xl font-serif font-semibold tracking-[0.08em] text-white drop-shadow-[0_12px_34px_rgba(0,0,0,0.5)] whitespace-nowrap overflow-visible"
+                className="text-5xl sm:text-6xl md:text-7xl lg:text-8xl font-serif font-semibold tracking-[0.08em] text-white drop-shadow-[0_12px_34px_rgba(0,0,0,0.5)] whitespace-pre-wrap break-words overflow-visible"
                 style={headerTitleStyle}
               >
                 {headerDisplayName}
@@ -2542,26 +2699,27 @@ export default function PublicPage() {
           <div
             className={cn(
               'relative z-10 text-white flex',
-              isDraggableHeaderTheme && isEditMode
-                ? 'absolute inset-0'
-                : publicHeaderTheme === 'hair'
-                  ? !isEditMode && HAIR_HEADER_INITIAL_PADDING
-                  : publicHeaderTheme === 'barber'
-                    ? !isEditMode && HAIR_HEADER_INITIAL_PADDING
-                    : publicHeaderTheme === 'cosmetology'
-                      ? !isEditMode && HAIR_HEADER_INITIAL_PADDING
-                      : publicHeaderTheme === 'coloring'
-                        ? !isEditMode && HAIR_HEADER_INITIAL_PADDING
-                        : publicHeaderTheme === 'manicure'
-                          ? !isEditMode && HAIR_HEADER_INITIAL_PADDING
-                          : undefined
+              useDraggableHeaderHero
+                ? cn(
+                    'absolute inset-0',
+                    'salon-hair-hero-edit-wrap',
+                    'salon-hair-hero-content',
+                    'flex flex-col items-center justify-center text-center'
+                  )
+                : isDraggableHeaderTheme && !isEditMode
+                  ? cn(HAIR_HEADER_INITIAL_PADDING, 'salon-hair-hero-content')
+                  : undefined
             )}
           >
-            {isDraggableHeaderTheme && isEditMode ? (
+            {useDraggableHeaderHero ? (
               <DraggableHeaderHair
-                key={publicHeaderTheme}
+                key={`${publicHeaderTheme}-${headerLayoutBranchQuery ?? 'na'}`}
+                readOnly={showDraggableHeroReadOnly}
+                headerLayoutBranch={headerLayoutBranchQuery}
                 layoutStorageKey={headerLayoutStorageKey}
-                defaultLayout={DEFAULT_HEADER_LAYOUT_BY_THEME[publicHeaderTheme]}
+                defaultLayout={
+                  DEFAULT_HEADER_LAYOUT_BY_THEME[publicHeaderTheme] ?? DEFAULT_HEADER_LAYOUT_BY_THEME.hair
+                }
                 headerTheme={publicHeaderTheme}
                 onDragStart={() => setIsHeaderDragging(true)}
                 onDragEnd={() => setIsHeaderDragging(false)}
@@ -2591,6 +2749,8 @@ export default function PublicPage() {
                 onMapClick={() => mapSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
                 bookLabel={t('bookOnline')}
                 mapLabel={t('whereToFindQuestion')}
+                hairTitleFontSizePx={isDraggableHeaderTheme ? hairTitleFontSizePx : undefined}
+                constructorMobilePreview={constructorMobilePreview}
               />
             ) : (
             <div className="w-full text-center">
@@ -2612,7 +2772,7 @@ export default function PublicPage() {
                   )}
                   <h1
                     className={cn(
-                      'w-full text-center font-semibold tracking-[0.08em] text-white drop-shadow-[0_12px_34px_rgba(0,0,0,0.5)] whitespace-nowrap overflow-visible max-w-[90%] mx-auto',
+                      'w-full text-center font-semibold tracking-[0.08em] text-white drop-shadow-[0_12px_34px_rgba(0,0,0,0.5)] whitespace-pre-wrap break-words overflow-visible max-w-[90%] mx-auto',
                       publicHeaderTheme === 'barber'
                         ? 'font-barber-title'
                         : publicHeaderTheme === 'cosmetology'
@@ -2625,9 +2785,8 @@ export default function PublicPage() {
                   </h1>
                   <p
                     className={cn(
-                      'mt-3 sm:mt-4 text-base sm:text-lg md:text-2xl text-white/80 inline-block',
-                      'text-center mx-auto',
-                      'whitespace-pre leading-[1.35] overflow-visible'
+                      'mt-3 sm:mt-4 text-base sm:text-lg md:text-2xl text-white/80 text-center mx-auto block w-full',
+                      'max-w-[min(100%,calc(100vw-1.5rem))] px-2 whitespace-pre-wrap break-words leading-[1.35]'
                     )}
                     style={headerSubtitleStyle}
                   >
@@ -2652,7 +2811,7 @@ export default function PublicPage() {
                   )}
                   <h1
                       className={cn(
-                      'w-full text-center font-semibold tracking-[0.08em] text-white drop-shadow-[0_12px_34px_rgba(0,0,0,0.5)] whitespace-nowrap overflow-visible max-w-[90%] mx-auto',
+                      'w-full text-center font-semibold tracking-[0.08em] text-white drop-shadow-[0_12px_34px_rgba(0,0,0,0.5)] whitespace-pre-wrap break-words overflow-visible max-w-[90%] mx-auto',
                       publicHeaderTheme === 'coloring'
                         ? 'font-coloring-title'
                         : publicHeaderTheme === 'manicure'
@@ -2665,9 +2824,8 @@ export default function PublicPage() {
                   </h1>
                   <p
                     className={cn(
-                      'mt-3 sm:mt-4 text-base sm:text-lg md:text-2xl text-white/80 inline-block',
-                      'text-center mx-auto',
-                      'whitespace-pre leading-[1.35] overflow-visible'
+                      'mt-3 sm:mt-4 text-base sm:text-lg md:text-2xl text-white/80 text-center mx-auto block w-full',
+                      'max-w-[min(100%,calc(100vw-1.5rem))] px-2 whitespace-pre-wrap break-words leading-[1.35]'
                     )}
                     style={headerSubtitleStyle}
                   >
@@ -2706,7 +2864,7 @@ export default function PublicPage() {
                       {publicHeaderLogoPlacement !== 'corner-left-title' && (
                         <h1
                           className={cn(
-                            'text-5xl sm:text-6xl md:text-8xl lg:text-9xl font-serif font-semibold tracking-[0.08em] text-white drop-shadow-[0_12px_34px_rgba(0,0,0,0.5)] whitespace-nowrap overflow-visible',
+                            'text-5xl sm:text-6xl md:text-8xl lg:text-9xl font-serif font-semibold tracking-[0.08em] text-white drop-shadow-[0_12px_34px_rgba(0,0,0,0.5)] whitespace-pre-wrap break-words overflow-visible',
                             publicHeaderLogoPlacement === 'left'
                               ? 'text-left w-auto'
                               : 'text-center w-full'
@@ -2734,7 +2892,10 @@ export default function PublicPage() {
                     </div>
                       )}
                       <h1
-                        className="w-full text-center font-serif font-semibold tracking-[0.08em] text-white drop-shadow-[0_12px_34px_rgba(0,0,0,0.5)] whitespace-nowrap overflow-visible max-w-[90%] mx-auto"
+                        className={cn(
+                          'w-full text-center font-serif font-semibold tracking-[0.08em] text-white drop-shadow-[0_12px_34px_rgba(0,0,0,0.5)] overflow-visible max-w-[90%] mx-auto whitespace-pre-wrap break-words',
+                          isDraggableHeaderTheme && 'salon-hair-mobile-title'
+                        )}
                         style={{ ...headerTitleStyle, fontSize: `${hairTitleFontSizePx}px` }}
                       >
                         {headerDisplayName}
@@ -2743,9 +2904,10 @@ export default function PublicPage() {
                   )}
                   <p
                         className={cn(
-                      'mt-3 sm:mt-4 text-base sm:text-lg md:text-2xl text-white/80 inline-block',
-                      'text-center mx-auto',
-                      'whitespace-pre leading-[1.35] overflow-visible'
+                      'mt-3 sm:mt-4 text-base sm:text-lg md:text-2xl text-white/80 text-center mx-auto',
+                      isDraggableHeaderTheme
+                        ? 'salon-hair-hero-tagline block w-full max-w-[min(100%,calc(100vw-1.5rem))] px-2 whitespace-pre-wrap break-words leading-[1.35]'
+                        : 'inline-block max-w-[min(100%,calc(100vw-1.5rem))] px-2 whitespace-pre-wrap break-words leading-[1.35]'
                     )}
                     style={headerSubtitleStyle}
                   >
@@ -2753,11 +2915,12 @@ export default function PublicPage() {
                   </p>
                 </>
               )}
-              {(publicHeaderTheme === 'hair' || publicHeaderTheme === 'cosmetology' || publicHeaderTheme === 'custom' || publicHeaderTheme === 'barber' || publicHeaderTheme === 'coloring' || publicHeaderTheme === 'manicure') && (
+              {(isDraggableHeaderTheme || publicHeaderTheme === 'custom') && (
                 <div
                         className={cn(
                     'flex flex-col sm:flex-row gap-4 sm:gap-6 mt-6 sm:mt-10',
-                    'justify-center'
+                    'justify-center',
+                    isDraggableHeaderTheme && 'salon-hair-cta-row'
                   )}
                 >
                   <Button
@@ -2839,7 +3002,12 @@ export default function PublicPage() {
       </header>
       <div className="h-20 sm:h-24 md:h-28 bg-gradient-to-b from-black/70 via-black/40 to-transparent" />
 
-      <main className="w-full py-8 sm:py-10 md:py-12 pb-16 sm:pb-20 md:pb-12 space-y-8 sm:space-y-10">
+      <main
+        className={cn(
+          'w-full py-8 sm:py-10 md:py-12 pb-16 sm:pb-20 md:pb-12 space-y-8 sm:space-y-10',
+          isDraggableHeaderTheme && 'salon-hair-main'
+        )}
+      >
         {sectionVisibility.gallery && (
           <section ref={gallerySectionRef} className="w-full px-3 sm:px-4 md:px-5 lg:px-6">
             <div className="w-full mb-3 sm:mb-4 md:mb-5 lg:mb-6">
@@ -3329,9 +3497,9 @@ export default function PublicPage() {
         </div>
       </main>
       </div>
-      <footer ref={footerSectionRef} className="w-full">
+      <footer ref={footerSectionRef} className={cn('w-full', isDraggableHeaderTheme && 'salon-hair-footer-root')}>
         <div className="w-full bg-gradient-to-b from-[#0b0b0b] via-[#0b0b0b] to-[#111111] shadow-[0_-30px_70px_rgba(0,0,0,0.5)]">
-          <div className="w-full px-6 sm:px-10 lg:px-16 pt-12 pb-24">
+          <div className="w-full px-6 sm:px-10 lg:px-16 pt-12 pb-24 salon-hair-footer-inner">
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6 -mt-4">
             <div className="flex items-center gap-5">
                 {publicFooterLogoVisible && (
@@ -3369,21 +3537,41 @@ export default function PublicPage() {
                       onChange={(e) => {
                         const v = e.target.value
                         if (typeof window !== 'undefined') {
-                          const prev = window.localStorage.getItem(`draft_publicName_${slugForDrafts}_${publicHeaderTheme}`) ?? window.localStorage.getItem('publicName') ?? ''
+                          const footerDraftKey = `draft_publicFooterName_${slugForDrafts}_${publicHeaderTheme}`
+                          const prev =
+                            window.localStorage.getItem(footerDraftKey) ??
+                            window.localStorage.getItem('publicFooterName') ??
+                            window.localStorage.getItem('publicName') ??
+                            ''
                           try {
-                            window.parent?.postMessage?.({ type: 'constructorUndoPush', key: 'publicName', value: prev || null, themeId: publicHeaderTheme }, '*')
+                            window.parent?.postMessage?.(
+                              { type: 'constructorUndoPush', key: 'publicFooterName', value: prev || null, themeId: publicHeaderTheme },
+                              '*'
+                            )
                           } catch { /* ignore */ }
-                          window.localStorage.setItem(`draft_publicName_${slugForDrafts}_${publicHeaderTheme}`, v)
+                          window.localStorage.setItem(footerDraftKey, v)
                           window.localStorage.setItem(`constructorHasUserEdits_${publicHeaderTheme}`, '1')
                           draftVersionTrigger()
                         }
                       }}
-                      className="w-full min-w-0 text-3xl md:text-4xl font-display font-semibold text-foreground bg-transparent border-b border-transparent hover:border-border/50 focus:border-primary focus:outline-none focus:ring-0"
+                      className={cn(
+                        'w-full min-w-0 text-3xl md:text-4xl font-display font-semibold text-foreground bg-transparent border-b border-transparent hover:border-border/50 focus:border-primary focus:outline-none focus:ring-0',
+                        isDraggableHeaderTheme && 'salon-hair-footer-name-input'
+                      )}
                       placeholder={FOOTER_DEFAULT_NAME}
-                      style={{ minWidth: `${Math.min(40, Math.max(16, (footerDisplayName?.length || 0) + 2))}ch` }}
+                      style={{
+                        minWidth: `${Math.min(40, Math.max(16, (footerDisplayName?.length || 0) + 2))}ch`,
+                      }}
                     />
                   ) : (
-                    <p className="text-3xl md:text-4xl font-display font-semibold text-foreground whitespace-nowrap overflow-hidden max-w-[420px]">
+                    <p
+                      className={cn(
+                        'text-3xl md:text-4xl font-display font-semibold text-foreground',
+                        isDraggableHeaderTheme
+                          ? 'salon-hair-footer-name max-w-full whitespace-pre-wrap break-words'
+                          : 'max-w-[420px] overflow-hidden whitespace-nowrap'
+                      )}
+                    >
                       {footerDisplayName}
                     </p>
                   )}
@@ -3501,8 +3689,8 @@ export default function PublicPage() {
             </div>
           </div>
 
-          <div className="mt-20">
-              <div className="flex flex-nowrap items-start justify-between gap-3 sm:gap-4 md:gap-6 text-center">
+          <div className="mt-20 salon-hair-footer-contacts-wrap">
+              <div className="salon-footer-contact-row flex flex-nowrap items-start justify-between gap-3 sm:gap-4 md:gap-6 text-center">
                 {(
                   [
                     footerVisibility.address && {
@@ -3652,6 +3840,8 @@ export default function PublicPage() {
           </div>
         </div>
       </footer>
+      {!hidePreviewChrome && (
+        <>
       <div
         className={cn(
           "fixed top-4 left-4 z-50 sm:hidden transition-opacity duration-300",
@@ -3663,7 +3853,7 @@ export default function PublicPage() {
             type="button"
             onClick={() => setIsLangOpen((prev) => !prev)}
             className="h-10 w-10 rounded-full bg-background/80 text-foreground border border-border/40 shadow-lg backdrop-blur-md flex items-center justify-center hover:bg-background/90 transition"
-            aria-label="Language"
+            aria-label={t('language')}
           >
             <img
               src={publicLang === 'ru' ? flagRu : publicLang === 'en' ? flagEn : flagRo}
@@ -3700,7 +3890,7 @@ export default function PublicPage() {
             type="button"
             onClick={() => setIsLangOpen((prev) => !prev)}
             className="h-11 w-11 rounded-full bg-background/80 text-foreground border border-border/40 shadow-lg backdrop-blur-md flex items-center justify-center hover:bg-background/90 transition"
-            aria-label="Language"
+            aria-label={t('language')}
           >
             <img
               src={publicLang === 'ru' ? flagRu : publicLang === 'en' ? flagEn : flagRo}
@@ -3731,11 +3921,23 @@ export default function PublicPage() {
           )}
         </div>
       </div>
-      {isPreview && !isEditMode && typeof window !== 'undefined' && window.top === window && (
-        <div className="fixed bottom-6 right-6 z-[100]">
+        </>
+      )}
+      {showGoToConstructor && (
+        <div
+          className={cn(
+            'fixed z-[10050]',
+            isMobile
+              ? 'left-0 right-0 top-0 flex justify-center border-b border-border/40 bg-background/95 px-3 py-2.5 shadow-sm backdrop-blur-md supports-[backdrop-filter]:bg-background/85 pt-[max(0.5rem,env(safe-area-inset-top))]'
+              : 'bottom-6 right-6'
+          )}
+        >
           <Link
             to="/constructor"
-            className="inline-flex items-center gap-2 px-4 py-3 rounded-xl bg-primary text-primary-foreground font-semibold shadow-lg hover:bg-primary/90 transition-colors"
+            className={cn(
+              'inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 font-semibold text-primary-foreground shadow-lg transition-colors hover:bg-primary/90',
+              isMobile ? 'w-full max-w-md text-sm' : 'text-base sm:py-3'
+            )}
           >
             {t('goToConstructor')}
           </Link>

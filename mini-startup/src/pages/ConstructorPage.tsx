@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback, Component, type ReactNode } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo, Component, type ReactNode } from 'react'
 import { flushSync } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 
@@ -32,7 +32,7 @@ class ConstructorErrorBoundary extends Component<
     return this.props.children
   }
 }
-import { PanelRightOpen, Save, ArrowLeft, Maximize2, X, ChevronLeft, Pencil, RotateCcw, Plus, Video, ImageIcon } from 'lucide-react'
+import { PanelRightOpen, Save, ArrowLeft, Maximize2, X, ChevronLeft, Pencil, RotateCcw, Plus, Video, ImageIcon, Smartphone, Monitor } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { flushDraftsToPublic } from '@/lib/constructor-save'
@@ -97,6 +97,30 @@ const HEADER_LAYOUT_KEY_BY_THEME: Record<string, string> = {
   coloring: 'draft_headerLayoutColoring_v6',
   manicure: 'draft_headerLayoutManicure_v6',
 }
+
+/** Какую ветку localStorage (*_v6 vs *_mobile) подставить в «Полный размер», если last-branch ещё не сохраняли */
+function inferHeaderLayoutBranchForFullSize(themeId: string, previewMobileFrame: boolean): 'mobile' | 'desktop' | null {
+  if (typeof window === 'undefined') return null
+  if (themeId.startsWith('premium-')) return null
+  const tid = themeStorageId(themeId)
+  const storageBase = HEADER_LAYOUT_KEY_BY_THEME[tid]
+  if (!storageBase) return null
+  try {
+    const saved = window.localStorage.getItem(`constructorLastHeaderLayoutBranch_${tid}`)
+    if (saved === 'mobile' || saved === 'desktop') return saved
+    const mob = window.localStorage.getItem(`${storageBase}_mobile`)
+    const desk = window.localStorage.getItem(storageBase)
+    const hasMob = mob != null && mob !== ''
+    const hasDesk = desk != null && desk !== ''
+    if (hasMob && !hasDesk) return 'mobile'
+    if (hasDesk && !hasMob) return 'desktop'
+    if (hasMob && hasDesk) return previewMobileFrame ? 'mobile' : 'desktop'
+  } catch {
+    return null
+  }
+  return null
+}
+
 /** Флаг по теме: пользователь вносил правки в эту тему — показываем «Мой сайт» и не сбрасываем при переключении */
 const CONSTRUCTOR_HAS_USER_EDITS_PREFIX = 'constructorHasUserEdits_'
 
@@ -120,6 +144,7 @@ function themeHasEdits(themeId: string): boolean {
   }
   const layoutKey = HEADER_LAYOUT_KEY_BY_THEME[tid]
   if (layoutKey && window.localStorage.getItem(layoutKey)) return true
+  if (layoutKey && window.localStorage.getItem(`${layoutKey}_mobile`)) return true
   return false
 }
 
@@ -139,7 +164,10 @@ function clearThemeDrafts(themeId: string, slug?: string): void {
   }
   keysToRemove.forEach((k) => window.localStorage.removeItem(k))
   const layoutKey = HEADER_LAYOUT_KEY_BY_THEME[id]
-  if (layoutKey) window.localStorage.removeItem(layoutKey)
+  if (layoutKey) {
+    window.localStorage.removeItem(layoutKey)
+    window.localStorage.removeItem(`${layoutKey}_mobile`)
+  }
   if (id === 'hair') {
     window.localStorage.removeItem(HEADER_LAYOUT_HAIR_KEY)
     window.localStorage.removeItem(HEADER_HAIR_PADDING_KEY)
@@ -205,7 +233,7 @@ const SIDEBAR_UI: Record<SidebarLang, Record<string, string>> = {
     bgStyle: 'Стиль фона страницы', restoreDesign: 'Вернуть изначальный дизайн', undoLast: 'Вернуть назад',
     designAlready: 'Изначальный дизайн уже используется', undoToDesign: 'Вернуть к изначальному дизайну шаблона',
     restoreHeader: 'Вернуть шапку к изначальному расположению', noUndo: 'Нет изменений для отмены', undoLastChange: 'Отменить последнее изменение',
-    editThisTheme: 'Редактировать эту тему', fullSize: 'Полный размер', save: 'Сохранить', saving: 'Сохранение...', saved: 'Сохранено ✓',
+    editThisTheme: 'Редактировать эту тему', fullSize: 'Полный размер', mobilePreview: 'Мобильный вид', webPreview: 'Веб-версия', save: 'Сохранить', saving: 'Сохранение...', saved: 'Сохранено ✓',
     premiumTemplates: 'Премиум шаблоны', standardTemplates: 'Стандартные шаблоны',
     deleteMySite: 'Удалить изменения?', deleteMySiteDesc: 'Вы точно хотите удалить последние изменения в этом шаблоне?',
     back: 'Назад', eraseBtn: 'Стереть', mySite: 'Мой сайт', editDesc: 'Перейдите к этому блоку в превью и редактируйте его там.',
@@ -274,7 +302,7 @@ const SIDEBAR_UI: Record<SidebarLang, Record<string, string>> = {
     bgStyle: 'Page background style', restoreDesign: 'Restore original design', undoLast: 'Undo last',
     designAlready: 'Original design is already in use', undoToDesign: 'Restore template original design',
     restoreHeader: 'Restore header to original layout', noUndo: 'No changes to undo', undoLastChange: 'Undo last change',
-    editThisTheme: 'Edit this theme', fullSize: 'Full size', save: 'Save', saving: 'Saving...', saved: 'Saved ✓',
+    editThisTheme: 'Edit this theme', fullSize: 'Full size', mobilePreview: 'Mobile view', webPreview: 'Web version', save: 'Save', saving: 'Saving...', saved: 'Saved ✓',
     premiumTemplates: 'Premium templates', standardTemplates: 'Standard templates',
     deleteMySite: 'Delete changes?', deleteMySiteDesc: 'Are you sure you want to delete the latest changes in this template?',
     back: 'Back', eraseBtn: 'Erase', mySite: 'My site', editDesc: 'Go to this block in preview and edit it there.',
@@ -343,7 +371,7 @@ const SIDEBAR_UI: Record<SidebarLang, Record<string, string>> = {
     bgStyle: 'Stil fundal pagină', restoreDesign: 'Restaurează designul original', undoLast: 'Anulează',
     designAlready: 'Designul original este deja folosit', undoToDesign: 'Restaurează designul original al șablonului',
     restoreHeader: 'Restaurează antetul la aspectul original', noUndo: 'Nicio modificare de anulat', undoLastChange: 'Anulează ultima modificare',
-    editThisTheme: 'Editează această temă', fullSize: 'Dimensiune completă', save: 'Salvează', saving: 'Salvare...', saved: 'Salvat ✓',
+    editThisTheme: 'Editează această temă', fullSize: 'Dimensiune completă', mobilePreview: 'Vizualizare mobilă', webPreview: 'Versiune web', save: 'Salvează', saving: 'Salvare...', saved: 'Salvat ✓',
     premiumTemplates: 'Șabloane premium', standardTemplates: 'Șabloane standard',
     deleteMySite: 'Ștergeți modificările?', deleteMySiteDesc: 'Sunteți sigur că doriți să ștergeți ultimele modificări din acest șablon?',
     back: 'Înapoi', eraseBtn: 'Șterge', mySite: 'Site-ul meu', editDesc: 'Navigați la acest bloc în previzualizare și editați-l acolo.',
@@ -514,6 +542,41 @@ export default function ConstructorPage() {
   const [isAddressFocused, setIsAddressFocused] = useState(false)
   const addressRef = useRef<HTMLDivElement | null>(null)
   const iframeRef = useRef<HTMLIFrameElement>(null)
+  const CONSTRUCTOR_MOBILE_PREVIEW_KEY = 'constructorPreviewMobile'
+  const [previewMobileFrame, setPreviewMobileFrame] = useState(() => {
+    if (typeof window === 'undefined') return false
+    try {
+      return sessionStorage.getItem(CONSTRUCTOR_MOBILE_PREVIEW_KEY) === '1'
+    } catch {
+      return false
+    }
+  })
+  const setPreviewMobileFramePersist = useCallback((next: boolean) => {
+    setPreviewMobileFrame(next)
+    try {
+      sessionStorage.setItem(CONSTRUCTOR_MOBILE_PREVIEW_KEY, next ? '1' : '0')
+    } catch {
+      /* noop */
+    }
+  }, [])
+
+  /** Узкое окно (телефон, F12 device) — кнопка «Мобильный вид» не нужна, уже мобильная ширина */
+  const [constructorShellNarrow, setConstructorShellNarrow] = useState(() =>
+    typeof window !== 'undefined' ? window.matchMedia('(max-width: 639px)').matches : false
+  )
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const mq = window.matchMedia('(max-width: 639px)')
+    const apply = () => setConstructorShellNarrow(mq.matches)
+    mq.addEventListener('change', apply)
+    return () => mq.removeEventListener('change', apply)
+  }, [])
+
+  /** Реальное узкое окно: выключаем режим 390px — превью и так на всю ширину */
+  useEffect(() => {
+    if (!constructorShellNarrow || !previewMobileFrame) return
+    setPreviewMobileFramePersist(false)
+  }, [constructorShellNarrow, previewMobileFrame, setPreviewMobileFramePersist])
 
   useEffect(() => {
     if (panelStage !== 'edit') return
@@ -684,8 +747,15 @@ export default function ConstructorPage() {
     })()
   const hasHeaderDesignOverride =
     typeof window !== 'undefined' &&
-    (!!localStorage.getItem(HEADER_LAYOUT_HAIR_KEY) ||
-      !!localStorage.getItem(HEADER_HAIR_PADDING_KEY))
+    (() => {
+      const tid = themeStorageId(currentHeaderTheme)
+      const layoutKey = HEADER_LAYOUT_KEY_BY_THEME[tid]
+      if (layoutKey) {
+        if (localStorage.getItem(layoutKey) || localStorage.getItem(`${layoutKey}_mobile`)) return true
+      }
+      if (tid === 'hair' && localStorage.getItem(HEADER_HAIR_PADDING_KEY)) return true
+      return false
+    })()
 
   /** Сбрасывает правки только для одной темы (шаблон темы не меняется). */
   const hairDef = HAIR_DEFAULTS_BY_LANG[sLang] ?? HAIR_DEFAULTS_BY_LANG.ru
@@ -698,6 +768,7 @@ export default function ConstructorPage() {
     if (valueToStore === 'hair') {
       const footerDef = FOOTER_DEFAULTS_BY_LANG[sLang] ?? FOOTER_DEFAULTS_BY_LANG.ru
       window.localStorage.setItem(`draft_publicName_${slug}_hair`, footerDef.name)
+      window.localStorage.setItem(`draft_publicFooterName_${slug}_hair`, footerDef.name)
       window.localStorage.setItem(`draft_publicTagline_${slug}_hair`, hairDef.tagline)
       window.localStorage.setItem(`draft_publicBookingTitle_${slug}_hair`, hairDef.bookingTitle)
       window.localStorage.setItem(`draft_publicBookingSubtitle_${slug}_hair`, hairDef.bookingSub)
@@ -712,6 +783,7 @@ export default function ConstructorPage() {
     clearThemeDrafts('hair', slug)
     const footerDef = FOOTER_DEFAULTS_BY_LANG[sLang] ?? FOOTER_DEFAULTS_BY_LANG.ru
     localStorage.setItem(`draft_publicName_${slug}_hair`, footerDef.name)
+    localStorage.setItem(`draft_publicFooterName_${slug}_hair`, footerDef.name)
     localStorage.setItem(`draft_publicTagline_${slug}_hair`, hairDef.tagline)
     localStorage.setItem(`draft_publicBookingTitle_${slug}_hair`, hairDef.bookingTitle)
     localStorage.setItem(`draft_publicBookingSubtitle_${slug}_hair`, hairDef.bookingSub)
@@ -796,12 +868,70 @@ export default function ConstructorPage() {
   }
 
   const slug = typeof window !== 'undefined' ? (localStorage.getItem('publicSlug') || 'salon') : 'salon'
-  const previewUrl = panelStage === 'edit' ? `/b/${slug}?preview=1&edit=1` : `/b/${slug}?preview=1`
-  /** В полном размере — без режима редактирования (без рамок и полосок), с последними изменениями из localStorage (full=1 чтобы подставлялись черновики, не дефолт) */
-  const openFullSize = () => {
-    const fullViewUrl = `/b/${slug}?preview=1&full=1&_=${Date.now()}`
-    window.open(fullViewUrl, '_blank', 'noopener,noreferrer')
-  }
+  /** Query iframe превью (с edit в режиме блоков). */
+  const previewParams = useMemo(() => {
+    const q = new URLSearchParams()
+    q.set('preview', '1')
+    if (panelStage === 'edit') q.set('edit', '1')
+    if (previewMobileFrame) q.set('mobileFrame', '1')
+    return q
+  }, [panelStage, previewMobileFrame])
+  const previewUrl = useMemo(() => `/b/${slug}?${previewParams.toString()}`, [slug, previewParams])
+  /** «Полный размер»: новая вкладка, черновики, без редактирования (без edit=1). mobileFrame сохраняет ветку *_mobile. На странице включается узкий viewport для моб. адаптива — см. PublicPage. */
+  const fullSizePreviewParams = useMemo(() => {
+    const q = new URLSearchParams()
+    q.set('preview', '1')
+    q.set('full', '1')
+    q.set('constructorPreview', '1')
+    if (previewMobileFrame) q.set('mobileFrame', '1')
+    return q
+  }, [previewMobileFrame])
+  const openFullSize = useCallback(() => {
+    const th =
+      typeof window !== 'undefined'
+        ? window.localStorage.getItem('draft_publicHeaderTheme') ??
+          window.localStorage.getItem('publicHeaderTheme') ??
+          selectedThemeId ??
+          'hair'
+        : 'hair'
+    try {
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem(
+          '__constructorFullPreview',
+          JSON.stringify({ t: Date.now(), slug, theme: th })
+        )
+      }
+    } catch {
+      /* ignore */
+    }
+    const q = new URLSearchParams(fullSizePreviewParams.toString())
+    q.set('_', String(Date.now()))
+    if (typeof window !== 'undefined') {
+      q.set('draftSlug', slug)
+      q.set('draftTheme', th)
+      /* Та же ветка *_v6 / *_v6_mobile, что при перетаскивании в превью (ширина iframe ≠ ширина вкладки) */
+      if (!th.startsWith('premium-')) {
+        try {
+          const branch = inferHeaderLayoutBranchForFullSize(th, previewMobileFrame)
+          if (branch) q.set('headerLayoutBranch', branch)
+        } catch {
+          /* ignore */
+        }
+      }
+    }
+    const fullViewUrl = `/b/${slug}?${q.toString()}`
+    const narrow =
+      typeof window !== 'undefined' && window.matchMedia('(max-width: 639px)').matches
+    if (narrow) {
+      window.location.assign(fullViewUrl)
+    } else {
+      window.open(fullViewUrl, '_blank')
+    }
+  }, [slug, fullSizePreviewParams, selectedThemeId, previewMobileFrame])
+
+  /** В режиме «Все блоки»: на десктопе в моб. превью кнопку скрываем (дублирует iframe). На телефоне — показываем чистый полный экран с черновиками. */
+  const showFullSizeButton =
+    panelStage === 'edit' && (constructorShellNarrow || !previewMobileFrame)
 
   /** Только переключить тему в превью, не сбрасывая правки (чтобы «Мой сайт» / последние правки сохранялись). Сохраняем полный id (premium-hair и т.д.), чтобы PublicPage показывал премиум-шаблон. */
   const selectTheme = (themeId: string) => {
@@ -898,7 +1028,7 @@ export default function ConstructorPage() {
 
   return (
     <ConstructorErrorBoundary>
-    <div className="h-screen flex flex-col bg-background text-foreground overflow-hidden">
+    <div className="h-screen flex flex-col bg-background text-foreground overflow-hidden" data-constructor-shell="true">
       {/* Модальное окно подтверждения «Стереть» */}
       {showClearConfirmModal && (
         <div
@@ -946,9 +1076,9 @@ export default function ConstructorPage() {
       )}
 
       {/* Шапка конструктора */}
-      <header className="border-b border-border/50 bg-card/40 backdrop-blur supports-[backdrop-filter]:bg-card/60 shrink-0">
-        <div className="flex items-center justify-between gap-4 px-4 py-3 sm:px-6">
-          <div className="flex items-center gap-3">
+      <header className="relative z-50 border-b border-border/50 bg-card/40 backdrop-blur supports-[backdrop-filter]:bg-card/60 shrink-0">
+        <div className="flex items-center justify-between gap-2 px-3 py-2.5 sm:gap-4 sm:px-6 sm:py-3">
+          <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
             <Button
               variant="ghost"
               size="icon"
@@ -958,16 +1088,45 @@ export default function ConstructorPage() {
             >
               <ArrowLeft className="h-5 w-5" />
             </Button>
-            <h1 className="text-lg font-semibold truncate">{s.constructorTitle}</h1>
+            <h1 className="truncate text-base font-semibold sm:text-lg">{s.constructorTitle}</h1>
           </div>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" className="gap-2" onClick={openFullSize}>
-              <Maximize2 className="h-4 w-4" />
-              {s.fullSize}
-            </Button>
-            <Button onClick={handleSave} className="gap-2">
-              <Save className="h-4 w-4" />
-              {saved ? s.saved : s.save}
+          <div className="constructor-header-actions flex shrink-0 items-center gap-1 sm:gap-2">
+            {previewMobileFrame ? (
+              <Button
+                type="button"
+                variant="outline"
+                className="gap-1.5 px-2 sm:gap-2 sm:px-3 bg-primary/10 border-primary/35"
+                onClick={() => setPreviewMobileFramePersist(false)}
+                aria-label={s.webPreview}
+                title={s.webPreview}
+              >
+                <Monitor className="h-4 w-4 shrink-0" />
+                <span className="constructor-btn-text hidden sm:inline">{s.webPreview}</span>
+              </Button>
+            ) : (
+              !constructorShellNarrow && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="gap-1.5 px-2 sm:gap-2 sm:px-3"
+                  onClick={() => setPreviewMobileFramePersist(true)}
+                  aria-label={s.mobilePreview}
+                  title={s.mobilePreview}
+                >
+                  <Smartphone className="h-4 w-4 shrink-0" />
+                  <span className="constructor-btn-text hidden sm:inline">{s.mobilePreview}</span>
+                </Button>
+              )
+            )}
+            {showFullSizeButton && (
+              <Button variant="outline" className="gap-1.5 px-2 sm:gap-2 sm:px-3" onClick={openFullSize}>
+                <Maximize2 className="h-4 w-4 shrink-0" />
+                <span className="constructor-btn-text hidden sm:inline">{s.fullSize}</span>
+              </Button>
+            )}
+            <Button onClick={handleSave} className="gap-1.5 px-2 sm:gap-2 sm:px-3">
+              <Save className="h-4 w-4 shrink-0" />
+              <span className="constructor-btn-text hidden sm:inline">{saved ? s.saved : s.save}</span>
             </Button>
             <Button
               variant="outline"
@@ -985,9 +1144,20 @@ export default function ConstructorPage() {
       {/* Основная область: превью на всю ширину, панель поверх справа */}
       <main className="flex-1 min-h-0 min-w-0 flex flex-col overflow-hidden relative">
         {/* Превью на всю область */}
-        <div className="flex-1 min-w-0 min-h-0 flex flex-col p-4 overflow-hidden">
-          <div className="flex-1 min-w-0 min-h-0 rounded-xl border border-border/50 bg-card/20 overflow-hidden shadow-inner relative">
+        <div
+          className={cn(
+            'flex-1 min-w-0 min-h-0 flex flex-col p-4 overflow-hidden',
+            previewMobileFrame && 'items-center bg-muted/25'
+          )}
+        >
+          <div
+            className={cn(
+              'flex-1 min-w-0 min-h-0 rounded-xl border border-border/50 bg-card/20 overflow-hidden shadow-inner relative w-full',
+              previewMobileFrame && 'max-w-[390px] ring-1 ring-border/50 shadow-xl'
+            )}
+          >
             <iframe
+              key={previewUrl}
               ref={iframeRef}
               title={s.fullSize}
               src={previewUrl}
@@ -997,11 +1167,13 @@ export default function ConstructorPage() {
           </div>
         </div>
 
-        {/* Боковая панель справа — поверх превью */}
+        {/* Боковая панель — на мобильных почти на всю ширину, снизу не до края экрана (max-height) */}
         <div
           className={cn(
-            'absolute top-4 right-4 bottom-4 z-30 w-[280px] border border-border/50 rounded-xl bg-card/95 backdrop-blur shadow-xl flex flex-col overflow-hidden transition-[transform] duration-300 ease-out',
-            sideOpen ? 'translate-x-0' : 'translate-x-[calc(100%+1rem)]'
+            'absolute z-40 flex flex-col overflow-hidden border border-border/50 bg-card/95 shadow-xl backdrop-blur transition-[transform] duration-300 ease-out max-sm:left-3 max-sm:right-3 max-sm:top-2 max-sm:max-h-[min(520px,72vh)] max-sm:w-auto max-sm:rounded-xl sm:bottom-4 sm:left-auto sm:right-4 sm:top-4 sm:z-30 sm:w-[280px] sm:max-h-none',
+            sideOpen
+              ? 'translate-x-0'
+              : 'max-sm:translate-x-[calc(100%+2.5rem)] sm:translate-x-[calc(100%+1rem)]'
           )}
         >
           <div className="flex items-center justify-between gap-2 px-3 py-2.5 border-b border-border/40 shrink-0">
@@ -2530,12 +2702,12 @@ export default function ConstructorPage() {
                     )
                   ) : selectedBlockId === 'footer' ? (
                     <>
-                      <div className="flex items-center gap-2 mb-4 mt-1 w-full">
-                        <span className="flex-1 h-px bg-border/60 min-w-0" />
-                        <h3 className="text-base font-bold text-foreground uppercase tracking-wider px-2 text-center shrink-0">
+                      <div className="flex w-full min-w-0 items-center gap-2 mb-4 mt-1">
+                        <span className="h-px min-w-[10px] flex-1 bg-border/80" aria-hidden />
+                        <h3 className="min-w-0 shrink text-center text-base font-bold uppercase leading-snug tracking-wide text-foreground whitespace-normal [overflow-wrap:anywhere] px-1">
                           {s.footerTitle}
                         </h3>
-                        <span className="flex-1 h-px bg-border/60 min-w-0" />
+                        <span className="h-px min-w-[10px] flex-1 bg-border/80" aria-hidden />
                       </div>
                       <p className="text-sm leading-snug text-muted-foreground text-center py-2 mb-4">
                         {s.footerDesc}

@@ -162,7 +162,7 @@ const PREMIUM_UI = {
     defTagline: 'Barbershop premium și grooming pentru bărbați', defBook: 'Programează-te',
     defHeroSub: 'Salonul tău de frumusețe', defHeroTitle: 'Tunsori, coafuri\nși îngrijire într-un singur loc', defContacts: 'Contacte',
     defAboutTitle: 'Despre salon', defAboutDesc: 'Un spațiu confortabil pentru tunsori, coafuri și îngrijire. Servicii de calitate într-o atmosferă liniștită.', defAboutThird: 'Servicii pentru toată familia',
-    defWorksTitle: 'Lucrările noastre', defWorksSub: 'Meritați să arătați cel mai bine',
+    defWorksTitle: 'Lucrările noastre', defWorksSub: 'Meriți să arăți cel mai bine',
     defServicesTitle: 'Serviciile noastre', defServicesSub: 'Tunsori, îngrijire și proceduri într-o atmosferă confortabilă, cu produse de calitate',
     defCtaTitle: 'Ești gata să arăți mai bine?', defCtaSub: 'Programează-te',
     defMapLeft: 'Adresa salonului tău', defMapRight: 'Orașul în care se află salonul',
@@ -670,7 +670,10 @@ export default function PremiumBarberTemplate(props: PremiumBarberTemplateProps)
   }
 
   return (
-    <div className="min-h-screen bg-[#0b0b0b] text-white overflow-x-hidden font-premium-barber">
+    <div
+      data-premium-template=""
+      className="min-h-screen bg-[#0b0b0b] text-white overflow-x-hidden font-premium-barber"
+    >
       {/* Header: закреплённый; в самом верху — полностью прозрачный, только текст ссылок; при скролле — тёмный фон */}
       <header
         className={cn(
@@ -682,7 +685,7 @@ export default function PremiumBarberTemplate(props: PremiumBarberTemplateProps)
           boxShadow: headerScrolled ? headerShadow : 'none',
         }}
       >
-        <div className="mx-auto flex min-h-14 sm:min-h-16 w-full max-w-[100%] items-center justify-evenly gap-6 sm:gap-10 px-3 sm:px-8 py-2">
+        <div className="premium-header-inner mx-auto flex min-h-14 sm:min-h-16 w-full max-w-[100%] items-center justify-evenly gap-6 sm:gap-10 px-3 sm:px-8 py-2">
           {headerLinks.left.map(({ label, href }) => (
             <a
               key={href}
@@ -759,7 +762,7 @@ export default function PremiumBarberTemplate(props: PremiumBarberTemplateProps)
           />
         ) : null}
         <div className="absolute inset-0 bg-black/50" />
-        <div className="relative z-10 w-full max-w-2xl text-left pl-5 sm:pl-10 md:pl-16 lg:pl-24">
+        <div className="premium-hero-content relative z-10 w-full max-w-2xl text-left pl-5 sm:pl-10 md:pl-16 lg:pl-24">
           {isEditMode && onSaveDraft ? (
             <input
               type="text"
@@ -1005,7 +1008,10 @@ export default function PremiumBarberTemplate(props: PremiumBarberTemplateProps)
             >
               <ChevronLeft className="h-5 w-5 text-white" />
             </button>
-            <div className="flex h-[420px] items-center justify-center gap-4 sm:h-[520px] sm:gap-6" style={{ minWidth: 640 }}>
+            <div
+              className="premium-works-carousel-track flex h-[420px] items-center justify-center gap-4 sm:h-[520px] sm:gap-6"
+              style={{ minWidth: 640 }}
+            >
               <div className="h-60 w-36 shrink-0 overflow-hidden rounded-lg bg-gray-800 sm:h-72 sm:w-44">
                 <div key={(galleryIndex - 1 + galleryLen) % galleryLen} className="gallery-photo-fade-in h-full w-full">
                   <img
@@ -1446,8 +1452,8 @@ export default function PremiumBarberTemplate(props: PremiumBarberTemplateProps)
       <footer id="footer" ref={sectionRefs?.footer as React.RefObject<HTMLElement> | undefined} className="w-full">
         <div className="w-full bg-gradient-to-b from-[#0b0b0b] via-[#0b0b0b] to-[#111111] shadow-[0_-30px_70px_rgba(0,0,0,0.5)]">
           <div className="w-full px-6 sm:px-10 lg:px-16 pt-12 pb-24">
-            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6 -mt-4">
-              <div className="flex items-center gap-5 min-w-0">
+            <div className="premium-footer-top flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6 -mt-4">
+              <div className="premium-footer-brand flex items-center gap-5 min-w-0">
                 {footerLogoVisible && (
                   footerLogo ? (
                     <div className="relative shrink-0">
@@ -1720,7 +1726,7 @@ export default function PremiumBarberTemplate(props: PremiumBarberTemplateProps)
             </div>
 
             <div className="mt-20">
-              <div className="flex flex-nowrap items-start justify-center gap-3 sm:gap-4 md:gap-6 text-center">
+              <div className="premium-footer-contacts flex flex-nowrap items-start justify-center gap-3 sm:gap-4 md:gap-6 text-center">
                 {[
                   footerVis.address && {
                     id: 'address' as const,

@@ -1,0 +1,10 @@
+/**
+ * Мобильный адаптив — страница конструктора (доп. правки).
+ * Основная вёрстка — Tailwind в ConstructorPage.
+ */
+
+@media (max-width: 639px) {
+  [data-constructor-shell='true'] > header {
+    z-index: 50;
+  }
+}

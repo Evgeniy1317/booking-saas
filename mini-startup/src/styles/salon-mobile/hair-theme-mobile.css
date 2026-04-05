@@ -1,0 +1,232 @@
+/**
+ * Мобильный адаптив — обычные шаблоны с перетаскиваемым хедером (hair, barber, cosmetology, coloring, manicure).
+ * Область: корень PublicPage с data-salon-theme из этого списка (включая футер).
+ * Десктоп (sm+) не трогаем — только max-width: 639px.
+ */
+
+@media (max-width: 639px) {
+  /* ——— Hero: не обрезать описание (overflow был hidden на header/hero) ——— */
+  /* Перебиваем Tailwind min-h-[520px] на корне — в шаблоне компактнее, как превью «мобильный вид» */
+  :is([data-salon-theme='hair'], [data-salon-theme='barber'], [data-salon-theme='cosmetology'], [data-salon-theme='coloring'], [data-salon-theme='manicure']) header .salon-hair-hero {
+    min-height: min(70svh, 480px) !important;
+    overflow-x: hidden;
+    overflow-y: visible;
+    padding-bottom: 1.5rem;
+  }
+
+  :is([data-salon-theme='hair'], [data-salon-theme='barber'], [data-salon-theme='cosmetology'], [data-salon-theme='coloring'], [data-salon-theme='manicure']) .salon-hair-hero-content {
+    padding-top: min(26vw, 6.5rem) !important;
+    padding-bottom: 2.5rem;
+    padding-left: max(0.75rem, env(safe-area-inset-left, 0px));
+    padding-right: max(0.75rem, env(safe-area-inset-right, 0px));
+  }
+
+  :is([data-salon-theme='hair'], [data-salon-theme='barber'], [data-salon-theme='cosmetology'], [data-salon-theme='coloring'], [data-salon-theme='manicure']) .salon-hair-hero-tagline {
+    hyphens: auto;
+    -webkit-hyphens: auto;
+  }
+
+  :is([data-salon-theme='hair'], [data-salon-theme='barber'], [data-salon-theme='cosmetology'], [data-salon-theme='coloring'], [data-salon-theme='manicure']) header .salon-hair-tagline-field {
+    max-width: calc(100vw - 2rem) !important;
+    width: min(100%, calc(100vw - 2rem)) !important;
+    box-sizing: border-box;
+    white-space: pre-wrap !important;
+    overflow-wrap: break-word;
+    word-break: break-word;
+  }
+
+  :is([data-salon-theme='hair'], [data-salon-theme='barber'], [data-salon-theme='cosmetology'], [data-salon-theme='coloring'], [data-salon-theme='manicure']) .salon-hair-mobile-title {
+    white-space: pre-wrap !important;
+    overflow-wrap: anywhere;
+    line-height: 1.12;
+    max-width: 100%;
+    padding-left: 0.25rem;
+    padding-right: 0.25rem;
+    font-size: clamp(1.35rem, 5.2vw, 2.35rem) !important;
+  }
+
+  :is([data-salon-theme='hair'], [data-salon-theme='barber'], [data-salon-theme='cosmetology'], [data-salon-theme='coloring'], [data-salon-theme='manicure']) .salon-hair-hero-content > p {
+    max-width: 100%;
+    padding-left: 0.25rem;
+    padding-right: 0.25rem;
+    font-size: 0.95rem;
+    line-height: 1.4;
+  }
+
+  :is([data-salon-theme='hair'], [data-salon-theme='barber'], [data-salon-theme='cosmetology'], [data-salon-theme='coloring'], [data-salon-theme='manicure']) .salon-hair-cta-row {
+    gap: 0.75rem;
+    width: 100%;
+    max-width: 22rem;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  :is([data-salon-theme='hair'], [data-salon-theme='barber'], [data-salon-theme='cosmetology'], [data-salon-theme='coloring'], [data-salon-theme='manicure']) .salon-hair-cta-row button {
+    min-height: 3rem;
+  }
+
+  /* Разрыв между хиро и контентом страницы */
+  :is([data-salon-theme='hair'], [data-salon-theme='barber'], [data-salon-theme='cosmetology'], [data-salon-theme='coloring'], [data-salon-theme='manicure']) header + .h-20 {
+    height: 2.5rem;
+  }
+
+  /* Основной блок: воздух снизу перед футером */
+  :is([data-salon-theme='hair'], [data-salon-theme='barber'], [data-salon-theme='cosmetology'], [data-salon-theme='coloring'], [data-salon-theme='manicure']) main.salon-hair-main {
+    padding-bottom: 2.75rem;
+  }
+
+  /* ——— Футер: не «слипается» с контентом, контакты — колонка, не четыре колонки в ряд ——— */
+  :is([data-salon-theme='hair'], [data-salon-theme='barber'], [data-salon-theme='cosmetology'], [data-salon-theme='coloring'], [data-salon-theme='manicure']) footer.salon-hair-footer-root {
+    margin-top: 0.5rem;
+  }
+
+  :is([data-salon-theme='hair'], [data-salon-theme='barber'], [data-salon-theme='cosmetology'], [data-salon-theme='coloring'], [data-salon-theme='manicure']) footer .salon-hair-footer-inner {
+    padding-top: 2rem;
+    padding-bottom: max(5rem, env(safe-area-inset-bottom, 0px));
+  }
+
+  :is([data-salon-theme='hair'], [data-salon-theme='barber'], [data-salon-theme='cosmetology'], [data-salon-theme='coloring'], [data-salon-theme='manicure']) footer .salon-hair-footer-contacts-wrap {
+    margin-top: 2.5rem;
+  }
+
+  :is([data-salon-theme='hair'], [data-salon-theme='barber'], [data-salon-theme='cosmetology'], [data-salon-theme='coloring'], [data-salon-theme='manicure']) footer .salon-footer-contact-row {
+    flex-direction: column;
+    flex-wrap: nowrap;
+    align-items: stretch;
+    gap: 1.35rem;
+    text-align: left;
+  }
+
+  :is([data-salon-theme='hair'], [data-salon-theme='barber'], [data-salon-theme='cosmetology'], [data-salon-theme='coloring'], [data-salon-theme='manicure']) footer .salon-footer-contact-row > div {
+    flex: none !important;
+    width: 100%;
+    max-width: 100%;
+    justify-content: flex-start !important;
+  }
+
+  :is([data-salon-theme='hair'], [data-salon-theme='barber'], [data-salon-theme='cosmetology'], [data-salon-theme='coloring'], [data-salon-theme='manicure']) footer .salon-footer-contact-row > div > div {
+    align-items: flex-start !important;
+    width: 100%;
+  }
+
+  :is([data-salon-theme='hair'], [data-salon-theme='barber'], [data-salon-theme='cosmetology'], [data-salon-theme='coloring'], [data-salon-theme='manicure']) footer .salon-footer-contact-row p.text-xs {
+    text-align: left;
+  }
+
+  :is([data-salon-theme='hair'], [data-salon-theme='barber'], [data-salon-theme='cosmetology'], [data-salon-theme='coloring'], [data-salon-theme='manicure']) footer .salon-footer-contact-row input,
+  :is([data-salon-theme='hair'], [data-salon-theme='barber'], [data-salon-theme='cosmetology'], [data-salon-theme='coloring'], [data-salon-theme='manicure']) footer .salon-footer-contact-row p.text-foreground {
+    text-align: left !important;
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: unset !important;
+    word-break: break-word;
+  }
+
+  :is([data-salon-theme='hair'], [data-salon-theme='barber'], [data-salon-theme='cosmetology'], [data-salon-theme='coloring'], [data-salon-theme='manicure']) footer .salon-hair-footer-name {
+    overflow: visible !important;
+    word-break: break-word;
+  }
+
+  /* ——— Редактирование: hero на всю высоту экрана — помещаются описание и кнопки ——— */
+  :is([data-salon-theme='hair'], [data-salon-theme='barber'], [data-salon-theme='cosmetology'], [data-salon-theme='coloring'], [data-salon-theme='manicure']) header .salon-hair-hero--edit {
+    height: auto;
+    min-height: 100svh !important;
+    min-height: 100dvh !important; /* поверх svh — учёт динамической панели браузера */
+    overflow-x: hidden;
+    overflow-y: visible;
+    padding-bottom: max(1.5rem, env(safe-area-inset-bottom, 0px));
+  }
+
+  :is([data-salon-theme='hair'], [data-salon-theme='barber'], [data-salon-theme='cosmetology'], [data-salon-theme='coloring'], [data-salon-theme='manicure']) header .salon-hair-hero-edit-wrap {
+    overflow: visible !important;
+    min-height: 100%;
+    width: 100%;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    padding-top: min(26vw, 6.5rem) !important;
+    padding-bottom: 2.5rem;
+    padding-left: max(0.75rem, env(safe-area-inset-left, 0px));
+    padding-right: max(0.75rem, env(safe-area-inset-right, 0px));
+    box-sizing: border-box;
+  }
+
+  /* Редактирование: те же отступы, что у .salon-hair-hero-content в шаблоне */
+  :is([data-salon-theme='hair'], [data-salon-theme='barber'], [data-salon-theme='cosmetology'], [data-salon-theme='coloring'], [data-salon-theme='manicure']) header .salon-hair-hero-edit-wrap:has(.salon-hair-mobile-edit-flow) {
+    padding-top: min(26vw, 6.5rem) !important;
+    padding-bottom: max(2rem, env(safe-area-inset-bottom, 0px));
+  }
+
+  /* Поле описания в редакторе — как у абзаца в шаблоне (hero-content > p) */
+  :is([data-salon-theme='hair'], [data-salon-theme='barber'], [data-salon-theme='cosmetology'], [data-salon-theme='coloring'], [data-salon-theme='manicure']) header .salon-hair-mobile-edit-flow .salon-hair-tagline-field {
+    max-width: 100% !important;
+    white-space: pre-wrap !important;
+    overflow-wrap: break-word;
+    word-break: break-word;
+    font-size: 0.95rem;
+    line-height: 1.4;
+    min-height: 3rem;
+    field-sizing: content;
+  }
+
+  :is([data-salon-theme='hair'], [data-salon-theme='barber'], [data-salon-theme='cosmetology'], [data-salon-theme='coloring'], [data-salon-theme='manicure']) header .salon-hair-draggable-root {
+    overflow: visible !important;
+    min-height: 100%;
+  }
+
+  :is([data-salon-theme='hair'], [data-salon-theme='barber'], [data-salon-theme='cosmetology'], [data-salon-theme='coloring'], [data-salon-theme='manicure']) header .salon-hair-draggable-root .pointer-events-auto {
+    overflow: visible;
+  }
+
+  /* Описание: ширина как в шаблоне — без left/transform !important, иначе inline из редактора не двигается */
+  :is([data-salon-theme='hair'], [data-salon-theme='barber'], [data-salon-theme='cosmetology'], [data-salon-theme='coloring'], [data-salon-theme='manicure']) header .salon-hair-tagline-wrap {
+    width: calc(100% - 1rem) !important;
+    max-width: 100% !important;
+  }
+
+  :is([data-salon-theme='hair'], [data-salon-theme='barber'], [data-salon-theme='cosmetology'], [data-salon-theme='coloring'], [data-salon-theme='manicure']) header .salon-hair-tagline-field {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  /* Кнопки в редакторе: только размер — позицию задаёт drag (inline), не фиксируем bottom/left !important */
+  :is([data-salon-theme='hair'], [data-salon-theme='barber'], [data-salon-theme='cosmetology'], [data-salon-theme='coloring'], [data-salon-theme='manicure']) header .salon-hair-edit-cta-primary,
+  :is([data-salon-theme='hair'], [data-salon-theme='barber'], [data-salon-theme='cosmetology'], [data-salon-theme='coloring'], [data-salon-theme='manicure']) header .salon-hair-edit-cta-secondary {
+    width: calc(100% - 1.5rem) !important;
+    max-width: 22rem !important;
+  }
+
+  :is([data-salon-theme='hair'], [data-salon-theme='barber'], [data-salon-theme='cosmetology'], [data-salon-theme='coloring'], [data-salon-theme='manicure']) header .salon-hair-edit-cta-primary button,
+  :is([data-salon-theme='hair'], [data-salon-theme='barber'], [data-salon-theme='cosmetology'], [data-salon-theme='coloring'], [data-salon-theme='manicure']) header .salon-hair-edit-cta-secondary button {
+    width: 100% !important;
+    justify-content: center !important;
+    min-height: 3rem !important;
+  }
+
+  :is([data-salon-theme='hair'], [data-salon-theme='barber'], [data-salon-theme='cosmetology'], [data-salon-theme='coloring'], [data-salon-theme='manicure']) header .salon-hair-title-block {
+    max-width: min(100%, calc(100vw - 1.5rem)) !important;
+  }
+
+  html.preview-embed :is([data-salon-theme='hair'], [data-salon-theme='barber'], [data-salon-theme='cosmetology'], [data-salon-theme='coloring'], [data-salon-theme='manicure']) header .salon-hair-title-block {
+    max-width: 100% !important;
+  }
+
+  /* Текст в iframe превью: ширина от контейнера, не от viewport окна браузера */
+  html.preview-embed :is([data-salon-theme='hair'], [data-salon-theme='barber'], [data-salon-theme='cosmetology'], [data-salon-theme='coloring'], [data-salon-theme='manicure']) header .salon-hair-tagline-field {
+    max-width: 100% !important;
+    width: 100% !important;
+  }
+
+  /* ——— Футер: поле названия в режиме редактирования ——— */
+  :is([data-salon-theme='hair'], [data-salon-theme='barber'], [data-salon-theme='cosmetology'], [data-salon-theme='coloring'], [data-salon-theme='manicure']) footer .salon-hair-footer-name-input {
+    min-width: 0 !important;
+    width: 100% !important;
+    max-width: 100%;
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: unset !important;
+    word-break: break-word;
+    font-size: clamp(1.125rem, 4.2vw, 1.875rem) !important;
+    line-height: 1.2;
+  }
+}

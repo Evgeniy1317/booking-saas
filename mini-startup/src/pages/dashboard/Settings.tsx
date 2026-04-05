@@ -15,7 +15,7 @@ import {
   DEFAULT_WORLD_MAP_EMBED_URL,
   FOOTER_DEFAULT_ADDRESS,
 } from '@/lib/hair-theme-defaults'
-import heroImage from '@/assets/images/barber-wallpaper-black-marble-background.jpg'
+import heroImage from '@/assets/images/constructor-images/pexels-emirhan-sayar-478511598-35844822.jpg'
 import iconMarketing from '@/assets/images/constructor-images/free-icon-marketing-10476712.png'
 
 const slugify = (value: string) => {

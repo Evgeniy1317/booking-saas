@@ -13,6 +13,10 @@
 /* Подзаголовок hero «Твой салон красоты» — жирный выразительный шрифт */
 @import url('https://fonts.googleapis.com/css2?family=Anton&display=swap');
 
+@import './styles/salon-mobile/hair-theme-mobile.css';
+@import './styles/salon-mobile/constructor-mobile.css';
+@import './styles/salon-mobile/premium-template-mobile.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
