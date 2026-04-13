@@ -24,6 +24,7 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import { spaRouteHref } from '@/lib/spa-path'
 import iconMassageClassic from '@/assets/images/massage-images/head-massage.png'
 import iconMassageThai from '@/assets/images/massage-images/bath-towel.png'
 import iconMassageStone from '@/assets/images/massage-images/spa.png'
@@ -123,8 +124,6 @@ const SALON_PREVIEW_BLOCKS = [
   { id: 'map', ru: 'Карта и адрес', en: 'Map & address', ro: 'Hartă și adresă' },
   { id: 'footer', ru: 'Контактная информация', en: 'Contact information', ro: 'Informații de contact' },
 ] as const
-
-const APP_BASE = import.meta.env.BASE_URL
 
 /** Иконки выбора темы: классический, тайский, стоун, антистресс, спортивный */
 const MASSAGE_CONSTRUCTOR_THEMES: { id: MassageOrdinaryTemplateId; icon: string }[] = [
@@ -1041,11 +1040,11 @@ export default function MassageConstructorPage() {
     if (panelStage === 'edit') q.set('edit', '1')
     if (previewMobileFrame) q.set('mobileFrame', '1')
     if (massageSlotActive === PREMIUM_MASSAGE_SLOT) {
-      return `${APP_BASE}massage-preview?${q.toString()}`
+      return spaRouteHref(`/massage-preview?${q.toString()}`)
     }
     q.set('massagePreview', '1')
     q.set('massageSlot', massageSlotActive)
-    return `${APP_BASE}b/${publicSlug}?${q.toString()}`
+    return spaRouteHref(`/b/${publicSlug}?${q.toString()}`)
   }, [panelStage, massageSlotActive, publicSlug, poll, previewMobileFrame])
 
   const previewBlocks =
@@ -1063,7 +1062,7 @@ export default function MassageConstructorPage() {
       q.set('full', '1')
       if (previewMobileFrame) q.set('mobileFrame', '1')
       q.set('_', String(Date.now()))
-      const url = `${APP_BASE}massage-preview?${q.toString()}`
+      const url = spaRouteHref(`/massage-preview?${q.toString()}`)
       if (narrow) window.location.assign(url)
       else window.open(url, '_blank')
       return
@@ -1075,7 +1074,7 @@ export default function MassageConstructorPage() {
     q.set('massageSlot', slot)
     if (previewMobileFrame) q.set('mobileFrame', '1')
     q.set('_', String(Date.now()))
-    const url = `${APP_BASE}b/${publicSlug}?${q.toString()}`
+    const url = spaRouteHref(`/b/${publicSlug}?${q.toString()}`)
     if (narrow) window.location.assign(url)
     else window.open(url, '_blank')
   }, [publicSlug, previewMobileFrame])

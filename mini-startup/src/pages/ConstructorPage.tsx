@@ -62,6 +62,7 @@ import { getEnabledSiteLangs, setEnabledSiteLangs, type PublicSiteLang } from '@
 import { ORDINARY_SALON_LANG_SCOPED_KEYS } from '@/lib/public-lang-scoped-draft-keys'
 import { serializeFooterFieldForStorage } from '@/lib/public-footer-field-empty'
 import { cn } from '@/lib/utils'
+import { spaRouteHref } from '@/lib/spa-path'
 import iconHairCutting from '@/assets/images/constructor-images/free-icon-hair-cutting-4614189.png'
 import iconBarbershop from '@/assets/images/constructor-images/free-icon-barbershop-856572.png'
 import iconFacial from '@/assets/images/constructor-images/free-icon-facial-5732044.png'
@@ -101,8 +102,6 @@ const WORKS_CAROUSEL_DEFAULTS = [worksCarousel1, worksCarousel2, worksCarousel3]
 const ABOUT_SALON_DEFAULTS = [aboutSalon1, aboutSalon2, aboutSalon3]
 /** Дефолтные фото для блока «Salon photos» (обычные шаблоны) — слоты 1–5 по умолчанию */
 const SALON_PHOTOS_DEFAULTS = [salonPhoto1, salonPhoto2, salonPhoto3, salonPhoto4, salonPhoto5]
-
-const APP_BASE = import.meta.env.BASE_URL
 
 const BODY_BACKGROUND_OPTIONS = [
   { id: 'bg-1', type: 'image' as const, url: patternBg },
@@ -994,7 +993,10 @@ export default function ConstructorPage() {
     if (previewMobileFrame) q.set('mobileFrame', '1')
     return q
   }, [panelStage, previewMobileFrame])
-  const previewUrl = useMemo(() => `${APP_BASE}b/${slug}?${previewParams.toString()}`, [slug, previewParams])
+  const previewUrl = useMemo(
+    () => spaRouteHref(`/b/${slug}?${previewParams.toString()}`),
+    [slug, previewParams]
+  )
   /** «Полный размер»: новая вкладка, черновики, без редактирования (без edit=1). mobileFrame сохраняет ветку *_mobile. На странице включается узкий viewport для моб. адаптива — см. PublicPage. */
   const fullSizePreviewParams = useMemo(() => {
     const q = new URLSearchParams()
@@ -1028,7 +1030,7 @@ export default function ConstructorPage() {
       q.set('draftSlug', slug)
       q.set('draftTheme', th)
     }
-    const fullViewUrl = `${APP_BASE}b/${slug}?${q.toString()}`
+    const fullViewUrl = spaRouteHref(`/b/${slug}?${q.toString()}`)
     const narrow =
       typeof window !== 'undefined' && window.matchMedia('(max-width: 639px)').matches
     if (narrow) {

@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
+import { spaAbsoluteUrl, spaRouteHref } from '@/lib/spa-path'
 import { useLanguage } from '@/contexts/LanguageContext'
 import {
   HAIR_THEME_DEFAULT_BOOKING_TITLE,
@@ -977,12 +978,10 @@ export default function Settings() {
   const publicSlug = slugify(publicPage.name || business.name || 'salon')
   const publicUrl = `yoursite.com/b/${publicSlug}`
   const publicShareUrl =
-    typeof window !== 'undefined'
-      ? `${window.location.origin}${import.meta.env.BASE_URL}b/${publicSlug}`
-      : publicUrl
+    typeof window !== 'undefined' ? spaAbsoluteUrl(`/b/${publicSlug}`) : publicUrl
   const previewShareUrl =
     typeof window !== 'undefined'
-      ? `${window.location.origin}${import.meta.env.BASE_URL}b/${publicSlug}?preview=1`
+      ? spaAbsoluteUrl(`/b/${publicSlug}?preview=1`)
       : `${publicUrl}?preview=1`
 
   useEffect(() => {
@@ -1500,18 +1499,17 @@ export default function Settings() {
                     q.set('preview', '1')
                     q.set('full', '1')
                     q.set('_', String(Date.now()))
-                    const base = import.meta.env.BASE_URL
                     const path =
                       slot === PREMIUM_MASSAGE_SLOT
-                        ? `${base}massage-preview?${q.toString()}`
+                        ? spaRouteHref(`/massage-preview?${q.toString()}`)
                         : (() => {
                             q.set('massagePreview', '1')
                             q.set('massageSlot', slot)
-                            return `${base}b/${slugForMassage}?${q.toString()}`
+                            return spaRouteHref(`/b/${slugForMassage}?${q.toString()}`)
                           })()
                     window.open(path, '_blank')
                   } else {
-                    window.open(`${import.meta.env.BASE_URL}b/${publicSlug}?preview=1`, '_blank')
+                    window.open(spaRouteHref(`/b/${publicSlug}?preview=1`), '_blank')
                   }
                 }}
               >

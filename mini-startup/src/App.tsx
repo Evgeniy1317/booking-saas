@@ -1,4 +1,5 @@
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
+import { BrowserRouter, HashRouter, Routes, Route } from 'react-router-dom'
+import { useHashRouter } from '@/lib/spa-path'
 import Landing from './pages/Landing'
 import Login from './pages/Login'
 import Register from './pages/Register'
@@ -17,33 +18,48 @@ import ConstructorPage from './pages/ConstructorPage'
 import MassageConstructorPage from './pages/MassageConstructorPage'
 import MassagePreviewPage from './pages/MassagePreviewPage'
 
-function App() {
-  const base = import.meta.env.BASE_URL
-  const routerBasename = base === '/' ? undefined : base.replace(/\/$/, '')
+function AppRoutes() {
   return (
-    <Router basename={routerBasename}>
-      <Routes>
-        <Route path="/" element={<Landing />} />
-        <Route path="/constructor" element={<ConstructorPage />} />
-        <Route path="/constructor-massage" element={<MassageConstructorPage />} />
-        <Route path="/massage-preview" element={<MassagePreviewPage />} />
-        <Route path="/login" element={<Login />} />
-        <Route path="/register" element={<Register />} />
-        <Route path="/dashboard" element={<DashboardLayout />}>
-          <Route index element={<Home />} />
-          <Route path="calendar" element={<Calendar />} />
-          <Route path="appointments" element={<Appointments />} />
-          <Route path="services" element={<Services />} />
-          <Route path="staff" element={<Staff />} />
-          <Route path="customers" element={<Customers />} />
-          <Route path="notifications" element={<Notifications />} />
-          <Route path="settings" element={<Settings />} />
-          <Route path="analytics" element={<Analytics />} />
-        </Route>
-        <Route path="/b/:slug" element={<PublicPage />} />
-        <Route path="/b/:slug/booking" element={<PublicPage />} />
-      </Routes>
-    </Router>
+    <Routes>
+      <Route path="/" element={<Landing />} />
+      <Route path="/constructor" element={<ConstructorPage />} />
+      <Route path="/constructor-massage" element={<MassageConstructorPage />} />
+      <Route path="/massage-preview" element={<MassagePreviewPage />} />
+      <Route path="/login" element={<Login />} />
+      <Route path="/register" element={<Register />} />
+      <Route path="/dashboard" element={<DashboardLayout />}>
+        <Route index element={<Home />} />
+        <Route path="calendar" element={<Calendar />} />
+        <Route path="appointments" element={<Appointments />} />
+        <Route path="services" element={<Services />} />
+        <Route path="staff" element={<Staff />} />
+        <Route path="customers" element={<Customers />} />
+        <Route path="notifications" element={<Notifications />} />
+        <Route path="settings" element={<Settings />} />
+        <Route path="analytics" element={<Analytics />} />
+      </Route>
+      <Route path="/b/:slug" element={<PublicPage />} />
+      <Route path="/b/:slug/booking" element={<PublicPage />} />
+    </Routes>
+  )
+}
+
+function App() {
+  const base = import.meta.env.BASE_URL || '/'
+  const routerBasename = base === '/' ? undefined : base.replace(/\/$/, '')
+
+  if (useHashRouter) {
+    return (
+      <HashRouter>
+        <AppRoutes />
+      </HashRouter>
+    )
+  }
+
+  return (
+    <BrowserRouter basename={routerBasename}>
+      <AppRoutes />
+    </BrowserRouter>
   )
 }
 

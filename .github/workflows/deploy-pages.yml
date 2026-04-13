@@ -35,7 +35,9 @@ jobs:
       - name: Verify build output
         run: test -f mini-startup/dist/index.html
       - name: SPA fallback for GitHub Pages
-        run: cp mini-startup/dist/index.html mini-startup/dist/404.html
+        run: |
+          cp mini-startup/dist/index.html mini-startup/dist/404.html
+          touch mini-startup/dist/.nojekyll
       - uses: actions/upload-pages-artifact@v3
         with:
           path: mini-startup/dist
