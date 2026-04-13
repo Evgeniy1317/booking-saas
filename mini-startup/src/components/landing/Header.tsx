@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import MetallicIcon from '@/components/ui/metallic-icon'
 
 export default function Header() {
@@ -16,18 +17,18 @@ export default function Header() {
           <a href="#about" className="hover:text-foreground transition-colors">О нас</a>
         </div>
         <div className="flex items-center gap-4">
-          <a
-            href="/login"
+          <Link
+            to="/login"
             className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
           >
             Войти
-          </a>
-          <a
-            href="/register"
+          </Link>
+          <Link
+            to="/register"
             className="px-6 py-2 backdrop-blur-xl bg-accent/80 text-accent-foreground hover:bg-accent/90 rounded-full h-11 font-medium shadow-lg shadow-accent/20 transition-all hover:shadow-accent/30 border border-accent/30"
           >
             Зарегистрироваться
-          </a>
+          </Link>
         </div>
       </div>
     </header>

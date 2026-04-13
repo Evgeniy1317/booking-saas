@@ -977,10 +977,12 @@ export default function Settings() {
   const publicSlug = slugify(publicPage.name || business.name || 'salon')
   const publicUrl = `yoursite.com/b/${publicSlug}`
   const publicShareUrl =
-    typeof window !== 'undefined' ? `${window.location.origin}/b/${publicSlug}` : publicUrl
+    typeof window !== 'undefined'
+      ? `${window.location.origin}${import.meta.env.BASE_URL}b/${publicSlug}`
+      : publicUrl
   const previewShareUrl =
     typeof window !== 'undefined'
-      ? `${window.location.origin}/b/${publicSlug}?preview=1`
+      ? `${window.location.origin}${import.meta.env.BASE_URL}b/${publicSlug}?preview=1`
       : `${publicUrl}?preview=1`
 
   useEffect(() => {

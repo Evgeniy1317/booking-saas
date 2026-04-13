@@ -1,3 +1,5 @@
+import { Link } from 'react-router-dom'
+
 export default function Hero() {
   return (
     <section className="relative pt-40 pb-32 md:pt-56 md:pb-48 overflow-hidden min-h-screen flex items-center">
@@ -19,12 +21,12 @@ export default function Hero() {
             Упростите планирование, автоматизируйте напоминания и сосредоточьтесь на том, что умеете лучше всего — создании красоты. К нам присоединились более 2000 профессионалов по всему миру.
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <a
-              href="/register"
+            <Link
+              to="/register"
               className="px-10 py-4 backdrop-blur-xl bg-accent/80 hover:bg-accent/90 text-accent-foreground rounded-full shadow-2xl shadow-accent/20 text-lg font-semibold w-full sm:w-auto border border-accent/30"
             >
               Начните 14-дневный пробный период
-            </a>
+            </Link>
             <a
               href="#features"
               className="px-8 py-4 backdrop-blur-xl bg-background/30 border border-border/50 rounded-full hover:bg-background/40 text-lg font-semibold w-full sm:w-auto"

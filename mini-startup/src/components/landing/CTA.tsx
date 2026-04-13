@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import Galaxy from '@/components/Galaxy'
 
@@ -18,11 +19,11 @@ export default function CTA() {
           <p className="text-base md:text-lg text-muted-foreground mb-6">
             Упростите управление, автоматизируйте процессы и сосредоточьтесь на росте
           </p>
-          <a href="/register" className="inline-block">
-            <Button size="lg" className="rounded-full backdrop-blur-xl bg-background/60 border border-border/50 hover:bg-background/70 text-foreground h-12 px-8 text-base font-semibold shadow-lg">
+          <Button size="lg" className="rounded-full backdrop-blur-xl bg-background/60 border border-border/50 hover:bg-background/70 text-foreground h-12 px-8 text-base font-semibold shadow-lg" asChild>
+            <Link to="/register">
               Начать бесплатно
-            </Button>
-          </a>
+            </Link>
+          </Button>
         </div>
       </div>
     </section>
