@@ -12,7 +12,7 @@ permissions:
 
 concurrency:
   group: pages-booking-saas-deploy
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   build:
@@ -21,31 +21,31 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '20'
           cache: npm
           cache-dependency-path: mini-startup/package-lock.json
       - name: Install and build
         working-directory: mini-startup
         env:
           CI: true
+          NODE_OPTIONS: --max-old-space-size=6144
         run: |
           npm ci
           npm run build:vite
+      - name: Verify build output
+        run: test -f mini-startup/dist/index.html
       - name: SPA fallback for GitHub Pages
         run: cp mini-startup/dist/index.html mini-startup/dist/404.html
-      - uses: actions/upload-pages-artifact@v4
+      - uses: actions/upload-pages-artifact@v3
         with:
           path: mini-startup/dist
 
   deploy:
     needs: build
     runs-on: ubuntu-latest
-    permissions:
-      pages: write
-      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
