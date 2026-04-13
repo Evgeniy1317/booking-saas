@@ -1,10 +1,13 @@
-import { useState, useCallback, useMemo, useRef, useEffect, type ChangeEvent } from 'react'
+﻿import { useState, useCallback, useMemo, useRef, useEffect, useLayoutEffect, type ChangeEvent } from 'react'
+import { Card } from '@/components/ui/card'
 import { useNavigate } from 'react-router-dom'
 import {
   ArrowLeft,
   Maximize2,
   Save,
   PanelRightOpen,
+  Smartphone,
+  Monitor,
   X,
   ChevronLeft,
   ChevronDown,
@@ -15,11 +18,43 @@ import {
   Plus,
   Video,
   ImageIcon,
+  Globe,
+  Check,
+  Layers,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import { getMassageDraft, MASSAGE_DRAFT_PREFIX } from '@/lib/massage-draft'
-import MassageTemplate, {
+import iconMassageClassic from '@/assets/images/massage-images/head-massage.png'
+import iconMassageThai from '@/assets/images/massage-images/bath-towel.png'
+import iconMassageStone from '@/assets/images/massage-images/spa.png'
+import iconMassageAntistress from '@/assets/images/massage-images/spa (1).png'
+import iconMassageSports from '@/assets/images/massage-images/massage.png'
+import iconPremiumMassage from '@/assets/images/constructor-images/free-icon-premium-4907289.png'
+import {
+  MASSAGE_DRAFT_PREFIX,
+  getMassageDraft,
+  setMassageDraft,
+  setMassageDraftLangAware,
+  getMassageDraftLangAware,
+  isMassageLangScopedTextKey,
+  removeMassageDraftKey,
+  removeMassageDraftLangAware,
+  clearMassageDraftsForCurrentTemplate,
+  massageCurrentTemplateHasDraftKeys,
+  getMassageTemplateSlot,
+  setMassageTemplateSlot,
+} from '@/lib/massage-draft'
+import {
+  PREMIUM_MASSAGE_SLOT,
+  isMassageOrdinaryTemplateId,
+  type MassageOrdinaryTemplateId,
+  type MassageTemplateSlotId,
+} from '@/lib/massage-template-registry'
+import {
+  MASSAGE_BODY_PATTERN_BY_TEMPLATE,
+  MASSAGE_BODY_PATTERN_ORDER,
+} from '@/lib/massage-body-patterns'
+import {
   mergeMassageServicesFromDraft,
   serializeMassageServicesForDraft,
   MASSAGE_SERVICES_MAX,
@@ -28,19 +63,44 @@ import MassageTemplate, {
   MASSAGE_GALLERY_MAX_SECTIONS,
   MASSAGE_GALLERY_PHOTOS_PER_SECTION,
   MASSAGE_GALLERY_TAB_LABEL_MAX,
+  mergeMassageCatalogFromDraft,
+  serializeMassageCatalogForDraft,
+  createMassageCatalogProductFromTemplate,
+  MASSAGE_CATALOG_MAX,
+  formatCatalogPriceDisplay,
   mergeMassageSubscriptionsFromDraft,
   serializeMassageSubscriptionsForDraft,
   MASSAGE_SUBSCRIPTION_PRESETS,
   MASSAGE_SUBSCRIPTION_PRESET_COUNT,
-} from '@/components/public/MassageTemplate'
-import { compressImageForLogo, compressImageForHeroBg } from '@/lib/compress-image'
+  mergeMassageSpecsFromDraft,
+  serializeMassageSpecsForDraft,
+  createMassageSpecFromTemplate,
+  MASSAGE_SPECS_MAX,
+} from '@/lib/massage-template-model'
+import MassageTemplate from '@/components/public/MassageTemplate'
+import { compressImageForLogo, compressImageForHeroBg, compressImageForCatalog } from '@/lib/compress-image'
+import {
+  HERO_VIDEO_USE_IDB_MIN_BYTES,
+  MASSAGE_HERO_VIDEO_IDB_MARKER,
+  saveMassageHeroVideoBlob,
+} from '@/lib/massage-hero-video-idb'
+import { type PublicSiteLang, getEnabledSiteLangs, setEnabledSiteLangs } from '@/lib/public-site-langs'
+
+function catalogProductFileInputId(productId: string): string {
+  return `massage-catalog-file-${productId.replace(/[^a-zA-Z0-9_-]/g, '_')}`
+}
+function specFileInputId(specId: string): string {
+  return `massage-spec-file-${specId.replace(/[^a-zA-Z0-9_-]/g, '_')}`
+}
 import {
   MASSAGE_HEADER_TEXT_OPTIONS,
   parseMassageThemeColors,
   type MassageThemeColors,
 } from '@/lib/massage-theme-palette'
-
+import { DEFAULT_WORLD_MAP_EMBED_URL } from '@/lib/hair-theme-defaults'
 type Lang = 'ru' | 'en' | 'ro'
+
+const SITE_LANG_ORDER: PublicSiteLang[] = ['ru', 'en', 'ro']
 
 const MASSAGE_BLOCKS = [
   { id: 'header', ru: 'Шапка сайта', en: 'Site header', ro: 'Antet site' },
@@ -53,6 +113,33 @@ const MASSAGE_BLOCKS = [
   { id: 'cta', ru: 'Блок записи', en: 'Booking block', ro: 'Bloc programare' },
   { id: 'contacts', ru: 'Контакты', en: 'Contacts', ro: 'Contacte' },
 ] as const
+
+/** Те же блоки, что в конструкторе салона (PublicPage) — превью идентично обычным темам */
+const SALON_PREVIEW_BLOCKS = [
+  { id: 'header', ru: 'Шапка сайта', en: 'Site header', ro: 'Antet site' },
+  { id: 'gallery', ru: 'Фотографии салона', en: 'Salon photos', ro: 'Fotografii salon' },
+  { id: 'booking', ru: 'Запись клиентов', en: 'Client booking', ro: 'Programare clienți' },
+  { id: 'works', ru: 'Галерея работ', en: 'Work gallery', ro: 'Galerie lucrări' },
+  { id: 'map', ru: 'Карта и адрес', en: 'Map & address', ro: 'Hartă și adresă' },
+  { id: 'footer', ru: 'Контактная информация', en: 'Contact information', ro: 'Informații de contact' },
+] as const
+
+/** Иконки выбора темы: классический, тайский, стоун, антистресс, спортивный */
+const MASSAGE_CONSTRUCTOR_THEMES: { id: MassageOrdinaryTemplateId; icon: string }[] = [
+  { id: 'hair', icon: iconMassageClassic },
+  { id: 'barber', icon: iconMassageThai },
+  { id: 'cosmetology', icon: iconMassageStone },
+  { id: 'coloring', icon: iconMassageAntistress },
+  { id: 'manicure', icon: iconMassageSports },
+]
+
+const THEME_SIDEBAR_LABEL_KEY: Record<MassageOrdinaryTemplateId, 'themeHair' | 'themeBarber' | 'themeCosmetology' | 'themeColoring' | 'themeManicure'> = {
+  hair: 'themeHair',
+  barber: 'themeBarber',
+  cosmetology: 'themeCosmetology',
+  coloring: 'themeColoring',
+  manicure: 'themeManicure',
+}
 
 /** DOM id секций в MassageTemplate — для скролла и scrollspy */
 const MASSAGE_BLOCK_ANCHOR_BY_ID: Record<(typeof MASSAGE_BLOCKS)[number]['id'], string> = {
@@ -83,13 +170,48 @@ const UI: Record<Lang, Record<string, string>> = {
     constructorTitle: 'Конструктор сайта',
     back: 'Назад',
     fullSize: 'Полный размер',
+    mobilePreview: 'Мобильный вид',
+    webPreview: 'Веб-версия',
     save: 'Сохранить',
     saved: 'Сохранено ✓',
     close: 'Закрыть',
     allBlocks: 'Все блоки',
     chooseTheme: 'Выбор темы',
     templateHeading: 'Шаблон',
+    templatesStandard: 'Стандартные шаблоны',
+    templatesPremium: 'Премиум шаблоны',
+    themePremiumMassage: 'Премиум студия',
+    themeHair: 'Классический',
+    themeBarber: 'Тайский массаж',
+    themeCosmetology: 'Стоун-терапия',
+    themeColoring: 'Антистресс',
+    themeManicure: 'Спортивный',
+    sitePageBgPattern: 'Фон страницы',
+    sitePageBgPatternHint:
+      'Нажмите миниатюру — паттерн применится к фону сайта в превью. Без выбора используется фон текущего шаблона.',
+    siteLangs: 'Языки на сайте',
+    siteLangsHint: 'Отметьте языки, на которых будет доступен сайт. Один — переключатель скрыт.',
+    langPickRu: 'Русский',
+    langPickEn: 'English',
+    langPickRo: 'Română',
     editThisTheme: 'Редактировать эту тему',
+    mySite: 'Мой сайт',
+    myLastEdits:
+      'Последние правки для этой темы. Исходный шаблон в библиотеке не меняется.',
+    open: 'Открыть',
+    eraseBtn: 'Стереть',
+    deleteMySite: 'Стереть изменения?',
+    deleteMySiteDesc:
+      'Удалить все сохранённые правки этого шаблона (тексты, фото, цвета) и вернуть вид по умолчанию?',
+    yes: 'Да',
+    designAlready: 'Изначальный дизайн уже используется',
+    undoToDesign: 'Вернуть к изначальному дизайну шаблона',
+    noUndo: 'Нет изменений для отмены',
+    undoLastChange: 'Отменить последнее изменение',
+    previewEditHint:
+      'Нажмите на текст в превью. Заголовок hero, подзаголовок и подписи кнопок («Записаться онлайн», «Где нас найти») задаются отдельно для каждого языка (переключатель языка на сайте).',
+    blockSettingsLater: 'Настройки этого блока появятся позже',
+    subsAllAdded: 'Все варианты уже добавлены',
     templateLabel: 'Массажный салон',
     restoreDesign: 'Вернуть изначальный дизайн',
     undoLast: 'Вернуть назад',
@@ -127,7 +249,12 @@ const UI: Record<Lang, Record<string, string>> = {
     colorHero1: 'Hero — первая строка заголовка',
     colorHero2: 'Hero — вторая строка заголовка',
     colorHeroSub: 'Hero — подзаголовок',
-    colorHeroBtnBorder: 'Hero — рамка кнопки',
+    colorHeroPrimBtnBg: 'Hero — фон первой кнопки',
+    colorHeroPrimBtnHover: 'Hero — первая кнопка (наведение)',
+    colorHeroBtnBorder: 'Hero — рамка первой кнопки',
+    colorHeroSecBtnBg: 'Hero — фон второй кнопки',
+    colorHeroSecBtnHover: 'Hero — вторая кнопка (наведение)',
+    colorHeroSecBtnBorder: 'Hero — рамка второй кнопки',
     byDefault: 'По умолчанию',
     colorsBlock: 'Цвета',
     servicesBlockHint:
@@ -157,6 +284,25 @@ const UI: Record<Lang, Record<string, string>> = {
     gallerySectionLabel: 'Название вкладки',
     gallerySlotPhoto: 'Фото',
     galleryColorSection: 'Цвета галереи',
+    catalogBlockHint:
+      'Заголовок блока и карточки редактируйте в превью: название, бренд, цена, старая цена, строки описания. Фото товара загружайте ниже — оно появится в верхней части карточки.',
+    catalogHideBlock: 'Скрыть блок «Каталог» на сайте',
+    catalogAddProduct: 'Добавить товар',
+    catalogList: 'Товары',
+    catalogProductN: 'Товар',
+    catalogProductPhoto: 'Фото на карточке',
+    catalogPhotoUpload: 'Загрузить фото',
+    catalogPhotoHint: 'Показывается вверху карточки вместо градиента',
+    catalogRemovePhoto: 'Убрать фото',
+    specsBlockHint: 'Заголовок блока и карточки (имя, должность, опыт) редактируйте в превью. Фото загружайте ниже — оно займёт всю рамку карточки.',
+    specsHideBlock: 'Скрыть блок «Специалисты» на сайте',
+    specsAddCard: 'Добавить специалиста',
+    specsList: 'Специалисты',
+    specsCardN: 'Специалист',
+    specsCardPhoto: 'Фото специалиста',
+    specsPhotoUpload: 'Загрузить фото',
+    specsPhotoHint: 'Показывается вместо градиента — на всю рамку',
+    specsRemovePhoto: 'Убрать фото',
     colorGalTitle: 'Заголовок',
     colorGalSub: 'Подзаголовок',
     colorGalTabActive: 'Вкладки секций (один цвет)',
@@ -175,18 +321,84 @@ const UI: Record<Lang, Record<string, string>> = {
     colorSubsCardBgFrom: 'Карточка — фон (старт)',
     colorSubsCardBgTo: 'Карточка — фон (конец)',
     colorSubsCtaText: 'Кнопка акции — текст',
+    colorSubsCtaBg: 'Кнопка акции — фон',
+    ctaHideBlock: 'Скрыть блок «Запись» на сайте',
+    ctaBlockHint: 'Заголовок, текст и кнопку редактируйте в превью. Цвета блока — ниже.',
+    ctaColorSection: 'Цвета блока записи',
+    colorCtaBgFrom: 'Фон блока — начало градиента',
+    colorCtaBgTo: 'Фон блока — конец градиента',
+    colorCtaTitle: 'Заголовок',
+    colorCtaSub: 'Подзаголовок',
+    colorCtaBtnBg: 'Кнопка — фон',
+    colorCtaBtnText: 'Кнопка — текст',
+    contactsBlockHint:
+      'Адрес: поиск с подсказками — карта обновится. Тексты и соцсети можно править в превью; ссылки — ниже. В режиме редактирования карта не кликается.',
+    contactsAddressTitle: 'Адрес на карте',
+    contactsAddressPlaceholder: 'Начните вводить адрес…',
+    contactsSearching: 'Поиск…',
+    contactsSocialSection: 'Ссылки на мессенджеры и соцсети',
+    contactsColorSection: 'Цвета блока «Контакты»',
+    colorContactsBlockTitle: 'Заголовок секции',
+    colorContactsSectionHeading: 'Подзаголовок «Наши контакты»',
+    colorContactsIcon: 'Иконки',
+    colorContactsBody: 'Текст (адрес, график, телефон, email)',
+    colorContactsLabel: 'Подписи и подпись над картой',
+    salonHeroColorsNote:
+      'Ниже — цвета баннера как на этой странице превью (без верхней полосы и меню премиум-шаблона). Тексты правьте в превью.',
+    salonColorBannerTitle: 'Баннер — название салона',
+    salonColorBannerSub: 'Баннер — текст под названием',
+    salonGalleryHint: 'Заголовок блока и фотографии сетки редактируйте в превью. Здесь — цвет заголовка «Фотографии салона».',
+    salonBookingHint: 'Заголовок и подзаголовок над формой записи редактируйте в превью. Здесь — их цвета.',
+    salonWorksHint: 'Карусель и подписи настраиваются в превью. Здесь — цвет заголовка «Галерея работ» и подписей к снимкам.',
+    salonMapHint: 'Адрес и встраиваемая карта — в превью или в блоке контактов. Здесь — цвет подписей над картой.',
+    salonFooterHint:
+      'Тексты в подвале редактируйте в превью. Здесь — цвета названия салона, подписей колонок (адрес, график…), значений, разделителей между колонками.',
   },
   en: {
     constructorTitle: 'Site Constructor',
     back: 'Back',
     fullSize: 'Full size',
+    mobilePreview: 'Mobile view',
+    webPreview: 'Web version',
     save: 'Save',
     saved: 'Saved ✓',
     close: 'Close',
     allBlocks: 'All blocks',
     chooseTheme: 'Choose theme',
     templateHeading: 'Template',
+    templatesStandard: 'Standard templates',
+    templatesPremium: 'Premium templates',
+    themePremiumMassage: 'Premium studio',
+    themeHair: 'Classic',
+    themeBarber: 'Thai massage',
+    themeCosmetology: 'Stone therapy',
+    themeColoring: 'Antistress',
+    themeManicure: 'Sports',
+    sitePageBgPattern: 'Page background',
+    sitePageBgPatternHint:
+      'Tap a thumbnail to apply that pattern in the preview. If none is saved, the current template’s pattern is used.',
+    siteLangs: 'Site languages',
+    siteLangsHint: 'Select languages for the site. One language — the flag switcher is hidden.',
+    langPickRu: 'Russian',
+    langPickEn: 'English',
+    langPickRo: 'Romanian',
     editThisTheme: 'Edit this theme',
+    mySite: 'My site',
+    myLastEdits: 'Latest edits for this theme. The original template in the library is unchanged.',
+    open: 'Open',
+    eraseBtn: 'Erase',
+    deleteMySite: 'Erase changes?',
+    deleteMySiteDesc:
+      'Remove all saved edits for this template (text, photos, colors) and restore the default look?',
+    yes: 'Yes',
+    designAlready: 'Original design is already in use',
+    undoToDesign: 'Restore template original design',
+    noUndo: 'No changes to undo',
+    undoLastChange: 'Undo last change',
+    previewEditHint:
+      'Click text in the preview to edit. The hero title, subtitle, and button labels (“Book online”, “Where to find us?”) are set per language (site language switcher).',
+    blockSettingsLater: 'Settings for this block will be added later',
+    subsAllAdded: 'All options are already added',
     templateLabel: 'Massage salon',
     restoreDesign: 'Restore original design',
     undoLast: 'Undo last step',
@@ -224,7 +436,12 @@ const UI: Record<Lang, Record<string, string>> = {
     colorHero1: 'Hero — title line 1',
     colorHero2: 'Hero — title line 2',
     colorHeroSub: 'Hero — subtitle',
-    colorHeroBtnBorder: 'Hero — button border',
+    colorHeroPrimBtnBg: 'Hero — first button background',
+    colorHeroPrimBtnHover: 'Hero — first button (hover)',
+    colorHeroBtnBorder: 'Hero — first button border',
+    colorHeroSecBtnBg: 'Hero — second button background',
+    colorHeroSecBtnHover: 'Hero — second button (hover)',
+    colorHeroSecBtnBorder: 'Hero — second button border',
     byDefault: 'Default',
     colorsBlock: 'Colors',
     servicesBlockHint:
@@ -254,6 +471,25 @@ const UI: Record<Lang, Record<string, string>> = {
     gallerySectionLabel: 'Tab label',
     gallerySlotPhoto: 'Photo',
     galleryColorSection: 'Gallery colors',
+    catalogBlockHint:
+      'Edit the block title and cards in the preview: name, brand, current and old price, spec lines. Upload product photos below — they appear at the top of each card.',
+    catalogHideBlock: 'Hide the Catalog block on the site',
+    catalogAddProduct: 'Add product',
+    catalogList: 'Products',
+    catalogProductN: 'Product',
+    catalogProductPhoto: 'Card photo',
+    catalogPhotoUpload: 'Upload photo',
+    catalogPhotoHint: 'Shown at the top of the card instead of the gradient',
+    catalogRemovePhoto: 'Remove photo',
+    specsBlockHint: 'Edit the block title and card details (name, role, experience) in the preview. Upload photos below — they will fill the entire card frame.',
+    specsHideBlock: 'Hide the Specialists block on the site',
+    specsAddCard: 'Add specialist',
+    specsList: 'Specialists',
+    specsCardN: 'Specialist',
+    specsCardPhoto: 'Specialist photo',
+    specsPhotoUpload: 'Upload photo',
+    specsPhotoHint: 'Shown instead of the gradient — fills the entire frame',
+    specsRemovePhoto: 'Remove photo',
     colorGalTitle: 'Title',
     colorGalSub: 'Subtitle',
     colorGalTabActive: 'Section tabs (one color)',
@@ -272,18 +508,83 @@ const UI: Record<Lang, Record<string, string>> = {
     colorSubsCardBgFrom: 'Card — background (from)',
     colorSubsCardBgTo: 'Card — background (to)',
     colorSubsCtaText: 'Promo button — text',
+    colorSubsCtaBg: 'Promo button — background',
+    ctaHideBlock: 'Hide the booking block on the site',
+    ctaBlockHint: 'Edit the title, text, and button in the preview. Block colors are below.',
+    ctaColorSection: 'Booking block colors',
+    colorCtaBgFrom: 'Background — gradient start',
+    colorCtaBgTo: 'Background — gradient end',
+    colorCtaTitle: 'Title',
+    colorCtaSub: 'Subtitle',
+    colorCtaBtnBg: 'Button — background',
+    colorCtaBtnText: 'Button — text',
+    contactsBlockHint:
+      'Address: search with suggestions — the map updates. Edit text and socials in the preview; paste links below. The map is non-interactive while editing.',
+    contactsAddressTitle: 'Address on map',
+    contactsAddressPlaceholder: 'Start typing an address…',
+    contactsSearching: 'Searching…',
+    contactsSocialSection: 'Messenger and social links',
+    contactsColorSection: 'Contacts block colors',
+    colorContactsBlockTitle: 'Section title',
+    colorContactsSectionHeading: '“Our contacts” subtitle',
+    colorContactsIcon: 'Icons',
+    colorContactsBody: 'Body text (address, hours, phone, email)',
+    colorContactsLabel: 'Labels and map caption',
+    salonHeroColorsNote:
+      'These colors match the banner on this preview page (no premium top bar or menu). Edit texts in the preview.',
+    salonColorBannerTitle: 'Banner — salon name',
+    salonColorBannerSub: 'Banner — text under the name',
+    salonGalleryHint: 'Edit the block title and grid photos in the preview. Here — color of the “Salon photos” heading.',
+    salonBookingHint: 'Edit the title and subtitle above the booking form in the preview. Here — their colors.',
+    salonWorksHint: 'Carousel and captions are edited in the preview. Here — “Work gallery” heading and image label colors.',
+    salonMapHint: 'Address and embed map — in the preview or contacts. Here — label colors above the map.',
+    salonFooterHint:
+      'Edit footer text in the preview. Here — salon name, column labels (address, hours…), values, and vertical dividers between columns.',
   },
   ro: {
     constructorTitle: 'Constructor site',
     back: 'Înapoi',
     fullSize: 'Dimensiune completă',
+    mobilePreview: 'Vizualizare mobilă',
+    webPreview: 'Versiune web',
     save: 'Salvează',
     saved: 'Salvat ✓',
     close: 'Închide',
     allBlocks: 'Toate blocurile',
     chooseTheme: 'Alege tema',
     templateHeading: 'Șablon',
+    templatesStandard: 'Șabloane standard',
+    templatesPremium: 'Șabloane premium',
+    themePremiumMassage: 'Studio premium',
+    themeHair: 'Clasic',
+    themeBarber: 'Masaj thailandez',
+    themeCosmetology: 'Terapie cu pietre',
+    themeColoring: 'Antistres',
+    themeManicure: 'Sportiv',
+    sitePageBgPattern: 'Fundal pagină',
+    sitePageBgPatternHint:
+      'Atingeți o miniatură pentru a aplica modelul în previzualizare. Fără alegere se folosește fundalul șablonului curent.',
+    siteLangs: 'Limbi pe site',
+    siteLangsHint: 'Alegeți limbile site-ului. O singură limbă — fără comutator.',
+    langPickRu: 'Rusă',
+    langPickEn: 'Engleză',
+    langPickRo: 'Română',
     editThisTheme: 'Editează această temă',
+    mySite: 'Site-ul meu',
+    myLastEdits: 'Ultimele modificări pentru această temă. Șablonul original nu este modificat.',
+    open: 'Deschide',
+    eraseBtn: 'Șterge',
+    deleteMySite: 'Ștergeți modificările?',
+    deleteMySiteDesc: 'Sunteți sigur că doriți să ștergeți ultimele modificări din acest șablon?',
+    yes: 'Da',
+    designAlready: 'Designul original este deja folosit',
+    undoToDesign: 'Restaurează designul original al șablonului',
+    noUndo: 'Nicio modificare de anulat',
+    undoLastChange: 'Anulează ultima modificare',
+    previewEditHint:
+      'Faceți clic pe text în previzualizare. Titlul hero, subtitlul și etichetele butoanelor („Programează-te online”, „Unde ne găsiți?”) sunt setate separat pentru fiecare limbă (comutatorul de limbă de pe site).',
+    blockSettingsLater: 'Setările acestui bloc vor apărea mai târziu',
+    subsAllAdded: 'Toate variantele sunt deja adăugate',
     templateLabel: 'Salon de masaj',
     restoreDesign: 'Restabiliți designul inițial',
     undoLast: 'Înapoi un pas',
@@ -314,7 +615,12 @@ const UI: Record<Lang, Record<string, string>> = {
     colorHero1: 'Hero — titlu linia 1',
     colorHero2: 'Hero — titlu linia 2',
     colorHeroSub: 'Hero — subtitlu',
-    colorHeroBtnBorder: 'Hero — margine buton',
+    colorHeroPrimBtnBg: 'Hero — fundal primul buton',
+    colorHeroPrimBtnHover: 'Hero — primul buton (hover)',
+    colorHeroBtnBorder: 'Hero — margine primul buton',
+    colorHeroSecBtnBg: 'Hero — fundal al doilea buton',
+    colorHeroSecBtnHover: 'Hero — al doilea buton (hover)',
+    colorHeroSecBtnBorder: 'Hero — margine al doilea buton',
     byDefault: 'Implicit',
     colorsBlock: 'Culori',
     servicesBlockHint:
@@ -344,6 +650,25 @@ const UI: Record<Lang, Record<string, string>> = {
     gallerySectionLabel: 'Nume filă',
     gallerySlotPhoto: 'Foto',
     galleryColorSection: 'Culori galerie',
+    catalogBlockHint:
+      'Titlul blocului și cardurile — în previzualizare: nume, brand, preț curent și vechi, linii descriere. Încărcați fotografiile produselor mai jos — apar în partea de sus a cardului.',
+    catalogHideBlock: 'Ascunde blocul „Catalog” pe site',
+    catalogAddProduct: 'Adaugă produs',
+    catalogList: 'Produse',
+    catalogProductN: 'Produs',
+    catalogProductPhoto: 'Foto pe card',
+    catalogPhotoUpload: 'Încarcă foto',
+    catalogPhotoHint: 'Se afișează sus pe card în loc de gradient',
+    catalogRemovePhoto: 'Elimină foto',
+    specsBlockHint: 'Editați titlul blocului și detaliile cardurilor (nume, rol, experiență) în previzualizare. Încărcați fotografii mai jos — vor ocupa tot cadrul cardului.',
+    specsHideBlock: 'Ascunde blocul „Specialiști" pe site',
+    specsAddCard: 'Adaugă specialist',
+    specsList: 'Specialiști',
+    specsCardN: 'Specialist',
+    specsCardPhoto: 'Foto specialist',
+    specsPhotoUpload: 'Încarcă foto',
+    specsPhotoHint: 'Se afișează în loc de gradient — pe tot cadrul',
+    specsRemovePhoto: 'Elimină foto',
     colorGalTitle: 'Titlu',
     colorGalSub: 'Subtitlu',
     colorGalTabActive: 'File secțiuni (o culoare)',
@@ -362,10 +687,54 @@ const UI: Record<Lang, Record<string, string>> = {
     colorSubsCardBgFrom: 'Card — fundal (start)',
     colorSubsCardBgTo: 'Card — fundal (final)',
     colorSubsCtaText: 'Buton promoție — text',
+    colorSubsCtaBg: 'Buton promoție — fundal',
+    ctaHideBlock: 'Ascunde blocul de programare pe site',
+    ctaBlockHint: 'Titlul, textul și butonul le editați în previzualizare. Culorile — mai jos.',
+    ctaColorSection: 'Culori bloc programare',
+    colorCtaBgFrom: 'Fundal — început gradient',
+    colorCtaBgTo: 'Fundal — sfârșit gradient',
+    colorCtaTitle: 'Titlu',
+    colorCtaSub: 'Subtitlu',
+    colorCtaBtnBg: 'Buton — fundal',
+    colorCtaBtnText: 'Buton — text',
+    contactsBlockHint:
+      'Adresă: căutare cu sugestii — harta se actualizează. Textele și rețelele în previzualizare; linkurile mai jos. În editare harta nu e clicabilă.',
+    contactsAddressTitle: 'Adresa pe hartă',
+    contactsAddressPlaceholder: 'Introduceți adresa…',
+    contactsSearching: 'Se caută…',
+    contactsSocialSection: 'Linkuri mesagerie și rețele',
+    contactsColorSection: 'Culori bloc contacte',
+    colorContactsBlockTitle: 'Titlu secțiune',
+    colorContactsSectionHeading: 'Subtitlu contacte',
+    colorContactsIcon: 'Pictograme',
+    colorContactsBody: 'Text (adresă, program, telefon, email)',
+    colorContactsLabel: 'Etichete și titlu deasupra hărții',
+    salonHeroColorsNote:
+      'Culorile de mai jos corespund bannerului din această previzualizare (fără bara de sus din șablonul premium). Textele le editați în previzualizare.',
+    salonColorBannerTitle: 'Banner — numele salonului',
+    salonColorBannerSub: 'Banner — text sub titlu',
+    salonGalleryHint:
+      'Titlul blocului și fotografiile din grilă le editați în previzualizare. Aici — culoarea titlului „Fotografii salon”.',
+    salonBookingHint: 'Titlul și subtitlul deasupra formularului le editați în previzualizare. Aici — culorile lor.',
+    salonWorksHint:
+      'Caruselul și legendele le editați în previzualizare. Aici — titlul „Galerie lucrări” și culoarea textului pe imagini.',
+    salonMapHint: 'Adresa și harta — în previzualizare sau la contacte. Aici — culorile etichetelor deasupra hărții.',
+    salonFooterHint:
+      'Textele din subsol le editați în previzualizare. Aici — numele salonului, etichetele coloanelor (adresă, program…), valorile și separatorii verticali.',
   },
 }
 
-const MAX_UNDO = 30
+const MAX_UNDO = 20
+const UNDO_MAX_VALUE_LEN = 50_000
+const UNDO_SKIP_KEYS = new Set([
+  'publicMassageCatalogJson',
+  'publicMassageSpecsJson',
+  'publicMassageGalleryJson',
+  'publicMassageHeroBg',
+  'publicMassageHeroVideo',
+  'publicMassageAboutAvatar',
+  'publicLogo',
+])
 
 type UndoEntry = { key: string; prev: string }
 
@@ -411,20 +780,6 @@ function MassageColorRow({
   )
 }
 
-function setDraftStorage(key: string, value: string) {
-  if (typeof window === 'undefined') return
-  window.localStorage.setItem(MASSAGE_DRAFT_PREFIX + key, value)
-}
-function clearAllDrafts() {
-  if (typeof window === 'undefined') return
-  const toRemove: string[] = []
-  for (let i = 0; i < localStorage.length; i++) {
-    const k = localStorage.key(i)
-    if (k?.startsWith(MASSAGE_DRAFT_PREFIX)) toRemove.push(k)
-  }
-  toRemove.forEach(k => localStorage.removeItem(k))
-}
-
 export default function MassageConstructorPage() {
   const navigate = useNavigate()
   const sLang: Lang = (typeof window !== 'undefined' ? localStorage.getItem('publicLang') as Lang : null) ?? 'ru'
@@ -437,45 +792,302 @@ export default function MassageConstructorPage() {
   const [highlightBlockId, setHighlightBlockId] = useState<string | null>('header')
   const [poll, setPoll] = useState(0)
   const [undoStack, setUndoStack] = useState<UndoEntry[]>([])
+  /** После «Вернуть изначальный дизайн» кнопка кратко disabled, пока не будет нового изменения */
+  const resetJustApplied = useRef(false)
+  const [showClearConfirmModal, setShowClearConfirmModal] = useState(false)
   const [isSubsPresetOpen, setIsSubsPresetOpen] = useState(false)
   const subsPresetDropdownRef = useRef<HTMLDivElement | null>(null)
-  const siteName = typeof window !== 'undefined' ? (localStorage.getItem('businessName') || '') : ''
+  const iframeRef = useRef<HTMLIFrameElement>(null)
+  const [iframeLoadTick, setIframeLoadTick] = useState(0)
+  const sidebarScrollRef = useRef<HTMLDivElement>(null)
+  const contactAddrRef = useRef<HTMLDivElement>(null)
+  const [contactAddrQuery, setContactAddrQuery] = useState('')
+  const [contactAddrResults, setContactAddrResults] = useState<Array<Record<string, unknown>>>([])
+  const [contactAddrOpen, setContactAddrOpen] = useState(false)
+  const [contactAddrFocused, setContactAddrFocused] = useState(false)
+  const [contactAddrLoading, setContactAddrLoading] = useState(false)
+  const [siteLangsPick, setSiteLangsPick] = useState<PublicSiteLang[]>(() =>
+    typeof window !== 'undefined' ? getEnabledSiteLangs() : [...SITE_LANG_ORDER]
+  )
 
-  const draft = useCallback((key: string) => getMassageDraft(key), [poll]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  const setDraft = useCallback((key: string, value: string) => {
-    const prev = getMassageDraft(key)
-    setUndoStack(stack => [...stack, { key, prev }].slice(-MAX_UNDO))
-    setDraftStorage(key, value)
-    setPoll(n => n + 1)
+  /** Тот же ключ, что у конструктора салона — единое поведение при переключении между конструкторами */
+  const CONSTRUCTOR_MOBILE_PREVIEW_KEY = 'constructorPreviewMobile'
+  const [previewMobileFrame, setPreviewMobileFrame] = useState(() => {
+    if (typeof window === 'undefined') return false
+    try {
+      return sessionStorage.getItem(CONSTRUCTOR_MOBILE_PREVIEW_KEY) === '1'
+    } catch {
+      return false
+    }
+  })
+  const setPreviewMobileFramePersist = useCallback((next: boolean) => {
+    setPreviewMobileFrame(next)
+    try {
+      sessionStorage.setItem(CONSTRUCTOR_MOBILE_PREVIEW_KEY, next ? '1' : '0')
+    } catch {
+      /* noop */
+    }
   }, [])
+
+  const [constructorShellNarrow, setConstructorShellNarrow] = useState(() =>
+    typeof window !== 'undefined' ? window.matchMedia('(max-width: 639px)').matches : false
+  )
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const mq = window.matchMedia('(max-width: 639px)')
+    const apply = () => setConstructorShellNarrow(mq.matches)
+    mq.addEventListener('change', apply)
+    return () => mq.removeEventListener('change', apply)
+  }, [])
+
+  useEffect(() => {
+    if (!constructorShellNarrow || !previewMobileFrame) return
+    setPreviewMobileFramePersist(false)
+  }, [constructorShellNarrow, previewMobileFrame, setPreviewMobileFramePersist])
+
+  const toggleSiteLang = useCallback((code: PublicSiteLang) => {
+    setSiteLangsPick(prev => {
+      let next: PublicSiteLang[]
+      if (prev.includes(code) && prev.length > 1) {
+        next = prev.filter(c => c !== code)
+      } else {
+        next = SITE_LANG_ORDER.filter(c => prev.includes(c) || c === code)
+      }
+      setEnabledSiteLangs(next)
+      return next
+    })
+  }, [])
+
+  const draft = useCallback(
+    (key: string) =>
+      isMassageLangScopedTextKey(key) ? getMassageDraftLangAware(key, sLang) : getMassageDraft(key),
+    [poll, sLang]
+  )
+
+  const notifyIframeDraft = useCallback(() => {
+    try {
+      iframeRef.current?.contentWindow?.postMessage({ type: 'constructorDraftChange' }, '*')
+    } catch {
+      /* ignore */
+    }
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const pub = localStorage.getItem('publicLang')
+    if (pub === 'ru' || pub === 'en' || pub === 'ro') return
+    const adm = localStorage.getItem('language')
+    if (adm === 'ru' || adm === 'en' || adm === 'ro') {
+      try {
+        localStorage.setItem('publicLang', adm)
+      } catch {
+        /* ignore */
+      }
+      setPoll((n) => n + 1)
+    }
+  }, [])
+
+  useEffect(() => {
+    const handler = (e: MessageEvent) => {
+      if (e.data?.type === 'constructorPublicLangChanged' || e.data?.type === 'constructorMassageDraftChanged') {
+        setPoll((n) => n + 1)
+      }
+    }
+    window.addEventListener('message', handler)
+    return () => window.removeEventListener('message', handler)
+  }, [])
+
+  /** Превью в iframe пишет в localStorage — в том же окне событие storage не срабатывает; слушаем для вкладок/редких случаев */
+  useEffect(() => {
+    const onStorage = (ev: StorageEvent) => {
+      const k = ev.key
+      if (!k) return
+      if (k.startsWith(MASSAGE_DRAFT_PREFIX) || k === 'massageTemplateSlot') {
+        setPoll((n) => n + 1)
+      }
+    }
+    window.addEventListener('storage', onStorage)
+    return () => window.removeEventListener('storage', onStorage)
+  }, [])
+
+  useEffect(() => {
+    if (selectedBlockId !== 'contacts') return
+    setContactAddrQuery(getMassageDraftLangAware('publicAddress', sLang))
+  }, [selectedBlockId, poll, sLang])
+
+  useEffect(() => {
+    const handler = (event: MouseEvent) => {
+      const target = event.target as Node
+      if (contactAddrRef.current && !contactAddrRef.current.contains(target)) {
+        setContactAddrOpen(false)
+        setContactAddrFocused(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  useEffect(() => {
+    if (selectedBlockId !== 'contacts' || !contactAddrFocused) return
+    const query = contactAddrQuery.trim()
+    if (!query || query.length < 3) {
+      setContactAddrResults([])
+      setContactAddrOpen(false)
+      setContactAddrLoading(false)
+      return
+    }
+    setContactAddrLoading(true)
+    const handle = window.setTimeout(async () => {
+      try {
+        const response = await fetch(
+          `https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=8&accept-language=${sLang}&q=${encodeURIComponent(query)}`
+        )
+        const data = await response.json()
+        const items = Array.isArray(data) ? data : []
+        setContactAddrResults(items as Array<Record<string, unknown>>)
+        setContactAddrOpen(true)
+      } catch {
+        setContactAddrResults([])
+      } finally {
+        setContactAddrLoading(false)
+      }
+    }, 350)
+    return () => window.clearTimeout(handle)
+  }, [contactAddrQuery, contactAddrFocused, selectedBlockId, sLang])
+
+  useLayoutEffect(() => {
+    const el = sidebarScrollRef.current
+    if (el) el.scrollTop = 0
+  }, [selectedBlockId, panelStage])
+
+  const setDraft = useCallback(
+    (key: string, value: string) => {
+      if (!UNDO_SKIP_KEYS.has(key)) {
+        const prev = isMassageLangScopedTextKey(key)
+          ? getMassageDraftLangAware(key, sLang)
+          : getMassageDraft(key)
+        if (prev.length <= UNDO_MAX_VALUE_LEN) {
+          setUndoStack(stack => [...stack, { key, prev }].slice(-MAX_UNDO))
+        }
+      }
+      if (isMassageLangScopedTextKey(key)) setMassageDraftLangAware(key, sLang, value)
+      else setMassageDraft(key, value)
+      setPoll(n => n + 1)
+      queueMicrotask(() => notifyIframeDraft())
+    },
+    [notifyIframeDraft, sLang]
+  )
 
   const handleUndo = useCallback(() => {
     setUndoStack(stack => {
       if (stack.length === 0) return stack
       const last = stack[stack.length - 1]
       if (last.prev) {
-        setDraftStorage(last.key, last.prev)
+        if (isMassageLangScopedTextKey(last.key)) setMassageDraftLangAware(last.key, sLang, last.prev)
+        else setMassageDraft(last.key, last.prev)
       } else {
-        if (typeof window !== 'undefined') window.localStorage.removeItem(MASSAGE_DRAFT_PREFIX + last.key)
+        if (isMassageLangScopedTextKey(last.key)) removeMassageDraftLangAware(last.key, sLang)
+        else removeMassageDraftKey(last.key)
       }
       setPoll(n => n + 1)
+      queueMicrotask(() => notifyIframeDraft())
       return stack.slice(0, -1)
     })
-  }, [])
+  }, [notifyIframeDraft, sLang])
 
   const handleRestore = useCallback(() => {
-    clearAllDrafts()
+    resetJustApplied.current = true
+    clearMassageDraftsForCurrentTemplate()
     setUndoStack([])
+    setContactAddrQuery('')
+    setContactAddrOpen(false)
+    setContactAddrResults([])
     setPoll(n => n + 1)
-  }, [])
+    queueMicrotask(() => notifyIframeDraft())
+    try {
+      iframeRef.current?.contentWindow?.location?.reload()
+    } catch {
+      /* ignore */
+    }
+  }, [notifyIframeDraft])
+
+  const handleClearMySiteConfirm = useCallback(() => {
+    setShowClearConfirmModal(false)
+    handleRestore()
+  }, [handleRestore])
+
+  const publicSlug = typeof window !== 'undefined' ? (localStorage.getItem('publicSlug') || 'salon') : 'salon'
+  const massageSlotActive = useMemo(() => getMassageTemplateSlot(), [poll])
+
+  const contactsSidebarMapSrc = useMemo(() => {
+    const lat = Number.parseFloat(getMassageDraft('publicMapLat') || '')
+    const lng = Number.parseFloat(getMassageDraft('publicMapLng') || '')
+    if (Number.isFinite(lat) && Number.isFinite(lng)) {
+      return `https://www.google.com/maps?q=${lat},${lng}&z=15&output=embed&hl=en`
+    }
+    return DEFAULT_WORLD_MAP_EMBED_URL
+  }, [poll])
+
+  const previewUrl = useMemo(() => {
+    const q = new URLSearchParams()
+    q.set('preview', '1')
+    /** Приветственный экран выбора темы — без черновиков, иначе правки редактирования «лезут» в превью шаблона. */
+    if (panelStage === 'themes' && massageSlotActive === PREMIUM_MASSAGE_SLOT) q.set('welcome', '1')
+    /** Обычные 5 тем: на экране выбора — «чистый» шаблон без massage_draft (правки только в режиме редактирования). */
+    if (panelStage === 'themes' && massageSlotActive !== PREMIUM_MASSAGE_SLOT) q.set('massageWelcome', '1')
+    /** Обычные темы: edit=1 + сохранение hero в massage_draft (см. PublicPage massageHeroEditStorage). */
+    if (panelStage === 'edit') q.set('edit', '1')
+    if (previewMobileFrame) q.set('mobileFrame', '1')
+    if (massageSlotActive === PREMIUM_MASSAGE_SLOT) {
+      return `/massage-preview?${q.toString()}`
+    }
+    q.set('massagePreview', '1')
+    q.set('massageSlot', massageSlotActive)
+    return `/b/${publicSlug}?${q.toString()}`
+  }, [panelStage, massageSlotActive, publicSlug, poll, previewMobileFrame])
+
+  const previewBlocks =
+    massageSlotActive === PREMIUM_MASSAGE_SLOT ? MASSAGE_BLOCKS : SALON_PREVIEW_BLOCKS
+  /** Премиум — нижний sheet и затемнение; 5 обычных тем — та же боковая панель, что в ConstructorPage (салон). */
+  const isPremiumMassageShell = massageSlotActive === PREMIUM_MASSAGE_SLOT
 
   const openFullSize = useCallback(() => {
-    window.open('/massage-preview', '_blank')
-  }, [])
+    const slot = getMassageTemplateSlot()
+    const narrow =
+      typeof window !== 'undefined' && window.matchMedia('(max-width: 639px)').matches
+    if (slot === PREMIUM_MASSAGE_SLOT) {
+      const q = new URLSearchParams()
+      q.set('preview', '1')
+      q.set('full', '1')
+      if (previewMobileFrame) q.set('mobileFrame', '1')
+      q.set('_', String(Date.now()))
+      const url = `/massage-preview?${q.toString()}`
+      if (narrow) window.location.assign(url)
+      else window.open(url, '_blank')
+      return
+    }
+    const q = new URLSearchParams()
+    q.set('preview', '1')
+    q.set('full', '1')
+    q.set('massagePreview', '1')
+    q.set('massageSlot', slot)
+    if (previewMobileFrame) q.set('mobileFrame', '1')
+    q.set('_', String(Date.now()))
+    const url = `/b/${publicSlug}?${q.toString()}`
+    if (narrow) window.location.assign(url)
+    else window.open(url, '_blank')
+  }, [publicSlug, previewMobileFrame])
+
+  const showFullSizeButton =
+    panelStage === 'edit' && (constructorShellNarrow || !previewMobileFrame)
 
   const handleSave = useCallback(() => {
     setSaved(true)
+    try {
+      iframeRef.current?.contentWindow?.location?.reload()
+    } catch {
+      /* ignore */
+    }
     setTimeout(() => setSaved(false), 2000)
   }, [])
 
@@ -489,42 +1101,60 @@ export default function MassageConstructorPage() {
     setSelectedBlockId(null)
   }
 
-  const previewScrollRef = useRef<HTMLDivElement>(null)
-
-  const scrollPreviewToBlock = useCallback((blockId: (typeof MASSAGE_BLOCKS)[number]['id']) => {
-    const container = previewScrollRef.current
-    const anchorId = MASSAGE_BLOCK_ANCHOR_BY_ID[blockId]
-    if (!container || !anchorId) return
-    const el = document.getElementById(anchorId)
-    if (!el) return
-    const rootRect = container.getBoundingClientRect()
-    const elRect = el.getBoundingClientRect()
-    const top = elRect.top - rootRect.top + container.scrollTop
-    container.scrollTo({ top, behavior: 'smooth' })
+  const selectMassageTemplate = useCallback((id: MassageTemplateSlotId) => {
+    setMassageTemplateSlot(id)
+    setUndoStack([])
+    setPoll((n) => n + 1)
+    try {
+      iframeRef.current?.contentWindow?.location?.reload()
+    } catch {
+      /* ignore */
+    }
   }, [])
 
-  /** Подсветка пункта «Все блоки» по текущей позиции скролла в превью */
+  const scrollPreviewToBlock = useCallback(
+    (blockId: string) => {
+      if (massageSlotActive !== PREMIUM_MASSAGE_SLOT) {
+        try {
+          iframeRef.current?.contentWindow?.postMessage({ type: 'scrollToSection', sectionId: blockId }, '*')
+        } catch {
+          /* ignore */
+        }
+        return
+      }
+      const doc = iframeRef.current?.contentDocument
+      const anchorId = MASSAGE_BLOCK_ANCHOR_BY_ID[blockId as keyof typeof MASSAGE_BLOCK_ANCHOR_BY_ID]
+      if (!doc || !anchorId) return
+      doc.getElementById(anchorId)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    },
+    [massageSlotActive]
+  )
+
+  /** Подсветка по скроллу — только для премиум-массажа (MassageTemplate); в PublicPage — только по клику */
   useEffect(() => {
     if (panelStage !== 'edit' || selectedBlockId !== null) return
+    if (massageSlotActive !== PREMIUM_MASSAGE_SLOT) return
 
-    const container = previewScrollRef.current
-    if (!container) return
+    const iframe = iframeRef.current
+    const win = iframe?.contentWindow
+    const doc = iframe?.contentDocument
+    if (!win || !doc?.documentElement) return
 
     const getRelativeTop = (el: HTMLElement) => {
-      const cr = container.getBoundingClientRect()
+      const cr = doc.documentElement.getBoundingClientRect()
       const er = el.getBoundingClientRect()
-      return er.top - cr.top + container.scrollTop
+      return er.top - cr.top + win.scrollY
     }
 
     let raf = 0
     const updateHighlight = () => {
       cancelAnimationFrame(raf)
       raf = requestAnimationFrame(() => {
-        const scrollTop = container.scrollTop
-        const threshold = scrollTop + Math.min(140, container.clientHeight * 0.12)
-        let active: (typeof MASSAGE_BLOCKS)[number]['id'] = MASSAGE_BLOCKS[0].id
+        const scrollTop = win.scrollY || doc.documentElement.scrollTop
+        const threshold = scrollTop + Math.min(140, win.innerHeight * 0.12)
+        let active: string = MASSAGE_BLOCKS[0].id
         for (const block of MASSAGE_BLOCKS) {
-          const el = document.getElementById(MASSAGE_BLOCK_ANCHOR_BY_ID[block.id])
+          const el = doc.getElementById(MASSAGE_BLOCK_ANCHOR_BY_ID[block.id])
           if (!el) continue
           const top = getRelativeTop(el)
           if (top <= threshold) active = block.id
@@ -534,33 +1164,15 @@ export default function MassageConstructorPage() {
     }
 
     updateHighlight()
-    container.addEventListener('scroll', updateHighlight, { passive: true })
+    win.addEventListener('scroll', updateHighlight, { passive: true })
     const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(updateHighlight) : null
-    ro?.observe(container)
+    ro?.observe(doc.documentElement)
     return () => {
       cancelAnimationFrame(raf)
-      container.removeEventListener('scroll', updateHighlight)
+      win.removeEventListener('scroll', updateHighlight)
       ro?.disconnect()
     }
-  }, [panelStage, selectedBlockId, poll])
-
-  const headerSiteName = draft('publicSiteName') || undefined
-  const heroTitle1 = draft('publicHeroTitle1') || undefined
-  const heroTitle2 = draft('publicHeroTitle2') || undefined
-  const heroSub = draft('publicHeroSub') || undefined
-  const headerPhone = draft('publicPhone') || undefined
-  const headerAddress = draft('publicAddress') || undefined
-  const headerTagline = draft('publicTagline') || undefined
-  const headerCallUs = draft('publicCallUs') || undefined
-  const headerContactOnline = draft('publicContactOnline') || undefined
-  const telegramUrl = draft('publicTelegram')
-  const viberUrl = draft('publicViber')
-  const whatsappUrl = draft('publicWhatsapp')
-  const instagramUrl = draft('publicInstagram')
-  const facebookUrl = draft('publicFacebook')
-  const vkUrl = draft('publicVk')
-  const twitterUrl = draft('publicTwitter')
-  const tiktokUrl = draft('publicTiktok')
+  }, [panelStage, selectedBlockId, poll, iframeLoadTick, massageSlotActive])
 
   const massageThemeColors = useMemo(
     () => parseMassageThemeColors(getMassageDraft('publicMassageThemeColors')),
@@ -649,6 +1261,80 @@ export default function MassageConstructorPage() {
     [sLang, setDraft]
   )
 
+  const appendCatalogProduct = useCallback(() => {
+    const cur = mergeMassageCatalogFromDraft(sLang, getMassageDraft('publicMassageCatalogJson'))
+    if (cur.length >= MASSAGE_CATALOG_MAX) return
+    const id = `cat-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
+    const next = [...cur, createMassageCatalogProductFromTemplate(sLang, cur.length, id)]
+    setDraft('publicMassageCatalogJson', serializeMassageCatalogForDraft(next))
+  }, [sLang, setDraft])
+
+  const removeCatalogProductById = useCallback(
+    (productId: string) => {
+      const cur = mergeMassageCatalogFromDraft(sLang, getMassageDraft('publicMassageCatalogJson'))
+      const next = cur.filter(row => row.id !== productId)
+      setDraft('publicMassageCatalogJson', serializeMassageCatalogForDraft(next))
+    },
+    [sLang, setDraft]
+  )
+
+  const applyCatalogImage = useCallback(
+    (productId: string, dataUrl: string) => {
+      const cur = mergeMassageCatalogFromDraft(sLang, getMassageDraft('publicMassageCatalogJson'))
+      const next = cur.map(row => (row.id === productId ? { ...row, image: dataUrl } : row))
+      setDraft('publicMassageCatalogJson', serializeMassageCatalogForDraft(next))
+    },
+    [sLang, setDraft]
+  )
+
+  const clearCatalogImage = useCallback(
+    (productId: string) => {
+      const cur = mergeMassageCatalogFromDraft(sLang, getMassageDraft('publicMassageCatalogJson'))
+      const next = cur.map(row =>
+        row.id === productId ? { ...row, image: undefined } : row
+      )
+      setDraft('publicMassageCatalogJson', serializeMassageCatalogForDraft(next))
+    },
+    [sLang, setDraft]
+  )
+
+  const appendSpec = useCallback(() => {
+    const cur = mergeMassageSpecsFromDraft(sLang, getMassageDraft('publicMassageSpecsJson'))
+    if (cur.length >= MASSAGE_SPECS_MAX) return
+    const id = `spec-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
+    const next = [...cur, createMassageSpecFromTemplate(sLang, cur.length, id)]
+    setDraft('publicMassageSpecsJson', serializeMassageSpecsForDraft(next))
+  }, [sLang, setDraft])
+
+  const removeSpecById = useCallback(
+    (specId: string) => {
+      const cur = mergeMassageSpecsFromDraft(sLang, getMassageDraft('publicMassageSpecsJson'))
+      const next = cur.filter(row => row.id !== specId)
+      setDraft('publicMassageSpecsJson', serializeMassageSpecsForDraft(next))
+    },
+    [sLang, setDraft]
+  )
+
+  const applySpecImage = useCallback(
+    (specId: string, dataUrl: string) => {
+      const cur = mergeMassageSpecsFromDraft(sLang, getMassageDraft('publicMassageSpecsJson'))
+      const next = cur.map(row => (row.id === specId ? { ...row, image: dataUrl } : row))
+      setDraft('publicMassageSpecsJson', serializeMassageSpecsForDraft(next))
+    },
+    [sLang, setDraft]
+  )
+
+  const clearSpecImage = useCallback(
+    (specId: string) => {
+      const cur = mergeMassageSpecsFromDraft(sLang, getMassageDraft('publicMassageSpecsJson'))
+      const next = cur.map(row =>
+        row.id === specId ? { ...row, image: undefined } : row
+      )
+      setDraft('publicMassageSpecsJson', serializeMassageSpecsForDraft(next))
+    },
+    [sLang, setDraft]
+  )
+
   const removeSubItem = useCallback(
     (id: string) => {
       const cur = mergeMassageSubscriptionsFromDraft(sLang, getMassageDraft('publicMassageSubsJson'))
@@ -670,16 +1356,11 @@ export default function MassageConstructorPage() {
     [sLang, setDraft]
   )
 
-  const hasDrafts = typeof window !== 'undefined' && (() => {
-    for (let i = 0; i < localStorage.length; i++) {
-      if (localStorage.key(i)?.startsWith(MASSAGE_DRAFT_PREFIX)) return true
-    }
-    return false
-  })()
+  const hasDrafts = typeof window !== 'undefined' && massageCurrentTemplateHasDraftKeys()
 
   const sidebarTitle =
     selectedBlockId
-      ? (MASSAGE_BLOCKS.find(b => b.id === selectedBlockId)?.[sLang] ?? s.allBlocks)
+      ? (previewBlocks.find(b => b.id === selectedBlockId)?.[sLang] ?? s.allBlocks)
       : panelStage === 'themes'
         ? s.chooseTheme
         : s.allBlocks
@@ -708,28 +1389,101 @@ export default function MassageConstructorPage() {
   }, [selectedBlockId])
 
   return (
-    <div className="h-screen flex flex-col bg-background text-foreground overflow-hidden">
-      <header className="border-b border-border/50 bg-card/40 backdrop-blur supports-[backdrop-filter]:bg-card/60 shrink-0">
-        <div className="flex items-center justify-between gap-4 px-4 py-3 sm:px-6">
-          <div className="flex items-center gap-3">
-            <Button variant="ghost" size="icon" onClick={() => navigate('/dashboard/settings')} className="shrink-0" aria-label={s.back}>
+    <div
+      className="h-screen flex flex-col bg-background text-foreground overflow-hidden"
+      data-constructor-shell="true"
+    >
+      {showClearConfirmModal ? (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4"
+          onClick={() => setShowClearConfirmModal(false)}
+        >
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" aria-hidden />
+          <Card
+            className="relative z-[101] w-full max-w-md backdrop-blur-2xl bg-card/95 border border-border/50 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-6">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setShowClearConfirmModal(false)}
+                className="absolute top-4 right-4 h-8 w-8"
+                aria-label={s.close}
+              >
+                <X className="w-4 h-4" />
+              </Button>
+              <h3 className="text-lg font-bold pr-10 mb-3 text-foreground">{s.deleteMySite}</h3>
+              <p className="text-sm text-muted-foreground mb-6">{s.deleteMySiteDesc}</p>
+              <div className="flex gap-3 justify-end">
+                <Button variant="outline" onClick={() => setShowClearConfirmModal(false)}>
+                  {s.back}
+                </Button>
+                <Button onClick={handleClearMySiteConfirm} className="bg-primary text-primary-foreground hover:bg-primary/90">
+                  {s.yes}
+                </Button>
+              </div>
+            </div>
+          </Card>
+        </div>
+      ) : null}
+      <header
+        className={cn(
+          'border-b border-border/50 bg-card/40 backdrop-blur supports-[backdrop-filter]:bg-card/60 shrink-0',
+          isPremiumMassageShell ? 'z-40' : 'relative z-50'
+        )}
+      >
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4 px-3 py-2.5 sm:px-6 sm:py-3">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+            <Button variant="ghost" size="icon" onClick={() => navigate('/dashboard/settings')} className="shrink-0 h-9 w-9 sm:h-10 sm:w-10 touch-manipulation" aria-label={s.back}>
               <ArrowLeft className="h-5 w-5" />
             </Button>
-            <h1 className="text-lg font-semibold truncate">{s.constructorTitle}</h1>
+            <h1 className="text-sm sm:text-lg font-semibold truncate">{s.constructorTitle}</h1>
           </div>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" className="gap-2" onClick={openFullSize}>
-              <Maximize2 className="h-4 w-4" />
-              {s.fullSize}
-            </Button>
-            <Button onClick={handleSave} className="gap-2">
-              <Save className="h-4 w-4" />
-              {saved ? s.saved : s.save}
+          <div className="flex items-center justify-end gap-1.5 sm:gap-2 flex-wrap">
+            {previewMobileFrame ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="gap-1.5 h-9 sm:h-10 px-2.5 sm:px-3 touch-manipulation bg-primary/10 border-primary/35"
+                onClick={() => setPreviewMobileFramePersist(false)}
+                aria-label={s.webPreview}
+                title={s.webPreview}
+              >
+                <Monitor className="h-4 w-4 shrink-0" />
+                <span className="hidden sm:inline text-xs sm:text-sm">{s.webPreview}</span>
+              </Button>
+            ) : (
+              !constructorShellNarrow && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5 h-9 sm:h-10 px-2.5 sm:px-3 touch-manipulation"
+                  onClick={() => setPreviewMobileFramePersist(true)}
+                  aria-label={s.mobilePreview}
+                  title={s.mobilePreview}
+                >
+                  <Smartphone className="h-4 w-4 shrink-0" />
+                  <span className="hidden sm:inline text-xs sm:text-sm">{s.mobilePreview}</span>
+                </Button>
+              )
+            )}
+            {showFullSizeButton ? (
+              <Button variant="outline" size="sm" className="gap-1.5 h-9 sm:h-10 px-2.5 sm:px-3 touch-manipulation" onClick={openFullSize}>
+                <Maximize2 className="h-4 w-4 shrink-0" />
+                <span className="hidden sm:inline text-xs sm:text-sm">{s.fullSize}</span>
+              </Button>
+            ) : null}
+            <Button size="sm" className="gap-1.5 h-9 sm:h-10 px-2.5 sm:px-3 touch-manipulation" onClick={handleSave}>
+              <Save className="h-4 w-4 shrink-0" />
+              <span className="text-xs sm:text-sm max-w-[5.5rem] sm:max-w-none truncate">{saved ? s.saved : s.save}</span>
             </Button>
             <Button
               variant="outline"
               size="icon"
-              className={cn('shrink-0', sideOpen && 'bg-primary/10 border-primary/30')}
+              className={cn('shrink-0 h-9 w-9 sm:h-10 sm:w-10 touch-manipulation', sideOpen && 'bg-primary/10 border-primary/30')}
               onClick={() => setSideOpen(o => !o)}
               aria-label={sideOpen ? s.close : s.allBlocks}
             >
@@ -740,99 +1494,148 @@ export default function MassageConstructorPage() {
       </header>
 
       <main className="flex-1 min-h-0 min-w-0 flex flex-col overflow-hidden relative">
-        <div className="flex-1 min-w-0 min-h-0 flex flex-col p-4 overflow-hidden">
-          <div className="flex-1 min-w-0 min-h-0 rounded-xl border border-border/50 bg-card/20 overflow-hidden shadow-inner relative">
-            <div
-              ref={previewScrollRef}
-              className="absolute inset-0 overflow-auto scrollbar-hide"
-              data-scroll-container
-            >
-              <MassageTemplate
-                siteName={siteName}
-                lang={sLang}
-                isEditMode={panelStage === 'edit'}
-                {...(panelStage === 'edit'
-                  ? {
-                      headerSiteName,
-                      heroTitle1,
-                      heroTitle2,
-                      heroSub,
-                      headerPhone,
-                      headerAddress,
-                      headerTagline,
-                      headerCallUs,
-                      headerContactOnline,
-                      telegramUrl,
-                      viberUrl,
-                      whatsappUrl,
-                      instagramUrl,
-                      facebookUrl,
-                      vkUrl,
-                      twitterUrl,
-                      tiktokUrl,
-                      heroImage: draft('publicMassageHeroBg') || null,
-                      heroVideo: draft('publicMassageHeroVideo') || null,
-                      headerLogoUrl: draft('publicLogo') || null,
-                      headerLogoShape:
-                        (draft('publicHeaderLogoShape') as 'circle' | 'rounded' | 'square') || 'circle',
-                      headerLogoVisible: draft('publicHeaderLogoVisible') !== 'false',
-                      massageThemeColors,
-                      massageSvcTitle: draft('publicMassageSvcTitle') || undefined,
-                      massageSvcSub: draft('publicMassageSvcSub') || undefined,
-                      massageServicesJson: draft('publicMassageServicesJson') || undefined,
-                      massageAboutTitle: draft('publicMassageAboutTitle') || undefined,
-                      massageAboutText: draft('publicMassageAboutText') || undefined,
-                      massageAboutMission: draft('publicMassageAboutMission') || undefined,
-                      massageAboutAvatar: draft('publicMassageAboutAvatar') || null,
-                      massageAboutAvatarPan: draft('publicMassageAboutAvatarPan') || undefined,
-                      massageGalTitle: draft('publicMassageGalTitle') || undefined,
-                      massageGalSub: draft('publicMassageGalSub') || undefined,
-                      massageGalleryJson: draft('publicMassageGalleryJson') || undefined,
-                      massageSubsTitle: draft('publicMassageSubsTitle') || undefined,
-                      massageSubsJson: draft('publicMassageSubsJson') || undefined,
-                      massageSubsCtaUrl: draft('publicMassageSubsCtaUrl') || undefined,
-                      massageSubsCtaHidden: draft('publicMassageSubsCtaHidden') || undefined,
-                      massageSubsHidden: draft('publicMassageSubsHidden') || undefined,
-                      onSaveDraft: setDraft,
-                    }
-                  : {})}
-              />
-            </div>
+        {sideOpen && isPremiumMassageShell ? (
+          <button
+            type="button"
+            className="absolute inset-0 z-20 bg-black/45 backdrop-blur-[2px] sm:hidden touch-manipulation"
+            aria-label={s.close}
+            onClick={() => setSideOpen(false)}
+          />
+        ) : null}
+        <div
+          className={cn(
+            'flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden',
+            isPremiumMassageShell ? 'p-2 sm:p-4' : 'p-4',
+            previewMobileFrame && 'items-center bg-muted/25'
+          )}
+        >
+          <div
+            className={cn(
+              'flex-1 min-w-0 min-h-0 border border-border/50 bg-card/20 overflow-hidden shadow-inner relative w-full',
+              isPremiumMassageShell ? 'rounded-lg sm:rounded-xl' : 'rounded-xl',
+              previewMobileFrame && 'max-w-[390px] ring-1 ring-border/50 shadow-xl'
+            )}
+          >
+            <iframe
+              key={previewUrl}
+              ref={iframeRef}
+              title="Massage preview"
+              src={previewUrl}
+              className={cn(
+                'absolute inset-0 h-full w-full border-0 bg-background',
+                isPremiumMassageShell ? 'rounded-lg sm:rounded-xl' : 'rounded-xl'
+              )}
+              onLoad={() => setIframeLoadTick((n) => n + 1)}
+            />
           </div>
         </div>
 
         <div
           className={cn(
-            'absolute top-4 right-4 bottom-4 z-30 w-[280px] flex flex-col overflow-hidden rounded-xl isolate',
-            'border border-border/50 bg-card shadow-xl',
-            'transition-[transform] duration-300 ease-out',
-            sideOpen ? 'translate-x-0' : 'translate-x-[calc(100%+1rem)]'
+            'absolute flex flex-col overflow-hidden border border-border/50 transition-[transform] duration-300 ease-out',
+            isPremiumMassageShell
+              ? cn(
+                  'z-30 isolate bg-card shadow-2xl',
+                  'max-sm:inset-x-0 max-sm:bottom-0 max-sm:top-auto max-sm:max-h-[min(78vh,640px)] max-sm:w-full max-sm:rounded-b-none max-sm:rounded-t-2xl max-sm:border-b-0 max-sm:border-x-0',
+                  'sm:top-4 sm:right-4 sm:bottom-4 sm:left-auto sm:w-[280px] sm:rounded-xl',
+                  'pb-[max(0.75rem,env(safe-area-inset-bottom,0px))]',
+                  sideOpen
+                    ? 'max-sm:translate-y-0 sm:translate-x-0'
+                    : 'max-sm:translate-y-[calc(100%+12px)] sm:translate-x-[calc(100%+1rem)]'
+                )
+              : cn(
+                  'z-40 bg-card/95 shadow-xl backdrop-blur max-sm:left-3 max-sm:right-3 max-sm:top-2 max-sm:max-h-[min(520px,72vh)] max-sm:w-auto max-sm:rounded-xl sm:bottom-4 sm:left-auto sm:right-4 sm:top-4 sm:z-30 sm:w-[280px] sm:max-h-none',
+                  sideOpen
+                    ? 'translate-x-0'
+                    : 'max-sm:translate-x-[calc(100%+2.5rem)] sm:translate-x-[calc(100%+1rem)]'
+                )
           )}
         >
+          {isPremiumMassageShell ? (
+            <div className="flex sm:hidden justify-center pt-2 pb-1 shrink-0" aria-hidden>
+              <span className="h-1 w-10 rounded-full bg-muted-foreground/25" />
+            </div>
+          ) : null}
           <div className="flex items-center justify-between gap-2 px-3 py-2.5 border-b border-border/40 shrink-0">
-            <span className="font-semibold text-foreground text-sm truncate">{sidebarTitle}</span>
-            <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={() => setSideOpen(false)} aria-label={s.close}>
+            <span className="font-semibold text-foreground text-sm truncate min-w-0 pr-2">{sidebarTitle}</span>
+            <Button variant="ghost" size="icon" className="h-9 w-9 shrink-0 touch-manipulation" onClick={() => setSideOpen(false)} aria-label={s.close}>
               <X className="h-4 w-4" />
             </Button>
           </div>
 
-          <div className="flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden p-3 flex flex-col gap-4 scrollbar-hide">
+          <div ref={sidebarScrollRef} className="flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden p-3 sm:p-3 flex flex-col gap-4 scrollbar-hide overscroll-contain">
             {panelStage === 'themes' && (
               <>
+                {/* Тот же визуальный паттерн, что в ConstructorPage: иконка в круге, без карточной рамки */}
                 <div className="flex flex-col items-center">
-                  <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-4 w-full text-center">
-                    {s.templateHeading}
+                  <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3 w-full text-center">
+                    {s.templatesStandard}
                   </h3>
-                  <div className="flex flex-col items-center gap-2">
-                    <span
-                      className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border-2 border-primary bg-primary/20 shadow-[0_0_14px_rgba(59,130,246,0.45)] ring-2 ring-primary/40 overflow-hidden"
-                      aria-hidden
+                  <div className="grid grid-cols-2 gap-x-6 gap-y-4 justify-items-center w-full max-w-[200px] mx-auto">
+                    {MASSAGE_CONSTRUCTOR_THEMES.map(({ id, icon }) => {
+                      const active = massageSlotActive === id
+                      const labelKey = THEME_SIDEBAR_LABEL_KEY[id]
+                      const label = s[labelKey]
+                      return (
+                        <button
+                          key={id}
+                          type="button"
+                          onClick={() => selectMassageTemplate(id)}
+                          className={cn(
+                            'flex flex-col items-center gap-1.5 transition',
+                            active ? 'opacity-100' : 'opacity-80 hover:opacity-100'
+                          )}
+                        >
+                          <span
+                            className={cn(
+                              'flex h-12 w-12 shrink-0 items-center justify-center rounded-full border-2 transition overflow-hidden',
+                              active
+                                ? 'border-primary bg-primary/20'
+                                : 'border-border/50 bg-card/40 hover:border-primary/50'
+                            )}
+                            aria-hidden
+                          >
+                            <img src={icon} alt="" className="h-6 w-6 object-contain" />
+                          </span>
+                          <span className="text-center text-sm font-bold text-foreground leading-tight">{label}</span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                <div className="h-px w-full bg-border/50 shrink-0" />
+
+                <div className="flex flex-col items-center">
+                  <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3 w-full text-center">
+                    {s.templatesPremium}
+                  </h3>
+                  <div className="flex flex-wrap justify-center gap-x-6 gap-y-4 w-full">
+                    <button
+                      type="button"
+                      onClick={() => selectMassageTemplate(PREMIUM_MASSAGE_SLOT)}
+                      className={cn(
+                        'flex flex-col items-center gap-1.5 transition',
+                        massageSlotActive === PREMIUM_MASSAGE_SLOT
+                          ? 'opacity-100'
+                          : 'opacity-80 hover:opacity-100'
+                      )}
                     >
-                      <Gem className="h-6 w-6 text-amber-400 drop-shadow-[0_0_6px_rgba(251,191,36,0.6)]" />
-                    </span>
-                    <span className="text-center text-sm font-bold text-foreground leading-tight max-w-[200px]">
-                      {s.templateLabel}
-                    </span>
+                      <span
+                        className={cn(
+                          'flex h-12 w-12 shrink-0 items-center justify-center rounded-full border-2 transition overflow-hidden',
+                          massageSlotActive === PREMIUM_MASSAGE_SLOT
+                            ? 'border-primary bg-primary/20'
+                            : 'border-border/50 bg-card/40 hover:border-primary/50'
+                        )}
+                        aria-hidden
+                      >
+                        <img src={iconPremiumMassage} alt="" className="h-6 w-6 object-contain" />
+                      </span>
+                      <span className="text-center text-sm font-bold text-foreground leading-tight">
+                        {s.themePremiumMassage}
+                      </span>
+                    </button>
                   </div>
                 </div>
 
@@ -842,11 +1645,31 @@ export default function MassageConstructorPage() {
                     {s.editThisTheme}
                   </Button>
                 </div>
+                {hasDrafts ? (
+                  <div className="pt-2 border-t border-border/40 space-y-2">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{s.mySite}</p>
+                    <p className="text-xs text-muted-foreground">{s.myLastEdits}</p>
+                    <div className="flex gap-2">
+                      <Button variant="outline" size="sm" className="flex-1 gap-1.5" onClick={goToEdit}>
+                        <Pencil className="h-3.5 w-3.5" />
+                        {s.open}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="flex-1 gap-1.5 border-red-400/50 text-red-600 hover:bg-red-500/10 hover:text-red-500"
+                        onClick={() => setShowClearConfirmModal(true)}
+                      >
+                        {s.eraseBtn}
+                      </Button>
+                    </div>
+                  </div>
+                ) : null}
               </>
             )}
 
             {panelStage === 'edit' && (
-              <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4">
+              <div className="flex min-w-0 flex-col gap-4">
                 <Button
                   variant="ghost"
                   size="sm"
@@ -867,7 +1690,7 @@ export default function MassageConstructorPage() {
                       <span className="h-px flex-1 bg-border/50 shrink-0" />
                     </div>
                     <ul className="space-y-2">
-                      {MASSAGE_BLOCKS.map(block => (
+                      {previewBlocks.map(block => (
                         <li key={block.id}>
                           <button
                             type="button"
@@ -888,18 +1711,124 @@ export default function MassageConstructorPage() {
                         </li>
                       ))}
                     </ul>
+
+                    {massageSlotActive !== PREMIUM_MASSAGE_SLOT ? (
+                      <div className="flex flex-col gap-2 pt-4 mt-2 border-t border-border/40">
+                        <div className="flex items-center justify-center gap-2">
+                          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/15 text-primary shadow-inner ring-1 ring-primary/20">
+                            <Layers className="h-3.5 w-3.5" aria-hidden />
+                          </span>
+                          <h3 className="text-[11px] font-bold uppercase tracking-[0.14em] text-foreground/95">
+                            {s.sitePageBgPattern}
+                          </h3>
+                        </div>
+                        <p className="text-[10px] leading-relaxed text-muted-foreground text-center px-0.5">
+                          {s.sitePageBgPatternHint}
+                        </p>
+                        <div className="grid grid-cols-5 gap-1.5">
+                          {MASSAGE_BODY_PATTERN_ORDER.map(id => {
+                            const stored = (draft('publicMassageBodyPatternChoice') || '').trim()
+                            const effective: MassageOrdinaryTemplateId = isMassageOrdinaryTemplateId(stored)
+                              ? stored
+                              : massageSlotActive
+                            const active = effective === id
+                            const labelKey = THEME_SIDEBAR_LABEL_KEY[id]
+                            const label = s[labelKey]
+                            return (
+                              <button
+                                key={id}
+                                type="button"
+                                title={label}
+                                aria-label={label}
+                                onClick={() => setDraft('publicMassageBodyPatternChoice', id)}
+                                className={cn(
+                                  'relative aspect-square overflow-hidden rounded-lg border-2 p-0 transition',
+                                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-card',
+                                  active
+                                    ? 'border-primary ring-2 ring-primary/35'
+                                    : 'border-border/45 hover:border-border/75'
+                                )}
+                              >
+                                <img
+                                  src={MASSAGE_BODY_PATTERN_BY_TEMPLATE[id]}
+                                  alt=""
+                                  className="h-full w-full object-cover"
+                                />
+                                <span className="pointer-events-none absolute inset-x-0 bottom-0 truncate bg-black/55 px-0.5 py-0.5 text-center text-[7px] font-semibold leading-tight text-white/95 sm:text-[8px]">
+                                  {label}
+                                </span>
+                              </button>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    ) : null}
+
+                    <div className="flex flex-col gap-3 pt-4 mt-2 border-t border-border/40">
+                      <div className="flex items-center justify-center gap-2">
+                        <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/15 text-primary shadow-inner ring-1 ring-primary/20">
+                          <Globe className="h-3.5 w-3.5" aria-hidden />
+                        </span>
+                        <h3 className="text-[11px] font-bold uppercase tracking-[0.14em] text-foreground/95">
+                          {s.siteLangs}
+                        </h3>
+                      </div>
+                      <p className="text-[10px] leading-relaxed text-muted-foreground text-center px-0.5">
+                        {s.siteLangsHint}
+                      </p>
+                      <div className="flex flex-col gap-2">
+                        {SITE_LANG_ORDER.map(code => {
+                          const on = siteLangsPick.includes(code)
+                          const flag = code === 'ru' ? '🇷🇺' : code === 'en' ? '🇬🇧' : '🇷🇴'
+                          const label = code === 'ru' ? s.langPickRu : code === 'en' ? s.langPickEn : s.langPickRo
+                          return (
+                            <button
+                              key={code}
+                              type="button"
+                              onClick={() => toggleSiteLang(code)}
+                              className={cn(
+                                'group flex w-full items-center gap-2.5 rounded-xl border px-2.5 py-2 text-left transition-all duration-200',
+                                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-card',
+                                on
+                                  ? 'border-primary/45 bg-primary/12 shadow-[0_0_0_1px_rgba(59,130,246,0.2),0_4px_14px_-4px_rgba(59,130,246,0.35)]'
+                                  : 'border-border/35 bg-background/30 hover:border-border/60 hover:bg-muted/25'
+                              )}
+                            >
+                              <span
+                                className={cn(
+                                  'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-lg',
+                                  'border border-white/10 bg-gradient-to-b from-white/12 to-white/[0.04]',
+                                  'shadow-[inset_0_1px_0_rgba(255,255,255,0.12)]'
+                                )}
+                                aria-hidden
+                              >
+                                {flag}
+                              </span>
+                              <span className="min-w-0 flex-1 text-[13px] font-semibold leading-tight text-foreground">
+                                {label}
+                              </span>
+                              <span
+                                className={cn(
+                                  'flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 transition-all',
+                                  on
+                                    ? 'border-primary bg-primary text-primary-foreground shadow-[0_0_14px_rgba(59,130,246,0.45)]'
+                                    : 'border-border/55 bg-transparent text-transparent'
+                                )}
+                                aria-hidden
+                              >
+                                {on && <Check className="h-3.5 w-3.5" strokeWidth={2.8} />}
+                              </span>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
                   </div>
                 )}
 
                 {selectedBlockId === 'header' && (
                   <>
-                    <p className="text-xs text-muted-foreground leading-relaxed mb-3 px-1">
-                      {sLang === 'ru'
-                        ? 'Нажмите на текст в превью, чтобы отредактировать'
-                        : sLang === 'ro'
-                          ? 'Faceți clic pe text în previzualizare pentru a edita'
-                          : 'Click on text in the preview to edit'}
-                    </p>
+                    <p className="text-xs text-muted-foreground leading-relaxed mb-3 px-1">{s.previewEditHint}</p>
 
                     {/* Логотип */}
                     <section className="space-y-2 pb-3 border-b border-border/50">
@@ -994,12 +1923,27 @@ export default function MassageConstructorPage() {
                           const file = e.target.files?.[0]
                           e.target.value = ''
                           if (!file || !file.type.startsWith('video/')) return
-                          const reader = new FileReader()
-                          reader.onload = () => {
-                            const r = typeof reader.result === 'string' ? reader.result : ''
-                            if (r) setDraft('publicMassageHeroVideo', r)
+                          const slot = getMassageTemplateSlot()
+                          const applyDataUrl = () => {
+                            const reader = new FileReader()
+                            reader.onload = () => {
+                              const r = typeof reader.result === 'string' ? reader.result : ''
+                              if (r) setDraft('publicMassageHeroVideo', r)
+                            }
+                            reader.readAsDataURL(file)
                           }
-                          reader.readAsDataURL(file)
+                          if (file.size >= HERO_VIDEO_USE_IDB_MIN_BYTES) {
+                            void (async () => {
+                              try {
+                                await saveMassageHeroVideoBlob(slot, file)
+                                setDraft('publicMassageHeroVideo', MASSAGE_HERO_VIDEO_IDB_MARKER)
+                              } catch {
+                                applyDataUrl()
+                              }
+                            })()
+                          } else {
+                            applyDataUrl()
+                          }
                         }
                         const onPickPhoto = (e: ChangeEvent<HTMLInputElement>) => {
                           const file = e.target.files?.[0]
@@ -1156,100 +2100,201 @@ export default function MassageConstructorPage() {
                       })()}
                     </section>
 
-                    {/* Палитры */}
+                    {/* Палитры: премиум — как в MassageTemplate; 5 обычных — только баннер страницы салона в превью */}
                     <section className="space-y-3 pb-3 border-b border-border/50">
                       <h4 className="text-sm font-semibold text-foreground">{s.colorsBlock}</h4>
-                      <MassageColorRow
-                        label={s.colorTopBar}
-                        colorKey="topBarBg"
-                        currentId={curColor('topBarBg')}
-                        onPick={setThemeColor}
-                        byDefaultLabel={s.byDefault}
-                      />
-                      <MassageColorRow
-                        label={s.colorNav}
-                        colorKey="navBg"
-                        currentId={curColor('navBg')}
-                        onPick={setThemeColor}
-                        byDefaultLabel={s.byDefault}
-                      />
-                      <MassageColorRow
-                        label={s.colorNavLinks}
-                        colorKey="navLink"
-                        currentId={curColor('navLink')}
-                        onPick={setThemeColor}
-                        byDefaultLabel={s.byDefault}
-                      />
-                      <MassageColorRow
-                        label={s.colorSiteName}
-                        colorKey="siteName"
-                        currentId={curColor('siteName')}
-                        onPick={setThemeColor}
-                        byDefaultLabel={s.byDefault}
-                      />
-                      <MassageColorRow
-                        label={s.colorTagline}
-                        colorKey="tagline"
-                        currentId={curColor('tagline')}
-                        onPick={setThemeColor}
-                        byDefaultLabel={s.byDefault}
-                      />
-                      <MassageColorRow
-                        label={s.colorAddress}
-                        colorKey="address"
-                        currentId={curColor('address')}
-                        onPick={setThemeColor}
-                        byDefaultLabel={s.byDefault}
-                      />
-                      <MassageColorRow
-                        label={s.colorContactOnline}
-                        colorKey="contactOnline"
-                        currentId={curColor('contactOnline')}
-                        onPick={setThemeColor}
-                        byDefaultLabel={s.byDefault}
-                      />
-                      <MassageColorRow
-                        label={s.colorCallUs}
-                        colorKey="callUs"
-                        currentId={curColor('callUs')}
-                        onPick={setThemeColor}
-                        byDefaultLabel={s.byDefault}
-                      />
-                      <MassageColorRow
-                        label={s.colorPhone}
-                        colorKey="phone"
-                        currentId={curColor('phone')}
-                        onPick={setThemeColor}
-                        byDefaultLabel={s.byDefault}
-                      />
-                      <MassageColorRow
-                        label={s.colorHero1}
-                        colorKey="heroLine1"
-                        currentId={curColor('heroLine1')}
-                        onPick={setThemeColor}
-                        byDefaultLabel={s.byDefault}
-                      />
-                      <MassageColorRow
-                        label={s.colorHero2}
-                        colorKey="heroLine2"
-                        currentId={curColor('heroLine2')}
-                        onPick={setThemeColor}
-                        byDefaultLabel={s.byDefault}
-                      />
-                      <MassageColorRow
-                        label={s.colorHeroSub}
-                        colorKey="heroSub"
-                        currentId={curColor('heroSub')}
-                        onPick={setThemeColor}
-                        byDefaultLabel={s.byDefault}
-                      />
-                      <MassageColorRow
-                        label={s.colorHeroBtnBorder}
-                        colorKey="heroCtaBorder"
-                        currentId={curColor('heroCtaBorder')}
-                        onPick={setThemeColor}
-                        byDefaultLabel={s.byDefault}
-                      />
+                      {isPremiumMassageShell ? (
+                        <>
+                          <MassageColorRow
+                            label={s.colorTopBar}
+                            colorKey="topBarBg"
+                            currentId={curColor('topBarBg')}
+                            onPick={setThemeColor}
+                            byDefaultLabel={s.byDefault}
+                          />
+                          <MassageColorRow
+                            label={s.colorNav}
+                            colorKey="navBg"
+                            currentId={curColor('navBg')}
+                            onPick={setThemeColor}
+                            byDefaultLabel={s.byDefault}
+                          />
+                          <MassageColorRow
+                            label={s.colorNavLinks}
+                            colorKey="navLink"
+                            currentId={curColor('navLink')}
+                            onPick={setThemeColor}
+                            byDefaultLabel={s.byDefault}
+                          />
+                          <MassageColorRow
+                            label={s.colorSiteName}
+                            colorKey="siteName"
+                            currentId={curColor('siteName')}
+                            onPick={setThemeColor}
+                            byDefaultLabel={s.byDefault}
+                          />
+                          <MassageColorRow
+                            label={s.colorTagline}
+                            colorKey="tagline"
+                            currentId={curColor('tagline')}
+                            onPick={setThemeColor}
+                            byDefaultLabel={s.byDefault}
+                          />
+                          <MassageColorRow
+                            label={s.colorAddress}
+                            colorKey="address"
+                            currentId={curColor('address')}
+                            onPick={setThemeColor}
+                            byDefaultLabel={s.byDefault}
+                          />
+                          <MassageColorRow
+                            label={s.colorContactOnline}
+                            colorKey="contactOnline"
+                            currentId={curColor('contactOnline')}
+                            onPick={setThemeColor}
+                            byDefaultLabel={s.byDefault}
+                          />
+                          <MassageColorRow
+                            label={s.colorCallUs}
+                            colorKey="callUs"
+                            currentId={curColor('callUs')}
+                            onPick={setThemeColor}
+                            byDefaultLabel={s.byDefault}
+                          />
+                          <MassageColorRow
+                            label={s.colorPhone}
+                            colorKey="phone"
+                            currentId={curColor('phone')}
+                            onPick={setThemeColor}
+                            byDefaultLabel={s.byDefault}
+                          />
+                          <MassageColorRow
+                            label={s.colorHero1}
+                            colorKey="heroLine1"
+                            currentId={curColor('heroLine1')}
+                            onPick={setThemeColor}
+                            byDefaultLabel={s.byDefault}
+                          />
+                          <MassageColorRow
+                            label={s.colorHero2}
+                            colorKey="heroLine2"
+                            currentId={curColor('heroLine2')}
+                            onPick={setThemeColor}
+                            byDefaultLabel={s.byDefault}
+                          />
+                          <MassageColorRow
+                            label={s.colorHeroSub}
+                            colorKey="heroSub"
+                            currentId={curColor('heroSub')}
+                            onPick={setThemeColor}
+                            byDefaultLabel={s.byDefault}
+                          />
+                          <MassageColorRow
+                            label={s.colorHeroPrimBtnBg}
+                            colorKey="heroPrimBtnBg"
+                            currentId={curColor('heroPrimBtnBg')}
+                            onPick={setThemeColor}
+                            byDefaultLabel={s.byDefault}
+                          />
+                          <MassageColorRow
+                            label={s.colorHeroPrimBtnHover}
+                            colorKey="heroPrimBtnHover"
+                            currentId={curColor('heroPrimBtnHover')}
+                            onPick={setThemeColor}
+                            byDefaultLabel={s.byDefault}
+                          />
+                          <MassageColorRow
+                            label={s.colorHeroBtnBorder}
+                            colorKey="heroCtaBorder"
+                            currentId={curColor('heroCtaBorder')}
+                            onPick={setThemeColor}
+                            byDefaultLabel={s.byDefault}
+                          />
+                          <MassageColorRow
+                            label={s.colorHeroSecBtnBg}
+                            colorKey="heroSecBtnBg"
+                            currentId={curColor('heroSecBtnBg')}
+                            onPick={setThemeColor}
+                            byDefaultLabel={s.byDefault}
+                          />
+                          <MassageColorRow
+                            label={s.colorHeroSecBtnHover}
+                            colorKey="heroSecBtnHover"
+                            currentId={curColor('heroSecBtnHover')}
+                            onPick={setThemeColor}
+                            byDefaultLabel={s.byDefault}
+                          />
+                          <MassageColorRow
+                            label={s.colorHeroSecBtnBorder}
+                            colorKey="heroSecBtnBorder"
+                            currentId={curColor('heroSecBtnBorder')}
+                            onPick={setThemeColor}
+                            byDefaultLabel={s.byDefault}
+                          />
+                        </>
+                      ) : (
+                        <>
+                          <p className="text-[10px] leading-relaxed text-muted-foreground px-0.5">
+                            {s.salonHeroColorsNote}
+                          </p>
+                          <MassageColorRow
+                            label={s.salonColorBannerTitle}
+                            colorKey="heroLine1"
+                            currentId={curColor('heroLine1')}
+                            onPick={setThemeColor}
+                            byDefaultLabel={s.byDefault}
+                          />
+                          <MassageColorRow
+                            label={s.salonColorBannerSub}
+                            colorKey="heroSub"
+                            currentId={curColor('heroSub')}
+                            onPick={setThemeColor}
+                            byDefaultLabel={s.byDefault}
+                          />
+                          <MassageColorRow
+                            label={s.colorHeroPrimBtnBg}
+                            colorKey="heroPrimBtnBg"
+                            currentId={curColor('heroPrimBtnBg')}
+                            onPick={setThemeColor}
+                            byDefaultLabel={s.byDefault}
+                          />
+                          <MassageColorRow
+                            label={s.colorHeroPrimBtnHover}
+                            colorKey="heroPrimBtnHover"
+                            currentId={curColor('heroPrimBtnHover')}
+                            onPick={setThemeColor}
+                            byDefaultLabel={s.byDefault}
+                          />
+                          <MassageColorRow
+                            label={s.colorHeroBtnBorder}
+                            colorKey="heroCtaBorder"
+                            currentId={curColor('heroCtaBorder')}
+                            onPick={setThemeColor}
+                            byDefaultLabel={s.byDefault}
+                          />
+                          <MassageColorRow
+                            label={s.colorHeroSecBtnBg}
+                            colorKey="heroSecBtnBg"
+                            currentId={curColor('heroSecBtnBg')}
+                            onPick={setThemeColor}
+                            byDefaultLabel={s.byDefault}
+                          />
+                          <MassageColorRow
+                            label={s.colorHeroSecBtnHover}
+                            colorKey="heroSecBtnHover"
+                            currentId={curColor('heroSecBtnHover')}
+                            onPick={setThemeColor}
+                            byDefaultLabel={s.byDefault}
+                          />
+                          <MassageColorRow
+                            label={s.colorHeroSecBtnBorder}
+                            colorKey="heroSecBtnBorder"
+                            currentId={curColor('heroSecBtnBorder')}
+                            onPick={setThemeColor}
+                            byDefaultLabel={s.byDefault}
+                          />
+                        </>
+                      )}
                     </section>
 
                     <section className="space-y-3">
@@ -1472,7 +2517,8 @@ export default function MassageConstructorPage() {
                   </>
                 )}
 
-                {selectedBlockId === 'gallery' && (() => {
+                {selectedBlockId === 'gallery' &&
+                  (isPremiumMassageShell ? (() => {
                   const mergedGal = mergeMassageGalleryFromDraft(sLang, draft('publicMassageGalleryJson'))
                   return (
                     <div className="flex w-full flex-col gap-3">
@@ -1578,7 +2624,128 @@ export default function MassageConstructorPage() {
                       </section>
                     </div>
                   )
-                })()}
+                })()
+                  : (
+                      <div className="flex w-full flex-col gap-3">
+                        <p className="text-xs text-muted-foreground leading-relaxed px-1 shrink-0">{s.salonGalleryHint}</p>
+                        <section className="space-y-3 shrink-0">
+                          <h4 className="text-sm font-semibold text-foreground">{s.colorsBlock}</h4>
+                          <MassageColorRow
+                            label={s.colorGalTitle}
+                            colorKey="galTitle"
+                            currentId={curColor('galTitle')}
+                            onPick={setThemeColor}
+                            byDefaultLabel={s.byDefault}
+                          />
+                        </section>
+                      </div>
+                    ))}
+
+                {selectedBlockId === 'booking' && !isPremiumMassageShell && (
+                  <div className="flex w-full flex-col gap-3">
+                    <p className="text-xs text-muted-foreground leading-relaxed px-1 shrink-0">{s.salonBookingHint}</p>
+                    <section className="space-y-3 shrink-0">
+                      <h4 className="text-sm font-semibold text-foreground">{s.colorsBlock}</h4>
+                      <MassageColorRow
+                        label={s.colorCtaTitle}
+                        colorKey="ctaBlockTitle"
+                        currentId={curColor('ctaBlockTitle')}
+                        onPick={setThemeColor}
+                        byDefaultLabel={s.byDefault}
+                      />
+                      <MassageColorRow
+                        label={s.colorCtaSub}
+                        colorKey="ctaBlockSub"
+                        currentId={curColor('ctaBlockSub')}
+                        onPick={setThemeColor}
+                        byDefaultLabel={s.byDefault}
+                      />
+                    </section>
+                  </div>
+                )}
+
+                {selectedBlockId === 'works' && !isPremiumMassageShell && (
+                  <div className="flex w-full flex-col gap-3">
+                    <p className="text-xs text-muted-foreground leading-relaxed px-1 shrink-0">{s.salonWorksHint}</p>
+                    <section className="space-y-3 shrink-0">
+                      <h4 className="text-sm font-semibold text-foreground">{s.colorsBlock}</h4>
+                      <MassageColorRow
+                        label={s.colorSvcBlockTitle}
+                        colorKey="svcBlockTitle"
+                        currentId={curColor('svcBlockTitle')}
+                        onPick={setThemeColor}
+                        byDefaultLabel={s.byDefault}
+                      />
+                      <MassageColorRow
+                        label={s.colorSvcCardTitle}
+                        colorKey="svcCardTitle"
+                        currentId={curColor('svcCardTitle')}
+                        onPick={setThemeColor}
+                        byDefaultLabel={s.byDefault}
+                      />
+                    </section>
+                  </div>
+                )}
+
+                {selectedBlockId === 'map' && !isPremiumMassageShell && (
+                  <div className="flex w-full flex-col gap-3">
+                    <p className="text-xs text-muted-foreground leading-relaxed px-1 shrink-0">{s.salonMapHint}</p>
+                    <section className="space-y-3 shrink-0">
+                      <h4 className="text-sm font-semibold text-foreground">{s.colorsBlock}</h4>
+                      <MassageColorRow
+                        label={s.colorContactsLabel}
+                        colorKey="contactsLabel"
+                        currentId={curColor('contactsLabel')}
+                        onPick={setThemeColor}
+                        byDefaultLabel={s.byDefault}
+                      />
+                      <MassageColorRow
+                        label={s.colorContactsSectionHeading}
+                        colorKey="contactsSectionHeading"
+                        currentId={curColor('contactsSectionHeading')}
+                        onPick={setThemeColor}
+                        byDefaultLabel={s.byDefault}
+                      />
+                    </section>
+                  </div>
+                )}
+
+                {selectedBlockId === 'footer' && !isPremiumMassageShell && (
+                  <div className="flex w-full flex-col gap-3">
+                    <p className="text-xs text-muted-foreground leading-relaxed px-1 shrink-0">{s.salonFooterHint}</p>
+                    <section className="space-y-3 shrink-0">
+                      <h4 className="text-sm font-semibold text-foreground">{s.colorsBlock}</h4>
+                      <MassageColorRow
+                        label={s.colorContactsBlockTitle}
+                        colorKey="contactsBlockTitle"
+                        currentId={curColor('contactsBlockTitle')}
+                        onPick={setThemeColor}
+                        byDefaultLabel={s.byDefault}
+                      />
+                      <MassageColorRow
+                        label={s.colorContactsLabel}
+                        colorKey="contactsLabel"
+                        currentId={curColor('contactsLabel')}
+                        onPick={setThemeColor}
+                        byDefaultLabel={s.byDefault}
+                      />
+                      <MassageColorRow
+                        label={s.colorContactsBody}
+                        colorKey="contactsBody"
+                        currentId={curColor('contactsBody')}
+                        onPick={setThemeColor}
+                        byDefaultLabel={s.byDefault}
+                      />
+                      <MassageColorRow
+                        label={s.colorContactsIcon}
+                        colorKey="contactsIcon"
+                        currentId={curColor('contactsIcon')}
+                        onPick={setThemeColor}
+                        byDefaultLabel={s.byDefault}
+                      />
+                    </section>
+                  </div>
+                )}
 
                 {selectedBlockId === 'subscriptions' && (() => {
                   const mergedSubs = mergeMassageSubscriptionsFromDraft(sLang, draft('publicMassageSubsJson'))
@@ -1631,7 +2798,7 @@ export default function MassageConstructorPage() {
                             disabled={availableIdx.length === 0}
                           >
                             <span className="text-sm text-muted-foreground">
-                              {availableIdx.length > 0 ? s.subsPickPlaceholder : sLang === 'ru' ? 'Все варианты уже добавлены' : sLang === 'ro' ? 'Toate variantele sunt deja adăugate' : 'All options already added'}
+                              {availableIdx.length > 0 ? s.subsPickPlaceholder : s.subsAllAdded}
                             </span>
                             <ChevronDown className={cn('w-4 h-4 transition-transform', isSubsPresetOpen && 'rotate-180')} />
                           </Button>
@@ -1728,17 +2895,460 @@ export default function MassageConstructorPage() {
                           onPick={setThemeColor}
                           byDefaultLabel={s.byDefault}
                         />
+                        <MassageColorRow
+                          label={s.colorSubsCtaBg}
+                          colorKey="subsCtaBg"
+                          currentId={curColor('subsCtaBg')}
+                          onPick={setThemeColor}
+                          byDefaultLabel={s.byDefault}
+                        />
                       </section>
                     </div>
                   )
                 })()}
+
+                {selectedBlockId === 'catalog' && (() => {
+                  const mergedCat = mergeMassageCatalogFromDraft(sLang, draft('publicMassageCatalogJson'))
+                  return (
+                    <div className="flex w-full min-w-0 max-w-full flex-col gap-3 overflow-x-hidden">
+                      <p className="text-xs text-muted-foreground leading-relaxed px-1 shrink-0">{s.catalogBlockHint}</p>
+                      <label className="flex items-center gap-2 text-xs text-foreground cursor-pointer shrink-0">
+                        <input
+                          type="checkbox"
+                          className="rounded border-border"
+                          checked={draft('publicMassageCatalogHidden') === 'true'}
+                          onChange={e => setDraft('publicMassageCatalogHidden', e.target.checked ? 'true' : 'false')}
+                        />
+                        <span>{s.catalogHideBlock}</span>
+                      </label>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="w-full border-dashed shrink-0"
+                        disabled={mergedCat.length >= MASSAGE_CATALOG_MAX}
+                        onClick={appendCatalogProduct}
+                      >
+                        <Plus className="h-4 w-4 mr-1 shrink-0" />
+                        {s.catalogAddProduct} ({mergedCat.length}/{MASSAGE_CATALOG_MAX})
+                      </Button>
+                      <span className="text-xs font-semibold text-foreground">{s.catalogList}</span>
+                      {mergedCat.map((row, i) => {
+                        const catalogFileId = catalogProductFileInputId(row.id)
+                        return (
+                          <div
+                            key={row.id}
+                            className="rounded-lg border border-border/50 bg-card/30 p-2.5 space-y-2 min-w-0 max-w-full overflow-hidden"
+                          >
+                            <div className="flex items-start gap-2">
+                              <div className="min-w-0 flex-1 text-xs">
+                                <span className="font-semibold text-foreground block">
+                                  {s.catalogProductN} {i + 1}
+                                </span>
+                                <span className="font-medium text-foreground/90 block truncate mt-0.5">{row.name}</span>
+                                <span className="text-muted-foreground">
+                                  {formatCatalogPriceDisplay(row.price)}
+                                  {row.currency ? <span className="ml-0.5">{row.currency}</span> : null}
+                                  {row.oldPrice > row.price && (
+                                    <span className="line-through ml-1.5 opacity-80">
+                                      {formatCatalogPriceDisplay(row.oldPrice)}
+                                      {row.currency ? `\u00a0${row.currency}` : ''}
+                                    </span>
+                                  )}
+                                </span>
+                              </div>
+                              <button
+                                type="button"
+                                className="group relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-red-500/70 bg-red-500/10 text-red-600 shadow-sm transition-all hover:-translate-y-px hover:border-red-500 hover:bg-red-500/15"
+                                aria-label={s.remove}
+                                onClick={() => removeCatalogProductById(row.id)}
+                              >
+                                <span className="inline-flex h-4 w-4 items-center justify-center text-[18px] font-medium leading-none translate-y-[-0.5px]">×</span>
+                              </button>
+                            </div>
+                            <div className="space-y-1.5 pt-0.5 border-t border-border/40">
+                              <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                                {s.catalogProductPhoto}
+                              </div>
+                              <p className="text-[10px] text-muted-foreground leading-snug">{s.catalogPhotoHint}</p>
+                              {row.image ? (
+                                <div className="relative h-20 w-full shrink-0 rounded-md overflow-hidden border border-border/40 bg-muted/50">
+                                  <img
+                                    src={row.image}
+                                    alt=""
+                                    className="absolute inset-0 h-full w-full object-cover"
+                                  />
+                                </div>
+                              ) : null}
+                              <input
+                                id={catalogFileId}
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                tabIndex={-1}
+                                onChange={e => {
+                                  const file = e.target.files?.[0]
+                                  e.target.value = ''
+                                  if (!file?.type.startsWith('image/')) return
+                                  const reader = new FileReader()
+                                  reader.onload = () => {
+                                    const r = typeof reader.result === 'string' ? reader.result : ''
+                                    if (!r) return
+                                    compressImageForCatalog(r, dataUrl => applyCatalogImage(row.id, dataUrl))
+                                  }
+                                  reader.readAsDataURL(file)
+                                }}
+                              />
+                              <div
+                                role="button"
+                                tabIndex={0}
+                                className="flex w-full items-center justify-center gap-2 px-2 py-2 rounded-lg border border-dashed border-border/60 bg-card/20 hover:border-primary/50 text-xs font-medium cursor-pointer"
+                                onClick={() => document.getElementById(catalogFileId)?.click()}
+                                onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); document.getElementById(catalogFileId)?.click() } }}
+                              >
+                                <ImageIcon className="h-3.5 w-3.5 shrink-0" />
+                                {s.catalogPhotoUpload}
+                              </div>
+                              {row.image ? (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  className="w-full h-7 text-[10px] text-muted-foreground"
+                                  onClick={() => clearCatalogImage(row.id)}
+                                >
+                                  {s.catalogRemovePhoto}
+                                </Button>
+                              ) : null}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )
+                })()}
+
+                {selectedBlockId === 'specialists' && (() => {
+                  const mergedSpecs = mergeMassageSpecsFromDraft(sLang, draft('publicMassageSpecsJson'))
+                  return (
+                    <div className="flex flex-col gap-3 min-w-0 max-w-full">
+                      <p className="text-xs text-muted-foreground leading-relaxed">{s.specsBlockHint}</p>
+                      <label className="flex items-center gap-2 text-xs">
+                        <input
+                          type="checkbox"
+                          checked={draft('publicMassageSpecsHidden') === 'true'}
+                          onChange={e => setDraft('publicMassageSpecsHidden', e.target.checked ? 'true' : '')}
+                          className="accent-primary"
+                        />
+                        {s.specsHideBlock}
+                      </label>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="w-full border-dashed shrink-0"
+                        disabled={mergedSpecs.length >= MASSAGE_SPECS_MAX}
+                        onClick={appendSpec}
+                      >
+                        <Plus className="h-4 w-4 mr-1 shrink-0" />
+                        {s.specsAddCard} ({mergedSpecs.length}/{MASSAGE_SPECS_MAX})
+                      </Button>
+                      <span className="text-xs font-semibold text-foreground">{s.specsList}</span>
+                      {mergedSpecs.map((row, i) => {
+                        const specFId = specFileInputId(row.id)
+                        return (
+                          <div
+                            key={row.id}
+                            className="rounded-lg border border-border/50 bg-card/30 p-2.5 space-y-2 min-w-0 max-w-full overflow-hidden"
+                          >
+                            <div className="flex items-start gap-2">
+                              <div className="min-w-0 flex-1 text-xs">
+                                <span className="font-semibold text-foreground block">
+                                  {s.specsCardN} {i + 1}
+                                </span>
+                                <span className="font-medium text-foreground/90 block truncate mt-0.5">{row.name}</span>
+                                <span className="text-muted-foreground block truncate">{row.role}</span>
+                              </div>
+                              <button
+                                type="button"
+                                className="group relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-red-500/70 bg-red-500/10 text-red-600 shadow-sm transition-all hover:-translate-y-px hover:border-red-500 hover:bg-red-500/15"
+                                aria-label={s.remove}
+                                onClick={() => removeSpecById(row.id)}
+                              >
+                                <span className="inline-flex h-4 w-4 items-center justify-center text-[18px] font-medium leading-none translate-y-[-0.5px]">×</span>
+                              </button>
+                            </div>
+                            <div className="space-y-1.5 pt-0.5 border-t border-border/40">
+                              <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                                {s.specsCardPhoto}
+                              </div>
+                              <p className="text-[10px] text-muted-foreground leading-snug">{s.specsPhotoHint}</p>
+                              {row.image ? (
+                                <div className="relative h-28 w-full shrink-0 rounded-md overflow-hidden border border-border/40 bg-muted/50">
+                                  <img
+                                    src={row.image}
+                                    alt=""
+                                    className="absolute inset-0 h-full w-full object-cover"
+                                  />
+                                </div>
+                              ) : null}
+                              <input
+                                id={specFId}
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                tabIndex={-1}
+                                onChange={e => {
+                                  const file = e.target.files?.[0]
+                                  e.target.value = ''
+                                  if (!file?.type.startsWith('image/')) return
+                                  const reader = new FileReader()
+                                  reader.onload = () => {
+                                    const r = typeof reader.result === 'string' ? reader.result : ''
+                                    if (!r) return
+                                    compressImageForCatalog(r, dataUrl => applySpecImage(row.id, dataUrl))
+                                  }
+                                  reader.readAsDataURL(file)
+                                }}
+                              />
+                              <div
+                                role="button"
+                                tabIndex={0}
+                                className="flex w-full items-center justify-center gap-2 px-2 py-2 rounded-lg border border-dashed border-border/60 bg-card/20 hover:border-primary/50 text-xs font-medium cursor-pointer"
+                                onClick={() => document.getElementById(specFId)?.click()}
+                                onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); document.getElementById(specFId)?.click() } }}
+                              >
+                                <ImageIcon className="h-3.5 w-3.5 shrink-0" />
+                                {s.specsPhotoUpload}
+                              </div>
+                              {row.image ? (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  className="w-full h-7 text-[10px] text-muted-foreground"
+                                  onClick={() => clearSpecImage(row.id)}
+                                >
+                                  {s.specsRemovePhoto}
+                                </Button>
+                              ) : null}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )
+                })()}
+
+                {selectedBlockId === 'contacts' && (
+                  <div className="flex w-full min-w-0 max-w-full flex-col gap-3 overflow-x-hidden">
+                    <p className="text-xs text-muted-foreground leading-relaxed px-1 shrink-0">{s.contactsBlockHint}</p>
+                    <section className="space-y-2 shrink-0 border-t border-border/50 pt-3">
+                      <h4 className="text-sm font-semibold text-foreground">{s.contactsAddressTitle}</h4>
+                      <div ref={contactAddrRef} className="relative">
+                        <input
+                          type="text"
+                          value={contactAddrQuery}
+                          onChange={e => {
+                            const v = e.target.value
+                            setContactAddrQuery(v)
+                            setDraft('publicAddress', v)
+                          }}
+                          onFocus={() => {
+                            setContactAddrFocused(true)
+                            if (contactAddrResults.length > 0) setContactAddrOpen(true)
+                          }}
+                          onBlur={() => {
+                            window.setTimeout(() => setContactAddrFocused(false), 120)
+                          }}
+                          placeholder={s.contactsAddressPlaceholder}
+                          className="w-full px-3 py-2 rounded-lg border border-border/50 text-sm bg-card/30 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+                        />
+                        {contactAddrOpen && contactAddrResults.length > 0 ? (
+                          <div className="absolute z-50 w-full mt-1 rounded-lg border border-border/50 bg-card shadow-2xl max-h-60 overflow-y-auto">
+                            {contactAddrResults.map((result, ri) => {
+                              const title = typeof result.display_name === 'string' ? result.display_name : ''
+                              const pid = result.place_id
+                              const key =
+                                typeof pid === 'number' || typeof pid === 'string' ? String(pid) : `addr-${ri}`
+                              return (
+                                <button
+                                  key={key}
+                                  type="button"
+                                  onMouseDown={e => e.preventDefault()}
+                                  onClick={() => {
+                                    const formatted = title
+                                    const placeName =
+                                      (typeof result.name === 'string' && result.name) ||
+                                      (formatted ? formatted.split(',')[0].trim() : '')
+                                    setContactAddrQuery(formatted)
+                                    setDraft('publicAddress', formatted)
+                                    const latRaw = result.lat
+                                    const lonRaw = result.lon
+                                    if (latRaw != null && lonRaw != null) {
+                                      setDraft('publicMapLat', String(latRaw))
+                                      setDraft('publicMapLng', String(lonRaw))
+                                    }
+                                    setDraft('publicPlaceName', placeName)
+                                    setContactAddrOpen(false)
+                                    setContactAddrResults([])
+                                  }}
+                                  className="w-full px-3 py-2 text-left text-xs sm:text-sm text-foreground hover:bg-accent/10"
+                                >
+                                  {title}
+                                </button>
+                              )
+                            })}
+                            {contactAddrLoading ? (
+                              <div className="px-3 py-2 text-xs text-muted-foreground border-t border-border/40">
+                                {s.contactsSearching}
+                              </div>
+                            ) : null}
+                          </div>
+                        ) : null}
+                      </div>
+                      <div className="mt-3 rounded-lg overflow-hidden border border-border/50 bg-muted/20 w-full aspect-video max-h-52">
+                        <iframe
+                          title="map"
+                          src={contactsSidebarMapSrc}
+                          className="h-full min-h-[140px] w-full border-0"
+                          loading="lazy"
+                          referrerPolicy="no-referrer-when-downgrade"
+                        />
+                      </div>
+                    </section>
+                    <section className="space-y-3 shrink-0 border-t border-border/50 pt-3">
+                      <h4 className="text-sm font-semibold text-foreground">{s.contactsSocialSection}</h4>
+                      <div className="space-y-2">
+                        {SOCIAL_FIELDS.map(f => (
+                          <div key={f.key} className="space-y-1">
+                            <label className="text-xs text-muted-foreground">{f.label}</label>
+                            <input
+                              type="text"
+                              value={draft(f.key)}
+                              onChange={e => setDraft(f.key, e.target.value)}
+                              placeholder={f.placeholder}
+                              className="w-full px-3 py-2 rounded-lg border border-border/50 text-sm bg-card/30 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    </section>
+                    <section className="space-y-3 shrink-0 border-t border-border/50 pt-3">
+                      <h4 className="text-sm font-semibold text-foreground">{s.contactsColorSection}</h4>
+                      <MassageColorRow
+                        label={s.colorContactsBlockTitle}
+                        colorKey="contactsBlockTitle"
+                        currentId={curColor('contactsBlockTitle')}
+                        onPick={setThemeColor}
+                        byDefaultLabel={s.byDefault}
+                      />
+                      <MassageColorRow
+                        label={s.colorContactsSectionHeading}
+                        colorKey="contactsSectionHeading"
+                        currentId={curColor('contactsSectionHeading')}
+                        onPick={setThemeColor}
+                        byDefaultLabel={s.byDefault}
+                      />
+                      <MassageColorRow
+                        label={s.colorContactsIcon}
+                        colorKey="contactsIcon"
+                        currentId={curColor('contactsIcon')}
+                        onPick={setThemeColor}
+                        byDefaultLabel={s.byDefault}
+                      />
+                      <MassageColorRow
+                        label={s.colorContactsBody}
+                        colorKey="contactsBody"
+                        currentId={curColor('contactsBody')}
+                        onPick={setThemeColor}
+                        byDefaultLabel={s.byDefault}
+                      />
+                      <MassageColorRow
+                        label={s.colorContactsLabel}
+                        colorKey="contactsLabel"
+                        currentId={curColor('contactsLabel')}
+                        onPick={setThemeColor}
+                        byDefaultLabel={s.byDefault}
+                      />
+                    </section>
+                  </div>
+                )}
+
+                {selectedBlockId === 'cta' && isPremiumMassageShell && (
+                  <div className="flex w-full min-w-0 max-w-full flex-col gap-3 overflow-x-hidden">
+                    <label className="flex items-center gap-2 text-xs text-foreground cursor-pointer shrink-0">
+                      <input
+                        type="checkbox"
+                        className="rounded border-border accent-primary"
+                        checked={draft('publicMassageCtaHidden') === 'true'}
+                        onChange={e => setDraft('publicMassageCtaHidden', e.target.checked ? 'true' : '')}
+                      />
+                      {s.ctaHideBlock}
+                    </label>
+                    <p className="text-xs text-muted-foreground leading-relaxed px-1 shrink-0">{s.ctaBlockHint}</p>
+                    <section className="space-y-3 shrink-0 border-t border-border/50 pt-3">
+                      <h4 className="text-sm font-semibold text-foreground">{s.ctaColorSection}</h4>
+                      <MassageColorRow
+                        label={s.colorCtaBgFrom}
+                        colorKey="ctaBlockBgFrom"
+                        currentId={curColor('ctaBlockBgFrom')}
+                        onPick={setThemeColor}
+                        byDefaultLabel={s.byDefault}
+                      />
+                      <MassageColorRow
+                        label={s.colorCtaBgTo}
+                        colorKey="ctaBlockBgTo"
+                        currentId={curColor('ctaBlockBgTo')}
+                        onPick={setThemeColor}
+                        byDefaultLabel={s.byDefault}
+                      />
+                      <MassageColorRow
+                        label={s.colorCtaTitle}
+                        colorKey="ctaBlockTitle"
+                        currentId={curColor('ctaBlockTitle')}
+                        onPick={setThemeColor}
+                        byDefaultLabel={s.byDefault}
+                      />
+                      <MassageColorRow
+                        label={s.colorCtaSub}
+                        colorKey="ctaBlockSub"
+                        currentId={curColor('ctaBlockSub')}
+                        onPick={setThemeColor}
+                        byDefaultLabel={s.byDefault}
+                      />
+                      <MassageColorRow
+                        label={s.colorCtaBtnBg}
+                        colorKey="ctaBlockBtnBg"
+                        currentId={curColor('ctaBlockBtnBg')}
+                        onPick={setThemeColor}
+                        byDefaultLabel={s.byDefault}
+                      />
+                      <MassageColorRow
+                        label={s.colorCtaBtnText}
+                        colorKey="ctaBlockBtnText"
+                        currentId={curColor('ctaBlockBtnText')}
+                        onPick={setThemeColor}
+                        byDefaultLabel={s.byDefault}
+                      />
+                    </section>
+                  </div>
+                )}
 
                 {selectedBlockId !== null &&
                   selectedBlockId !== 'header' &&
                   selectedBlockId !== 'services' &&
                   selectedBlockId !== 'about' &&
                   selectedBlockId !== 'gallery' &&
-                  selectedBlockId !== 'subscriptions' && (
+                  selectedBlockId !== 'booking' &&
+                  selectedBlockId !== 'works' &&
+                  selectedBlockId !== 'map' &&
+                  selectedBlockId !== 'footer' &&
+                  selectedBlockId !== 'subscriptions' &&
+                  selectedBlockId !== 'catalog' &&
+                  selectedBlockId !== 'specialists' &&
+                  selectedBlockId !== 'cta' &&
+                  selectedBlockId !== 'contacts' && (
                   <div className="flex flex-col items-center justify-center gap-4 text-center py-12">
                     <div className="h-14 w-14 rounded-2xl bg-muted/40 border border-border/50 flex items-center justify-center">
                       <svg className="h-6 w-6 text-muted-foreground/50" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -1746,13 +3356,7 @@ export default function MassageConstructorPage() {
                         <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
                       </svg>
                     </div>
-                    <p className="text-sm text-muted-foreground max-w-[220px] leading-relaxed">
-                      {sLang === 'ru'
-                        ? 'Настройки этого блока появятся позже'
-                        : sLang === 'ro'
-                          ? 'Setările acestui bloc vor apărea mai târziu'
-                          : 'Settings for this block coming soon'}
-                    </p>
+                    <p className="text-sm text-muted-foreground max-w-[220px] leading-relaxed">{s.blockSettingsLater}</p>
                   </div>
                 )}
               </div>
@@ -1761,29 +3365,38 @@ export default function MassageConstructorPage() {
 
           {panelStage === 'edit' && (
             <div className="shrink-0 p-3 border-t border-border/40 bg-card">
-              {selectedBlockId === null ? (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="w-full gap-2 border-red-400/70 bg-red-500/20 text-white hover:bg-red-500/30 hover:border-red-400 hover:text-white disabled:opacity-50 disabled:text-white/80"
-                  disabled={!hasDrafts}
-                  onClick={handleRestore}
-                >
-                  <RotateCcw className="h-4 w-4 shrink-0" />
-                  {s.restoreDesign}
-                </Button>
-              ) : (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="w-full gap-2 border-red-400/70 bg-red-500/20 text-white hover:bg-red-500/30 hover:border-red-400 hover:text-white disabled:opacity-50 disabled:text-white/80"
-                  disabled={undoStack.length === 0}
-                  onClick={handleUndo}
-                >
-                  <Undo2 className="h-4 w-4 shrink-0" />
-                  {s.undoLast}
-                </Button>
-              )}
+              {(() => {
+                if (resetJustApplied.current && hasDrafts) {
+                  resetJustApplied.current = false
+                }
+                const isResetDisabled =
+                  selectedBlockId == null ? !hasDrafts || resetJustApplied.current : undoStack.length === 0
+                const resetTitle =
+                  selectedBlockId == null
+                    ? !hasDrafts || resetJustApplied.current
+                      ? s.designAlready
+                      : s.undoToDesign
+                    : undoStack.length === 0
+                      ? s.noUndo
+                      : s.undoLastChange
+                return (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full gap-2 border-red-400/70 bg-red-500/20 text-white hover:bg-red-500/30 hover:border-red-400 hover:text-white disabled:opacity-50 disabled:text-white/80"
+                    disabled={isResetDisabled}
+                    title={resetTitle}
+                    onClick={selectedBlockId == null ? handleRestore : handleUndo}
+                  >
+                    {selectedBlockId == null ? (
+                      <RotateCcw className="h-4 w-4 shrink-0" />
+                    ) : (
+                      <Undo2 className="h-4 w-4 shrink-0" />
+                    )}
+                    {selectedBlockId == null ? s.restoreDesign : s.undoLast}
+                  </Button>
+                )
+              })()}
             </div>
           )}
         </div>

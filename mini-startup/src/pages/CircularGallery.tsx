@@ -311,7 +311,11 @@ class Media {
     })
   }
 
-  update(scroll: { current: number; last: number }, direction: 'right' | 'left') {
+  update(
+    scroll: { current: number; last: number },
+    direction: 'right' | 'left',
+    advanceShaderTime: boolean
+  ) {
     this.plane.position.x = this.x - scroll.current - this.extra
 
     const x = this.plane.position.x
@@ -336,7 +340,9 @@ class Media {
     }
 
     this.speed = scroll.current - scroll.last
-    this.program.uniforms.uTime.value += 0.04
+    if (advanceShaderTime) {
+      this.program.uniforms.uTime.value += 0.04
+    }
     this.program.uniforms.uSpeed.value = this.speed
 
     const planeOffset = this.plane.scale.x / 2
@@ -408,6 +414,7 @@ class App {
   screen!: { width: number; height: number }
   viewport!: { width: number; height: number }
   raf: number = 0
+  idleFrameCount = 0
 
   boundOnResize!: () => void
   boundOnWheel!: (e: Event) => void
@@ -622,10 +629,24 @@ class App {
   update() {
     this.scroll.current = lerp(this.scroll.current, this.scroll.target, this.scroll.ease)
     const direction = this.scroll.current > this.scroll.last ? 'right' : 'left'
+    const scrollMoving =
+      Math.abs(this.scroll.current - this.scroll.target) > 0.004 ||
+      Math.abs(this.scroll.current - this.scroll.last) > 1e-5
+    const advanceShader = scrollMoving
     if (this.medias) {
-      this.medias.forEach((media) => media.update(this.scroll, direction))
+      this.medias.forEach((media) => media.update(this.scroll, direction, advanceShader))
     }
-    this.renderer.render({ scene: this.scene, camera: this.camera })
+    if (scrollMoving) {
+      this.idleFrameCount = 0
+    } else {
+      this.idleFrameCount += 1
+    }
+    // В простое не перерисовываем каждый кадр — иначе WebGL грузит CPU/GPU при прокрутке страницы мимо блока.
+    const periodicWhileIdle = this.idleFrameCount % 72 === 0
+    const needRender = scrollMoving || this.idleFrameCount <= 2 || periodicWhileIdle
+    if (needRender) {
+      this.renderer.render({ scene: this.scene, camera: this.camera })
+    }
     this.scroll.last = this.scroll.current
     this.raf = window.requestAnimationFrame(this.update.bind(this))
   }

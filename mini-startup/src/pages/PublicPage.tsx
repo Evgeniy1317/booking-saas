@@ -3,13 +3,49 @@ import { flushSync } from 'react-dom'
 import Lottie from 'lottie-react'
 import { useLocation, useParams, useNavigate, Link } from 'react-router-dom'
 import { createPortal } from 'react-dom'
-import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, X, Instagram, MapPin, Plus } from 'lucide-react'
+import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, X, Instagram, MapPin, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { PublicBookingFormSection } from '@/components/public/PublicBookingFormSection'
+import { PublicBookingMobileBar } from '@/components/public/PublicBookingMobileBar'
 import { cn } from '@/lib/utils'
+import {
+  readMassageOrdinarySlotString,
+  massageDraftKeyForPublicPageKey,
+  isMassageLangScopedTextKey,
+  setMassageDraft,
+  setMassageDraftLangAware,
+  massageDraftStorageKey,
+} from '@/lib/massage-draft'
+
+/** Для en/ro не подмешивать русские draft_* салона, если в слоте массажа нет своего текста */
+const MASSAGE_PREVIEW_READPUBLIC_FALLTHROUGH_KEYS = new Set<string>(['publicName'])
+
+/** Адрес и координаты карты только из слота массажа — иначе тянутся черновики парикмахерского конструктора и пропадает карта мира по умолчанию */
+const MASSAGE_PREVIEW_SLOT_ONLY_KEYS = new Set<string>([
+  'publicMapLat',
+  'publicMapLng',
+  'publicMapEmbedUrl',
+  'publicAddress',
+  'publicFooterAddress',
+  'publicPlaceName',
+])
+import {
+  SALON_PREMIUM_HERO_VIDEO_IDB_MARKER,
+  loadSalonPremiumHeroVideoObjectUrl,
+} from '@/lib/salon-premium-hero-video-idb'
+import {
+  MASSAGE_HERO_VIDEO_IDB_MARKER,
+  loadMassageHeroVideoObjectUrl,
+} from '@/lib/massage-hero-video-idb'
+import { isOrdinaryDraggableHeaderTheme } from '@/lib/ordinary-draggable-header-themes'
 import heroImage from '@/assets/images/constructor-images/pexels-emirhan-sayar-478511598-35844822.jpg'
+import massageClassicHeroBg from '@/assets/images/massage-images/pexels-shkrabaanthony-4599396.jpg'
+import massageThaiHeroBg from '@/assets/images/massage-images/pexels-tima-miroshnichenko-6188128.jpg'
+import massageStoneHeroBg from '@/assets/images/massage-images/pexels-tima-miroshnichenko-6187657.jpg'
+import massageAntistressHeroBg from '@/assets/images/massage-images/pexels-jonathanborba-19641822.jpg'
+import massageSportsHeroBg from '@/assets/images/massage-images/pexels-jonathanborba-27730453.jpg'
 import cosmetologyHeaderBg from '@/assets/images/constructor-images/pexels-jose-antonio-otegui-auzmendi-2150489988-31261686.jpg'
 import coloringHeaderBg from '@/assets/images/constructor-images/pexels-jibarofoto-3093007.jpg'
 import manicureHeaderBg from '@/assets/images/constructor-images/pexels-cottonbro-6941115.jpg'
@@ -54,7 +90,35 @@ import {
   DEFAULT_WORLD_MAP_EMBED_URL,
 } from '@/lib/hair-theme-defaults'
 import { PREMIUM_PUBLIC_DEFAULTS_BY_LANG } from '@/lib/premium-public-defaults'
-import { isOrdinaryDraggableHeaderTheme } from '@/lib/ordinary-draggable-header-themes'
+import { getCanonicalSalonBusinessName } from '@/lib/salon-business-name'
+import {
+  getEnabledSiteLangs,
+  normalizePublicLangForEnabled,
+  type PublicSiteLang,
+} from '@/lib/public-site-langs'
+import { isMassageOrdinaryTemplateId } from '@/lib/massage-template-registry'
+import {
+  parseMassageThemeColors,
+  resolveMassageThemeColor,
+  type MassageThemeColors,
+} from '@/lib/massage-theme-palette'
+import {
+  massageBodyPatternLayerBackgroundSize,
+  resolveMassageBodyPatternAssetUrl,
+} from '@/lib/massage-body-patterns'
+import { getMassageSalonPhotoSlotDefaults } from '@/lib/massage-salon-photo-defaults'
+import {
+  PREMIUM_HERO_LANG_SCOPED_KEYS,
+  isLangScopedPublicDraftKey,
+} from '@/lib/public-lang-scoped-draft-keys'
+import { localizeFooterDayOffLine, localizeFooterHoursLine } from '@/lib/localize-footer-schedule'
+import {
+  displayFooterFieldStored,
+  isFooterFieldClearedMarker,
+  serializeFooterFieldForStorage,
+} from '@/lib/public-footer-field-empty'
+
+const ALL_PUBLIC_LANGS: PublicSiteLang[] = ['ru', 'en', 'ro']
 
 /** 5 фотографий по умолчанию для блока «Фотографии салона» (интерьеры шаблонов), порядок слотов 1–5 */
 const DEFAULT_WORKS_IMAGES = [
@@ -330,7 +394,7 @@ const formatDateToLocalString = (date: Date): string => {
   return `${year}-${month}-${day}`
 }
 
-type PublicLang = 'ru' | 'en' | 'ro'
+type PublicLang = PublicSiteLang
 
 const localeByLang: Record<PublicLang, string> = {
   ru: 'ru-RU',
@@ -341,7 +405,8 @@ const localeByLang: Record<PublicLang, string> = {
 const uiText = {
   ru: {
     addSalonPhoto: 'Добавьте фото салона',
-    defaultSalonName: 'Салон Орхидея',
+    /** Нейтральный плейсхолдер, если в storage нет имени (не подменяет имя из регистрации) */
+    defaultSalonName: 'Ваш салон',
     defaultTagline: 'Онлайн запись в удобное время с подтверждением',
     bookOnline: 'Записаться онлайн',
     call: 'Позвонить',
@@ -511,7 +576,7 @@ const uiText = {
     addSalonPhoto: 'Adăugați o fotografie a salonului',
     defaultSalonName: 'Salon de frumusețe',
     defaultTagline: 'Programare online la o oră convenabilă cu confirmare',
-    bookOnline: 'Programează online',
+    bookOnline: 'Programează-te online',
     call: 'Sună',
     salonPhotos: 'Fotografii salon',
     galleryImageAlt: 'Foto salon',
@@ -593,6 +658,37 @@ const uiText = {
   },
 } as const
 
+const HERO_CTA_CYRILLIC = /[\u0400-\u04FF]/
+
+/** Черновики hero-кнопок по языку: отсекаем кириллицу в en/ro, русский текст, дубли и типичный мусор после смены языка / contentEditable. */
+function sanitizeLangScopedHeroCtaButton(
+  raw: string,
+  lang: PublicLang,
+  role: 'bookOnline' | 'whereToFindQuestion',
+): string {
+  const s = (raw || '').replace(/\u00a0/g, ' ').trim()
+  if (!s) return ''
+  if (lang === 'ru') return s
+  if (HERO_CTA_CYRILLIC.test(s)) return ''
+  if (s === uiText.ru[role]) return ''
+  const peerEn = uiText.en[role]
+  const peerRo = uiText.ro[role]
+  if (lang === 'en' && s === peerRo) return ''
+  if (lang === 'ro' && s === peerEn) return ''
+  const h = Math.floor(s.length / 2)
+  if (h >= 8 && s.slice(0, h) === s.slice(h)) return ''
+  if (role === 'bookOnline') {
+    if (/online\s+online/i.test(s)) return ''
+    const compact = s.replace(/\s+/g, '')
+    if (/bookonline/i.test(compact) && compact.length >= 20 && /^(.+)\1$/.test(compact)) return ''
+  } else {
+    if (/\?{2,}\s*$/.test(s)) return ''
+    const q = (s.match(/\?/g) || []).length
+    if (q > 1) return ''
+  }
+  return s
+}
+
 const TelegramIcon = ({ className = '' }: { className?: string }) => (
   <svg viewBox="0 0 24 24" aria-hidden="true" className={className}>
     <path
@@ -659,14 +755,33 @@ function readConstructorFullPreviewIntent(urlSlug: string | undefined): {
 
 export default function PublicPage() {
   const [publicLang, setPublicLang] = useState<PublicLang>(() => {
+    if (typeof window === 'undefined') return 'ru'
+    const sp = new URLSearchParams(window.location.search)
+    const isConstructorEditPreview = sp.get('preview') === '1' && sp.get('edit') === '1'
+    const enabled = isConstructorEditPreview ? getEnabledSiteLangs() : ALL_PUBLIC_LANGS
     const stored = localStorage.getItem('publicLang') as PublicLang | null
+    let candidate: PublicLang
     if (stored === 'ru' || stored === 'en' || stored === 'ro') {
-      return stored
+      candidate = stored
+    } else {
+      /** Язык интерфейса админки (`language`) — стартовый язык публичного сайта, пока гость не выбрал другой */
+      const adminUiLang = localStorage.getItem('language') as PublicLang | null
+      if (adminUiLang === 'ru' || adminUiLang === 'en' || adminUiLang === 'ro') {
+        candidate = adminUiLang
+      } else {
+        const browser = navigator.language?.toLowerCase() || ''
+        if (browser.startsWith('ro')) candidate = 'ro'
+        else if (browser.startsWith('en')) candidate = 'en'
+        else candidate = 'ru'
+      }
     }
-    const browser = navigator.language?.toLowerCase() || ''
-    if (browser.startsWith('ro')) return 'ro'
-    if (browser.startsWith('en')) return 'en'
-    return 'ru'
+    const next = normalizePublicLangForEnabled(candidate, enabled)
+    try {
+      localStorage.setItem('publicLang', next)
+    } catch {
+      // ignore
+    }
+    return next
   })
   const [isLangOpen, setIsLangOpen] = useState(false)
   const [isLangVisible, setIsLangVisible] = useState(true)
@@ -674,11 +789,6 @@ export default function PublicPage() {
   type TextKey = Exclude<keyof typeof uiText.ru, 'steps' | 'weekdaysShort'>
   const t = (key: TextKey) => uiText[publicLang][key] || uiText.ru[key]
   const locale = localeByLang[publicLang]
-  const setLang = (lang: PublicLang) => {
-    setPublicLang(lang)
-    localStorage.setItem('publicLang', lang)
-    setIsLangOpen(false)
-  }
   const steps = uiText[publicLang].steps
   const weekdaysShort = uiText[publicLang].weekdaysShort
   const services = useMemo(() => loadServices(publicLang), [publicLang])
@@ -695,6 +805,18 @@ export default function PublicPage() {
   const isPreview =
     searchParams.get('preview') === '1' ||
     hasFullPreviewIntent
+  const setLang = (lang: PublicLang) => {
+    setPublicLang(lang)
+    localStorage.setItem('publicLang', lang)
+    setIsLangOpen(false)
+    if (isPreview) {
+      try {
+        window.parent?.postMessage?.({ type: 'constructorPublicLangChanged' }, '*')
+      } catch {
+        /* ignore */
+      }
+    }
+  }
   const isEditMode = searchParams.get('edit') === '1'
   /** Полный просмотр из конструктора: допускаем full=1 и full=true (некоторые браузеры/редиректы) */
   const fullParam = searchParams.get('full')
@@ -706,13 +828,31 @@ export default function PublicPage() {
   const headerLayoutBranchRaw = searchParams.get('headerLayoutBranch')
   const headerLayoutBranchQuery =
     headerLayoutBranchRaw === 'mobile' || headerLayoutBranchRaw === 'desktop' ? headerLayoutBranchRaw : null
+  /** Превью массажного конструктора: те же шаблоны, что у салона, черновики из massage_draft_<slot>_ */
+  const massagePreview = searchParams.get('massagePreview') === '1'
+  const massageSlotRaw = searchParams.get('massageSlot')
+  const validMassageSlot =
+    massageSlotRaw && ['hair', 'barber', 'cosmetology', 'coloring', 'manicure'].includes(massageSlotRaw)
+      ? massageSlotRaw
+      : null
+  /** Экран выбора темы в массажном конструкторе: iframe с «чистым» шаблоном, без данных из massage_draft */
+  const massageWelcomePreview = searchParams.get('massageWelcome') === '1'
+  const isMassagePristineTemplatePreview =
+    Boolean(massagePreview && validMassageSlot && massageWelcomePreview)
   /** Демо только на экране выбора темы: превью без редактирования и без режима черновиков конструктора */
   const wantsConstructorDrafts =
     isEditMode ||
     isFullSizeView ||
     constructorPreviewDraft ||
-    hasFullPreviewIntent
+    hasFullPreviewIntent ||
+    massagePreview
   const isTemplateDemo = isPreview && !wantsConstructorDrafts
+  /**
+   * Превью с черновиками конструктора: не гонять тексты через isJunkHeaderText (короткие строки = «мусор»),
+   * иначе iframe и «Полный размер» / readOnly показывают разные дефолты. Welcome-массаж — без черновиков.
+   */
+  const skipHeaderJunkFilterInConstructorPreview =
+    isPreview && wantsConstructorDrafts && !isMassagePristineTemplatePreview
   /** Скрыть кнопки превью (полный просмотр / явный constructorPreview) */
   const hidePreviewChrome =
     isFullSizeView || constructorPreviewDraft || (hasFullPreviewIntent && !isEditMode)
@@ -725,26 +865,16 @@ export default function PublicPage() {
     urlSlug ||
     (typeof window !== 'undefined' ? window.localStorage.getItem('publicSlug') : null) ||
     'salon'
-  const readPublic = (key: string, fallback = '') => {
-    if (!isPreview) return localStorage.getItem(key) ?? fallback
-    if (key === 'publicHeaderTheme') {
-      if (fullPreviewIntent?.theme) return fullPreviewIntent.theme
-      if (constructorPreviewDraft && draftThemeParam) return draftThemeParam
-      return localStorage.getItem('draft_publicHeaderTheme') ?? localStorage.getItem('publicHeaderTheme') ?? fallback
-    }
-    if (isTemplateDemo) return localStorage.getItem(key) ?? fallback
-    const themeRaw =
-      fullPreviewIntent?.theme ||
-      (constructorPreviewDraft && draftThemeParam ? draftThemeParam : null) ||
-      (localStorage.getItem('draft_publicHeaderTheme') ??
-        localStorage.getItem('publicHeaderTheme') ??
-        'hair')
-    const theme = themeRaw.startsWith('premium-') ? themeRaw.replace('premium-', '') : themeRaw
-    // Адрес и карта для премиум-шаблонов хранятся отдельно (по полному id темы), чтобы не переходить на другие шаблоны
-    const addressMapKeys = ['publicFooterAddress', 'publicAddress', 'publicMapEmbedUrl']
-    const themeForKey = addressMapKeys.includes(key) ? themeRaw : theme
-    return localStorage.getItem(`draft_${key}_${slugForDrafts}_${themeForKey}`) ?? fallback
-  }
+
+  /** Тема из storage без учёта ?theme= — для fallback в publicHeaderThemeRaw */
+  const getStoredHeaderThemePreview = (): string =>
+    massagePreview && validMassageSlot
+      ? validMassageSlot
+      : fullPreviewIntent?.theme
+        ? fullPreviewIntent.theme
+        : constructorPreviewDraft && draftThemeParam
+          ? draftThemeParam
+          : localStorage.getItem('draft_publicHeaderTheme') ?? localStorage.getItem('publicHeaderTheme') ?? 'hair'
 
   const themeFromUrl = searchParams.get('theme')
   const publicHeaderThemeRaw =
@@ -754,12 +884,179 @@ export default function PublicPage() {
         ? fullPreviewIntent.theme
         : constructorPreviewDraft && draftThemeParam
           ? draftThemeParam
-          : readPublic('publicHeaderTheme') || 'hair'
+          : getStoredHeaderThemePreview() || 'hair'
   const publicHeaderTheme = publicHeaderThemeRaw.startsWith('premium-')
     ? publicHeaderThemeRaw.replace('premium-', '')
     : publicHeaderThemeRaw
+
+  /**
+   * Ключи draft_* должны совпадать с ConstructorPage.setDraft / savePremiumDraft:
+   * адрес и карта — по полному id темы (premium-hair), остальные поля — themeStorageId (hair).
+   * Раньше themeForKey брался только из storage и расходился с URL премиум-превью — черновик писался в один ключ, читался из другого.
+   */
+  const readPublic = (key: string, fallback = '') => {
+    const addressMapKeys = ['publicFooterAddress', 'publicAddress', 'publicMapEmbedUrl']
+    const themeForKey = addressMapKeys.includes(key) ? publicHeaderThemeRaw : publicHeaderTheme
+
+    const readLangScopedPublicDraft = (): string | null => {
+      if (!isLangScopedPublicDraftKey(key)) return null
+      const withLang = `draft_${key}_${slugForDrafts}_${themeForKey}_${publicLang}`
+      const v = localStorage.getItem(withLang)
+      if (v !== null) return v
+      /** Старый ключ без `_ru|en|ro` считаем русским — иначе en/ro показывали бы русский текст */
+      if (publicLang === 'ru') {
+        return localStorage.getItem(`draft_${key}_${slugForDrafts}_${themeForKey}`)
+      }
+      return null
+    }
+
+    if (!isPreview) {
+      if (key === 'publicName') {
+        return getCanonicalSalonBusinessName() || fallback
+      }
+      const ph = readLangScopedPublicDraft()
+      if (ph !== null) return ph
+      if (isLangScopedPublicDraftKey(key)) {
+        return publicLang === 'ru' ? (localStorage.getItem(key) ?? fallback) : fallback
+      }
+      return localStorage.getItem(key) ?? fallback
+    }
+    if (key === 'publicHeaderTheme') {
+      if (massagePreview && validMassageSlot) return validMassageSlot
+      if (fullPreviewIntent?.theme) return fullPreviewIntent.theme
+      if (constructorPreviewDraft && draftThemeParam) return draftThemeParam
+      return localStorage.getItem('draft_publicHeaderTheme') ?? localStorage.getItem('publicHeaderTheme') ?? fallback
+    }
+    if (massagePreview && validMassageSlot && isMassagePristineTemplatePreview && typeof window !== 'undefined') {
+      if (key === 'publicName') return getCanonicalSalonBusinessName() || fallback
+      return ''
+    }
+    if (massagePreview && validMassageSlot && typeof window !== 'undefined') {
+      const mv = readMassageOrdinarySlotString(validMassageSlot, key, publicLang)
+      if (mv !== null) return mv
+      if (MASSAGE_PREVIEW_SLOT_ONLY_KEYS.has(key)) {
+        return ''
+      }
+      if (publicLang !== 'ru') {
+        const mk = massageDraftKeyForPublicPageKey(key)
+        if (
+          isMassageLangScopedTextKey(mk) &&
+          !MASSAGE_PREVIEW_READPUBLIC_FALLTHROUGH_KEYS.has(mk)
+        ) {
+          return ''
+        }
+      }
+    }
+    // Премиум-hero и обычные CTA/подписи футера: черновик на язык; без суффикса — наследие для ru
+    if (isLangScopedPublicDraftKey(key)) {
+      const withLang = `draft_${key}_${slugForDrafts}_${themeForKey}_${publicLang}`
+      let draftVal = localStorage.getItem(withLang)
+      if (draftVal === null && publicLang === 'ru') {
+        draftVal = localStorage.getItem(`draft_${key}_${slugForDrafts}_${themeForKey}`)
+      }
+      if (draftVal !== null) return draftVal
+      return publicLang === 'ru' ? (localStorage.getItem(key) ?? fallback) : fallback
+    } else {
+      const draftVal = localStorage.getItem(`draft_${key}_${slugForDrafts}_${themeForKey}`)
+      if (draftVal !== null) return draftVal
+    }
+    if (key === 'publicName') {
+      return getCanonicalSalonBusinessName() || fallback
+    }
+    return localStorage.getItem(key) ?? fallback
+  }
   const isPremiumTemplate =
     publicHeaderThemeRaw === 'premium-hair' || publicHeaderThemeRaw === 'premium-barber'
+
+  /**
+   * Обычные шаблоны (стандартные темы + массаж): в превью с edit читаем draft_* с запасными slug/темами
+   * и глобальными ключами — иначе значение «теряется» и поле откатывается к дефолту.
+   */
+  const readOrdinaryConstructorFooterField = (key: string): string => {
+    const ordinaryFooterKeys = new Set([
+      'publicFooterAddress',
+      'publicHours',
+      'publicDayOff',
+      'publicPhone',
+      'publicEmail',
+    ])
+    if (!ordinaryFooterKeys.has(key)) return readPublic(key)
+
+    /**
+     * В edit превью сначала draft_* салона (куда пишет onChange), потом слот массажа.
+     * Иначе при en/ro без отдельного massage __en читается ru-наследие или readPublic, и поле «отскакивает».
+     */
+    const readSalonFooterDraftsForEdit = (): string | null => {
+      if (
+        typeof window === 'undefined' ||
+        !isPreview ||
+        !isEditMode ||
+        isPremiumTemplate ||
+        isTemplateDemo
+      ) {
+        return null
+      }
+      const slugStored = window.localStorage.getItem('publicSlug') || 'salon'
+      const slugCandidates = [...new Set([slugForDrafts, slugStored, 'salon'].filter((s) => String(s).length > 0))]
+      const themeCandidates =
+        publicHeaderThemeRaw !== publicHeaderTheme
+          ? [publicHeaderThemeRaw, publicHeaderTheme]
+          : [publicHeaderTheme]
+      for (const sp of slugCandidates) {
+        for (const th of themeCandidates) {
+          const fromDraft = window.localStorage.getItem(`draft_${key}_${sp}_${th}`)
+          if (fromDraft !== null) return fromDraft
+          if (key === 'publicFooterAddress') {
+            const alt = window.localStorage.getItem(`draft_publicAddress_${sp}_${th}`)
+            if (alt !== null) return alt
+          }
+        }
+      }
+      const legacy = window.localStorage.getItem(key)
+      if (legacy !== null) return legacy
+      if (key === 'publicFooterAddress') {
+        const alt = window.localStorage.getItem('publicAddress')
+        if (alt !== null) return alt
+      }
+      return null
+    }
+
+    const fromSalonDraft = readSalonFooterDraftsForEdit()
+    if (fromSalonDraft !== null) return fromSalonDraft
+
+    if (massagePreview && validMassageSlot && typeof window !== 'undefined') {
+      const mv = readMassageOrdinarySlotString(validMassageSlot, key, publicLang)
+      if (mv !== null) return mv
+    }
+
+    return readPublic(key)
+  }
+
+  const readOrdinaryConstructorFooterNameDraft = (): string | null => {
+    if (
+      typeof window === 'undefined' ||
+      !isPreview ||
+      !isEditMode ||
+      isPremiumTemplate ||
+      isTemplateDemo ||
+      isMassagePristineTemplatePreview
+    ) {
+      return null
+    }
+    const slugStored = window.localStorage.getItem('publicSlug') || 'salon'
+    const slugCandidates = [...new Set([slugForDrafts, slugStored, 'salon'].filter((s) => String(s).length > 0))]
+    const themeCandidates =
+      publicHeaderThemeRaw !== publicHeaderTheme
+        ? [publicHeaderThemeRaw, publicHeaderTheme]
+        : [publicHeaderTheme]
+    for (const sp of slugCandidates) {
+      for (const th of themeCandidates) {
+        const v = window.localStorage.getItem(`draft_publicFooterName_${sp}_${th}`)
+        if (v !== null) return v
+      }
+    }
+    return null
+  }
 
   const [selectedServiceId, setSelectedServiceId] = useState<string | null>(null)
   const [selectedStaffId, setSelectedStaffId] = useState<string | null>(null)
@@ -784,10 +1081,289 @@ export default function PublicPage() {
   const gallerySectionRef = useRef<HTMLElement>(null)
   const worksSectionRef = useRef<HTMLElement>(null)
   const footerSectionRef = useRef<HTMLElement>(null)
-  const [, setDraftVersion] = useState(0)
+  const [draftVersion, setDraftVersion] = useState(0)
   const draftVersionTrigger = useCallback(() => {
     flushSync(() => setDraftVersion((v) => v + 1))
   }, [])
+
+  /** Drag-and-drop hero в 5 обычных темах массажа: пишем в слот massage_draft_, не в draft_* салона */
+  const massageHeroEditStorage = useMemo(() => {
+    if (!massagePreview || !validMassageSlot || !isEditMode || typeof window === 'undefined') return null
+    const slot = validMassageSlot
+    return {
+      persistDraft: (key: string, value: string) => {
+        if (isMassageLangScopedTextKey(key)) {
+          setMassageDraftLangAware(key, publicLang, value)
+        } else {
+          setMassageDraft(key, value)
+        }
+        draftVersionTrigger()
+        try {
+          window.parent?.postMessage({ type: 'constructorMassageDraftChanged' }, '*')
+        } catch {
+          /* ignore */
+        }
+      },
+      heroLayoutStorage: {
+        read: (resolvedKey: string) => window.localStorage.getItem(massageDraftStorageKey(slot, resolvedKey)),
+        write: (resolvedKey: string, json: string) => {
+          setMassageDraft(resolvedKey, json)
+          draftVersionTrigger()
+          try {
+            window.parent?.postMessage({ type: 'constructorMassageDraftChanged' }, '*')
+          } catch {
+            /* ignore */
+          }
+        },
+      },
+    }
+  }, [massagePreview, validMassageSlot, isEditMode, publicLang, draftVersionTrigger])
+  /** Раскладка hero: в welcome — дефолт; в edit — слот; иначе чтение из слота без записи (полный просмотр). */
+  const massageHeroLayoutStorageForDraggable = useMemo(() => {
+    if (!massagePreview || !validMassageSlot || typeof window === 'undefined') return undefined
+    const slot = validMassageSlot
+    if (isMassagePristineTemplatePreview) {
+      return {
+        read: () => null,
+        write: () => {},
+      }
+    }
+    if (massageHeroEditStorage) return massageHeroEditStorage.heroLayoutStorage
+    const read = (resolvedKey: string) =>
+      window.localStorage.getItem(massageDraftStorageKey(slot, resolvedKey))
+    return { read, write: () => {} }
+  }, [
+    massagePreview,
+    validMassageSlot,
+    isMassagePristineTemplatePreview,
+    massageHeroEditStorage,
+    draftVersion,
+  ])
+
+  /** Палитра из массажного конструктора (`publicMassageThemeColors`) для превью 5 обычных тем на PublicPage */
+  const massagePreviewThemeColors = useMemo((): MassageThemeColors | undefined => {
+    if (
+      !massagePreview ||
+      !validMassageSlot ||
+      !isMassageOrdinaryTemplateId(validMassageSlot) ||
+      isMassagePristineTemplatePreview ||
+      typeof window === 'undefined'
+    ) {
+      return undefined
+    }
+    const raw = readMassageOrdinarySlotString(validMassageSlot, 'publicMassageThemeColors', publicLang)
+    return parseMassageThemeColors(raw ?? undefined)
+  }, [massagePreview, validMassageSlot, isMassagePristineTemplatePreview, publicLang, draftVersion])
+
+  /**
+   * Превью массажа: readPublic сначала читает massage_draft_<slot>_. Если писать только в draft_* салона,
+   * первое полное стирание не «держится» — слот по-прежнему отдаёт старый текст.
+   */
+  const syncSalonFooterFieldToMassageSlot = useCallback(
+    (key: string, value: string) => {
+      if (!massagePreview || !validMassageSlot || typeof window === 'undefined') return
+      if (isMassageLangScopedTextKey(key)) {
+        setMassageDraftLangAware(key, publicLang, value)
+      } else {
+        setMassageDraft(key, value)
+      }
+      try {
+        window.parent?.postMessage?.({ type: 'constructorMassageDraftChanged' }, '*')
+      } catch {
+        /* ignore */
+      }
+    },
+    [massagePreview, validMassageSlot, publicLang],
+  )
+  /** Object URL из IndexedDB для премиум hero-видео (маркер в localStorage). */
+  const [premiumSalonHeroVideoObjectUrl, setPremiumSalonHeroVideoObjectUrl] = useState<string | null>(null)
+  const premiumSalonHeroBlobUrlRef = useRef<string | null>(null)
+  const [massageIframeHeroVideoObjectUrl, setMassageIframeHeroVideoObjectUrl] = useState<string | null>(null)
+  const massageIframeHeroBlobUrlRef = useRef<string | null>(null)
+
+  /**
+   * Как MassagePreviewPage: не привязываемся к частому draftVersion — иначе cleanup отзывал blob URL,
+   * оставшийся в state, и <video> оставался с битым src (тёмный фон). Обновление по смене raw, postMessage и poll.
+   */
+  useEffect(() => {
+    const revokeBlob = () => {
+      if (premiumSalonHeroBlobUrlRef.current) {
+        URL.revokeObjectURL(premiumSalonHeroBlobUrlRef.current)
+        premiumSalonHeroBlobUrlRef.current = null
+      }
+    }
+
+    let cancelled = false
+    let lastRaw = '\u0000'
+    let loadGen = 0
+
+    const sync = () => {
+      if (cancelled) return
+      if (!isPremiumTemplate || isTemplateDemo || massagePreview) {
+        if (lastRaw !== '\u0001') {
+          lastRaw = '\u0001'
+          revokeBlob()
+          setPremiumSalonHeroVideoObjectUrl(null)
+        }
+        return
+      }
+      const raw = readPublic('publicHeroVideo') || ''
+      if (raw === lastRaw) return
+      lastRaw = raw
+      loadGen += 1
+      const myGen = loadGen
+      revokeBlob()
+      setPremiumSalonHeroVideoObjectUrl(null)
+
+      if (!raw) {
+        return
+      }
+      if (raw !== SALON_PREMIUM_HERO_VIDEO_IDB_MARKER) {
+        setPremiumSalonHeroVideoObjectUrl(null)
+        return
+      }
+
+      void (async () => {
+        try {
+          const slugStored =
+            typeof window !== 'undefined' ? (window.localStorage.getItem('publicSlug') || 'salon') : slugForDrafts
+          let u = await loadSalonPremiumHeroVideoObjectUrl(slugStored, publicHeaderTheme)
+          if (!u && slugForDrafts && slugStored !== slugForDrafts) {
+            u = await loadSalonPremiumHeroVideoObjectUrl(slugForDrafts, publicHeaderTheme)
+          }
+          if (cancelled || myGen !== loadGen) {
+            if (u) URL.revokeObjectURL(u)
+            return
+          }
+          if (!u) {
+            setPremiumSalonHeroVideoObjectUrl(null)
+            return
+          }
+          premiumSalonHeroBlobUrlRef.current = u
+          setPremiumSalonHeroVideoObjectUrl(u)
+        } catch {
+          if (!cancelled && myGen === loadGen) setPremiumSalonHeroVideoObjectUrl(null)
+        }
+      })()
+    }
+
+    sync()
+    const pollId = window.setInterval(sync, 500)
+    const onMsg = (e: MessageEvent) => {
+      if (e.data?.type === 'constructorDraftChange') sync()
+    }
+    window.addEventListener('message', onMsg)
+    return () => {
+      cancelled = true
+      window.clearInterval(pollId)
+      window.removeEventListener('message', onMsg)
+      revokeBlob()
+      setPremiumSalonHeroVideoObjectUrl(null)
+    }
+  }, [
+    isPremiumTemplate,
+    isTemplateDemo,
+    massagePreview,
+    slugForDrafts,
+    publicHeaderTheme,
+    isPreview,
+    publicLang,
+    publicHeaderThemeRaw,
+  ])
+
+  /** Hero-видео: 5 массажных шаблонов в iframe (IDB) */
+  useEffect(() => {
+    const revokeMassage = () => {
+      if (massageIframeHeroBlobUrlRef.current) {
+        URL.revokeObjectURL(massageIframeHeroBlobUrlRef.current)
+        massageIframeHeroBlobUrlRef.current = null
+      }
+    }
+
+    let cancelled = false
+    let lastMassageSig = '\u0000'
+    let massageGen = 0
+
+    const sync = () => {
+      if (cancelled) return
+
+      const massageOk =
+        massagePreview &&
+        validMassageSlot &&
+        !isMassagePristineTemplatePreview &&
+        !isTemplateDemo
+
+      if (!massageOk) {
+        if (lastMassageSig !== '') {
+          lastMassageSig = ''
+          revokeMassage()
+          setMassageIframeHeroVideoObjectUrl(null)
+        }
+      } else {
+        const rawM = readPublic('publicHeroVideo') || ''
+        const slot = validMassageSlot
+        const sigM = `${slot}|${rawM}`
+        if (sigM !== lastMassageSig) {
+          lastMassageSig = sigM
+          massageGen += 1
+          const myGen = massageGen
+          revokeMassage()
+          setMassageIframeHeroVideoObjectUrl(null)
+          if (!rawM || rawM !== MASSAGE_HERO_VIDEO_IDB_MARKER) {
+            return
+          }
+          void (async () => {
+            try {
+              const u = await loadMassageHeroVideoObjectUrl(slot)
+              if (cancelled || myGen !== massageGen) {
+                if (u) URL.revokeObjectURL(u)
+                return
+              }
+              if (!u) {
+                setMassageIframeHeroVideoObjectUrl(null)
+                return
+              }
+              massageIframeHeroBlobUrlRef.current = u
+              setMassageIframeHeroVideoObjectUrl(u)
+            } catch {
+              if (!cancelled && myGen === massageGen) setMassageIframeHeroVideoObjectUrl(null)
+            }
+          })()
+        }
+      }
+    }
+
+    sync()
+    const pollId = window.setInterval(sync, 500)
+    const onMsg = (e: MessageEvent) => {
+      if (e.data?.type === 'constructorDraftChange' || e.data?.type === 'constructorMassageDraftChanged') sync()
+    }
+    window.addEventListener('message', onMsg)
+    return () => {
+      cancelled = true
+      window.clearInterval(pollId)
+      window.removeEventListener('message', onMsg)
+      revokeMassage()
+      setMassageIframeHeroVideoObjectUrl(null)
+    }
+  }, [
+    massagePreview,
+    validMassageSlot,
+    isMassagePristineTemplatePreview,
+    isTemplateDemo,
+    draftVersion,
+    isPreview,
+    publicLang,
+    publicHeaderThemeRaw,
+  ])
+
+  /** В конструкторе (превью + редактирование) — только языки из сайдбара; на опубликованном сайте и в превью без edit — все три */
+  const langsForPublicSwitcher = useMemo((): PublicLang[] => {
+    if (typeof window === 'undefined') return ALL_PUBLIC_LANGS
+    if (isPreview && isEditMode) return getEnabledSiteLangs()
+    return ALL_PUBLIC_LANGS
+  }, [draftVersion, isPreview, isEditMode])
+  const showPublicLangSwitcher = langsForPublicSwitcher.length > 1
   const [showSuccess, setShowSuccess] = useState(false)
   const successTimeoutRef = useRef<number | null>(null)
   const [isSocialOpen, setIsSocialOpen] = useState(false)
@@ -821,10 +1397,30 @@ export default function PublicPage() {
     }
   }, [urlSlug])
 
+  /** Подгонка текущего языка под чекбоксы конструктора только в режиме редактирования превью */
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (!isPreview || !isEditMode) return
+    const enabled = getEnabledSiteLangs()
+    setPublicLang((prev) => {
+      const next = normalizePublicLangForEnabled(prev, enabled)
+      if (next !== prev) {
+        try {
+          localStorage.setItem('publicLang', next)
+        } catch {
+          // ignore
+        }
+      }
+      return next
+    })
+  }, [draftVersion, isPreview, isEditMode])
+
   useEffect(() => {
     if (!isPreview || typeof window === 'undefined') return
     const handler = (e: MessageEvent) => {
-      if (e.data?.type === 'constructorDraftChange') setDraftVersion((v) => v + 1)
+      if (e.data?.type === 'constructorDraftChange' || e.data?.type === 'constructorMassageDraftChanged') {
+        setDraftVersion((v) => v + 1)
+      }
       if (e.data?.type === 'scrollToSection' && typeof e.data?.sectionId === 'string') {
         const map: Record<string, React.RefObject<HTMLElement | null>> = {
           header: headerSectionRef,
@@ -845,6 +1441,8 @@ export default function PublicPage() {
 
   useEffect(() => {
     if (!isPreview || typeof window === 'undefined') return
+    /** Превью 5 массажных шаблонов: родительский MassageConstructor не слушает publicPageSectionInView — интервал только тратит main thread при скролле. */
+    if (massagePreview) return
     const sections: { id: string; ref: React.RefObject<HTMLElement | null> }[] = [
       { id: 'header', ref: headerSectionRef },
       { id: 'gallery', ref: gallerySectionRef },
@@ -888,7 +1486,7 @@ export default function PublicPage() {
       }
     }, 250)
     return () => clearInterval(timer)
-  }, [isPreview])
+  }, [isPreview, massagePreview])
 
   useEffect(() => {
     let finished = false
@@ -1057,44 +1655,41 @@ export default function PublicPage() {
     if (!s || typeof s !== 'string') return true
     const t = s.trim()
     if (t.length < 2) return true
+    /** Сначала «мусор» по шаблону — иначе длинная строка с «салон»/«красоты» не доходила до проверки на повтор символов (ыыыы…). */
+    const junkPattern = /(.)\1{3,}|(..)\2{2,}|dsds|sdsd|saaa|sdad|saaf|dassd|^[dsa]{8,}$/i
+    if (junkPattern.test(t)) return true
     const hasCyrillic = /[а-яёА-ЯЁ]/.test(t)
     const hasRealWords = hasCyrillic || /\b(the|your|salon|beauty|запись|салон|красоты)\b/i.test(t)
     if (hasRealWords && t.length > 10) return false
-    const junkPattern = /(.)\1{3,}|(..)\2{2,}|dsds|sdsd|saaa|sdad|saaf|dassd|^[dsa]{8,}$/i
-    return junkPattern.test(t) || (t.length > 12 && !hasCyrillic && (t.match(/[aeiou]/gi)?.length ?? 0) < 2)
+    return (t.length > 12 && !hasCyrillic && (t.match(/[aeiou]/gi)?.length ?? 0) < 2)
   }
 
-  const draftNameKey = typeof window !== 'undefined' && !isTemplateDemo && slugForDrafts && publicHeaderTheme
-    ? `draft_publicName_${slugForDrafts}_${publicHeaderTheme}`
-    : null
+  const draftNameKey =
+    typeof window !== 'undefined' &&
+    !isTemplateDemo &&
+    !isMassagePristineTemplatePreview &&
+    slugForDrafts &&
+    publicHeaderTheme
+      ? `draft_publicName_${slugForDrafts}_${publicHeaderTheme}`
+      : null
   const draftNameRaw = draftNameKey != null && typeof window !== 'undefined' ? window.localStorage.getItem(draftNameKey) : null
   /** Название в футере — отдельный черновик от hero (draft_publicName) */
-  const draftFooterNameKey = typeof window !== 'undefined' && !isTemplateDemo && slugForDrafts && publicHeaderTheme
-    ? `draft_publicFooterName_${slugForDrafts}_${publicHeaderTheme}`
-    : null
+  const draftFooterNameKey =
+    typeof window !== 'undefined' &&
+    !isTemplateDemo &&
+    !isMassagePristineTemplatePreview &&
+    slugForDrafts &&
+    publicHeaderTheme
+      ? `draft_publicFooterName_${slugForDrafts}_${publicHeaderTheme}`
+      : null
   const draftFooterNameRaw =
-    draftFooterNameKey != null && typeof window !== 'undefined' ? window.localStorage.getItem(draftFooterNameKey) : null
-  const rawName =
-    isTemplateDemo
-      ? t('defaultSalonName')
-      : draftNameRaw !== null
-        ? draftNameRaw
-        : readPublic('publicName') ||
-          (isPreview ? FOOTER_DEFAULT_NAME : null) ||
-    localStorage.getItem('businessName') ||
-          HAIR_THEME_DEFAULT_NAME ||
-    t('defaultSalonName')
-  /** В превью конструктора при наличии черновика имя берём как в storage (в т.ч. пустая строка и 1–2 символа), иначе isJunkHeaderText сбрасывает ввод в дефолт */
-  const publicName =
-    rawName === '' && isPreview && !isTemplateDemo
-      ? ''
-      : draftNameKey != null && draftNameRaw !== null && isPreview && !isTemplateDemo
-        ? draftNameRaw
-        : isJunkHeaderText(rawName)
-          ? t('defaultSalonName')
-          : rawName
-  const useBuiltInTemplate = isTemplateDemo || isPreview
-  const storedName = draftNameRaw !== null ? draftNameRaw : readPublic('publicName')
+    typeof window !== 'undefined'
+      ? (readOrdinaryConstructorFooterNameDraft() ??
+        (draftFooterNameKey != null ? window.localStorage.getItem(draftFooterNameKey) : null))
+      : null
+  /** Название из регистрации — и в превью выбора шаблона (isTemplateDemo), не только в полном редакторе */
+  const salonNameFromRegistration =
+    typeof window !== 'undefined' ? getCanonicalSalonBusinessName() : ''
   const defaultSalonNameSet = useMemo(
     () =>
       new Set([
@@ -1113,20 +1708,61 @@ export default function PublicPage() {
     if (defaultSalonNameSet.has(st)) return true
     return st === t('defaultSalonName')
   }
+  /** Черновик с дефолтным «Твой салон…» не должен перекрывать имя из регистрации (например Salon Krasoti). */
+  const rawName = (() => {
+    if (isMassagePristineTemplatePreview) return salonNameFromRegistration || t('defaultSalonName')
+    if (isTemplateDemo) return salonNameFromRegistration || t('defaultSalonName')
+    if (draftNameRaw !== null && draftNameRaw !== '') {
+      if (!isLegacyName(draftNameRaw)) return draftNameRaw
+      if (salonNameFromRegistration && !isLegacyName(salonNameFromRegistration)) return salonNameFromRegistration
+      return salonNameFromRegistration || t('defaultSalonName')
+    }
+    return (
+      readPublic('publicName') ||
+      localStorage.getItem('businessName') ||
+      (isPreview ? FOOTER_DEFAULT_NAME : null) ||
+      HAIR_THEME_DEFAULT_NAME ||
+      t('defaultSalonName')
+    )
+  })()
+  /** В превью конструктора при наличии черновика имя берём как в storage (в т.ч. пустая строка и 1–2 символа), иначе isJunkHeaderText сбрасывает ввод в дефолт */
+  const publicName =
+    rawName === '' && isPreview && !isTemplateDemo
+      ? ''
+      : draftNameKey != null && draftNameRaw !== null && isPreview && !isTemplateDemo && !isLegacyName(draftNameRaw)
+        ? draftNameRaw
+        : skipHeaderJunkFilterInConstructorPreview
+          ? rawName
+          : isJunkHeaderText(rawName)
+            ? t('defaultSalonName')
+            : rawName
+  const useBuiltInTemplate = isTemplateDemo || isPreview
+  const storedName =
+    draftNameRaw !== null
+      ? draftNameRaw
+      : readPublic('publicName') || localStorage.getItem('businessName') || ''
   const headerDisplayName =
     useBuiltInTemplate && storedName !== '' && isLegacyName(storedName || '')
-      ? t('defaultSalonName')
+      ? salonNameFromRegistration || t('defaultSalonName')
       : publicName
   const isPremiumTheme = publicHeaderThemeRaw === 'premium-hair' || publicHeaderThemeRaw === 'premium-barber'
   const premiumPd = PREMIUM_PUBLIC_DEFAULTS_BY_LANG[publicLang] ?? PREMIUM_PUBLIC_DEFAULTS_BY_LANG.ru
   const hairLangDef = HAIR_DEFAULTS_BY_LANG[publicLang] ?? HAIR_DEFAULTS_BY_LANG.ru
   const rawTagline = (() => {
+    if (isMassagePristineTemplatePreview) return hairLangDef.tagline || t('defaultTagline')
     if (isPremiumTheme) {
       if (isTemplateDemo) return premiumPd.tagline
       if (typeof window === 'undefined') return premiumPd.tagline
       const taglineKey = `draft_publicTagline_${slugForDrafts}_${publicHeaderTheme}`
       const stored = window.localStorage.getItem(taglineKey)
       return stored !== null ? stored : (premiumPd.tagline || t('defaultTagline'))
+    }
+    if (massagePreview && validMassageSlot && typeof window !== 'undefined') {
+      const mv = readMassageOrdinarySlotString(validMassageSlot, 'publicTagline', publicLang)
+      if (mv !== null) return mv
+      if (publicLang !== 'ru') {
+        return hairLangDef.tagline || t('defaultTagline')
+      }
     }
     if (isTemplateDemo) return hairLangDef.tagline
     if (typeof window === 'undefined') return hairLangDef.tagline || ''
@@ -1137,17 +1773,23 @@ export default function PublicPage() {
   const publicTagline = clampHeaderSubtitleLines(
     rawTagline === ''
       ? ''
-      : (isJunkHeaderText(rawTagline) ? (isPremiumTheme ? premiumPd.tagline : hairLangDef.tagline) : rawTagline)
+      : skipHeaderJunkFilterInConstructorPreview
+        ? rawTagline
+        : isJunkHeaderText(rawTagline)
+          ? (isPremiumTheme ? premiumPd.tagline : hairLangDef.tagline)
+          : rawTagline
   )
   const rawFooterName =
-    isTemplateDemo
-      ? t('defaultSalonName')
+    isMassagePristineTemplatePreview
+      ? salonNameFromRegistration || t('defaultSalonName')
+      : isTemplateDemo
+      ? salonNameFromRegistration || t('defaultSalonName')
       : draftFooterNameRaw !== null
         ? draftFooterNameRaw
         : readPublic('publicFooterName') ||
           readPublic('publicName') ||
-          (isPreview ? t('defaultSalonName') : null) ||
           localStorage.getItem('businessName') ||
+          (isPreview ? t('defaultSalonName') : null) ||
           HAIR_THEME_DEFAULT_NAME ||
           t('defaultSalonName')
   const footerName =
@@ -1155,22 +1797,39 @@ export default function PublicPage() {
       ? ''
       : draftFooterNameKey != null && draftFooterNameRaw !== null && isPreview && !isTemplateDemo
         ? draftFooterNameRaw
-        : isJunkHeaderText(rawFooterName)
-          ? t('defaultSalonName')
-          : rawFooterName
+        : skipHeaderJunkFilterInConstructorPreview
+          ? rawFooterName
+          : isJunkHeaderText(rawFooterName)
+            ? t('defaultSalonName')
+            : rawFooterName
   const storedFooterName =
-    draftFooterNameRaw !== null ? draftFooterNameRaw : readPublic('publicFooterName') || readPublic('publicName')
+    draftFooterNameRaw !== null
+      ? draftFooterNameRaw
+      : readPublic('publicFooterName') ||
+        readPublic('publicName') ||
+        localStorage.getItem('businessName') ||
+        ''
   const footerDisplayName =
     footerName === ''
       ? ''
       : useBuiltInTemplate && isLegacyName(storedFooterName || '')
         ? t('defaultSalonName')
         : (footerName || t('defaultSalonName'))
-  const storedAddress = readPublic('publicFooterAddress')
-  const storedHours = readPublic('publicHours')
-  const storedDayOff = readPublic('publicDayOff')
-  const storedPhone = readPublic('publicPhone')
-  const storedEmail = readPublic('publicEmail')
+  const storedAddressRaw = readOrdinaryConstructorFooterField('publicFooterAddress')
+  const storedHoursRaw = readOrdinaryConstructorFooterField('publicHours')
+  const storedDayOffRaw = readOrdinaryConstructorFooterField('publicDayOff')
+  const storedPhoneRaw = readOrdinaryConstructorFooterField('publicPhone')
+  const storedEmailRaw = readOrdinaryConstructorFooterField('publicEmail')
+  const addressCleared = isFooterFieldClearedMarker(storedAddressRaw)
+  const hoursCleared = isFooterFieldClearedMarker(storedHoursRaw)
+  const dayOffCleared = isFooterFieldClearedMarker(storedDayOffRaw)
+  const phoneCleared = isFooterFieldClearedMarker(storedPhoneRaw)
+  const emailCleared = isFooterFieldClearedMarker(storedEmailRaw)
+  const storedAddress = addressCleared ? '' : storedAddressRaw
+  const storedHours = hoursCleared ? '' : storedHoursRaw
+  const storedDayOff = dayOffCleared ? '' : storedDayOffRaw
+  const storedPhone = phoneCleared ? '' : storedPhoneRaw
+  const storedEmail = emailCleared ? '' : storedEmailRaw
   const isLegacyPhone = (s: string) => !s || /^\+373\s*123\s*456(\s*\d*)?$/.test(String(s).replace(/\s+/g, ' ').trim())
   const isLegacyEmail = (s: string) => {
     const t = String(s).trim()
@@ -1181,46 +1840,142 @@ export default function PublicPage() {
     const t = String(s).trim()
     if (!t) return true
     if (t === FOOTER_DEFAULT_ADDRESS) return true
-    return t.split(/[\s,]+/).length <= 1 && t.length < 25
+    for (const def of Object.values(FOOTER_DEFAULTS_BY_LANG)) {
+      if (t === def.address) return true
+    }
+    if (t.split(/[\s,]+/).length <= 1 && t.length < 25) return true
+    /** На en/ro один короткий кириллический фрагмент без запятых («береза») — подставляем адрес-заглушку на языке сайта */
+    if (
+      publicLang !== 'ru' &&
+      /[\u0400-\u04FF]/.test(t) &&
+      !t.includes(',') &&
+      t.length < 48
+    ) {
+      return true
+    }
+    /**
+     * RU и др.: 2–3 «слова»-каша на кириллице без цифр и запятых («ыы выв») — раньше не попадало под legacy.
+     * Плюс общий мусор (как у подзаголовка hero) и явный повтор символа в короткой строке.
+     */
+    const looksLikeStreetHint = /\b(ул|улиц|просп|бульв|переул|шоссе|дом|кв|офис|гор\.|г\.)\b/i.test(t)
+    if (
+      t.length < 48 &&
+      !/\d/.test(t) &&
+      !t.includes(',') &&
+      /[\u0400-\u04FF]/.test(t) &&
+      !looksLikeStreetHint &&
+      (isJunkHeaderText(t) || (/(.)\1/.test(t) && t.length < 36))
+    ) {
+      return true
+    }
+    return false
   }
+  const fld = FOOTER_DEFAULTS_BY_LANG[publicLang] ?? FOOTER_DEFAULTS_BY_LANG.ru
+  /** Для гостя и превью без edit: заглушки/«мусор» → дефолт на текущем языке (на живом сайте раньше useBuiltInTemplate=false и «береза» не заменялась). */
+  const visitorFooterAddressResolved =
+    addressCleared
+      ? ''
+      : isLegacyAddress(storedAddress || '')
+        ? fld.address
+        : (storedAddress || fld.address)
   /** Адрес для карты: в конструкторе редактируют publicAddress, во футере — publicFooterAddress; для превью учитываем оба.
    *  В режиме редактирования используем только явно установленный адрес (null-safe чтение), чтобы не показывать устаревшие данные. */
   const mapSourceAddress = (() => {
     if (isPreview && isEditMode && typeof window !== 'undefined') {
-      // Читаем напрямую из localStorage с явной проверкой на null (не fallback '')
-      const themeRaw =
-        localStorage.getItem('draft_publicHeaderTheme') ?? localStorage.getItem('publicHeaderTheme') ?? 'hair'
-      const addressMapTheme = themeRaw  // адрес всегда хранится по полному id темы
-      const slug = slugForDrafts
-      const v = localStorage.getItem(`draft_publicAddress_${slug}_${addressMapTheme}`)
-        ?? localStorage.getItem(`draft_publicFooterAddress_${slug}_${addressMapTheme}`)
-      return (v ?? '').trim()
+      const slugStored = window.localStorage.getItem('publicSlug') || 'salon'
+      const slugCandidates = [...new Set([slugForDrafts, slugStored, 'salon'].filter((s) => String(s).length > 0))]
+      const themeCandidates =
+        publicHeaderThemeRaw !== publicHeaderTheme
+          ? [publicHeaderThemeRaw, publicHeaderTheme]
+          : [publicHeaderThemeRaw]
+      for (const slug of slugCandidates) {
+        for (const th of themeCandidates) {
+          const v =
+            window.localStorage.getItem(`draft_publicAddress_${slug}_${th}`) ??
+            window.localStorage.getItem(`draft_publicFooterAddress_${slug}_${th}`)
+          if (v != null && v !== '') {
+            return displayFooterFieldStored(v).trim()
+          }
+        }
+      }
+      return ''
     }
-    return (readPublic('publicAddress') || storedAddress || '').trim()
+    const addrLine = readPublic('publicAddress')
+    const addrNorm = (isFooterFieldClearedMarker(addrLine) ? '' : addrLine).trim()
+    const publicLineResolved =
+      !addrNorm ? '' : isLegacyAddress(addrNorm) ? fld.address : addrNorm
+    return (publicLineResolved || visitorFooterAddressResolved).trim()
   })()
   const isLegacyHours = (s: string) => !s || String(s).trim() === ''
   const isLegacyDayOff = (s: string) => !s || String(s).trim() === ''
-  const fld = FOOTER_DEFAULTS_BY_LANG[publicLang] ?? FOOTER_DEFAULTS_BY_LANG.ru
-  const footerDisplayAddress =
-    useBuiltInTemplate && isLegacyAddress(storedAddress || '')
-      ? fld.address
-      : (storedAddress || fld.address)
-  const footerDisplayHours =
-    useBuiltInTemplate && isLegacyHours(storedHours || '')
-      ? fld.hours
-      : (storedHours || fld.hours)
-  const footerDisplayDayOff =
-    useBuiltInTemplate && isLegacyDayOff(storedDayOff || '')
-      ? fld.dayOff
-      : (storedDayOff || fld.dayOff)
+  /** Превью конструктора с edit=1: адрес без полной isLegacyAddress (не затираем «City» по буквам); часы/выходной — с той же локализацией, что у гостя. */
+  const footerInConstructorEdit = isPreview && isEditMode
+  /** Демо выбора темы и редактирование: подписи колонок футера из i18n, без publicFooterLabels с другого языка. */
+  const useTranslatedFooterColumnLabels = isTemplateDemo || footerInConstructorEdit
+  const publicFooterAddress = footerInConstructorEdit
+    ? addressCleared
+      ? ''
+      : displayFooterFieldStored(storedAddressRaw)
+    : visitorFooterAddressResolved
+  const footerDisplayAddress = publicFooterAddress
+  const footerDisplayHoursVisitorRaw =
+    hoursCleared
+      ? ''
+      : isLegacyHours(storedHours || '')
+        ? fld.hours
+        : (storedHours || fld.hours)
+  const footerDisplayDayOffVisitorRaw =
+    dayOffCleared
+      ? ''
+      : isLegacyDayOff(storedDayOff || '')
+        ? fld.dayOff
+        : (storedDayOff || fld.dayOff)
+  const footerDisplayHoursEditRaw =
+    hoursCleared
+      ? ''
+      : footerInConstructorEdit && !isPremiumTemplate
+        ? displayFooterFieldStored(storedHoursRaw || '')
+        : isLegacyHours(storedHoursRaw || '')
+          ? fld.hours
+          : (storedHoursRaw || fld.hours)
+  const footerDisplayDayOffEditRaw =
+    dayOffCleared
+      ? ''
+      : footerInConstructorEdit && !isPremiumTemplate
+        ? displayFooterFieldStored(storedDayOffRaw || '')
+        : isLegacyDayOff(storedDayOffRaw || '')
+          ? fld.dayOff
+          : (storedDayOffRaw || fld.dayOff)
+  const footerDisplayHours = footerInConstructorEdit
+    ? localizeFooterHoursLine(footerDisplayHoursEditRaw, publicLang, fld.hours)
+    : localizeFooterHoursLine(footerDisplayHoursVisitorRaw, publicLang, fld.hours)
+  const footerDisplayDayOff = footerInConstructorEdit
+    ? localizeFooterDayOffLine(footerDisplayDayOffEditRaw, publicLang, fld.dayOff)
+    : localizeFooterDayOffLine(footerDisplayDayOffVisitorRaw, publicLang, fld.dayOff)
   const footerDisplayPhone =
-    useBuiltInTemplate && isLegacyPhone(storedPhone || '')
-      ? fld.phone
-      : (storedPhone || fld.phone)
+    phoneCleared
+      ? ''
+      : footerInConstructorEdit && !isPremiumTemplate
+        ? displayFooterFieldStored(storedPhoneRaw || '')
+        : footerInConstructorEdit
+          ? isLegacyPhone(storedPhoneRaw || '')
+            ? fld.phone
+            : (storedPhoneRaw || fld.phone)
+          : isLegacyPhone(storedPhone || '')
+            ? fld.phone
+            : (storedPhone || fld.phone)
   const footerDisplayEmail =
-    useBuiltInTemplate && isLegacyEmail(storedEmail || '')
-      ? fld.email
-      : (storedEmail || fld.email)
+    emailCleared
+      ? ''
+      : footerInConstructorEdit && !isPremiumTemplate
+        ? displayFooterFieldStored(storedEmailRaw || '')
+        : footerInConstructorEdit
+          ? isLegacyEmail(storedEmailRaw || '')
+            ? fld.email
+            : (storedEmailRaw || fld.email)
+          : isLegacyEmail(storedEmail || '')
+            ? fld.email
+            : (storedEmail || fld.email)
   const publicLogoRaw = readPublic('publicLogo')
   /** Старый логотип для хедера (data URL) подменяем на дефолтный файл, чтобы не тянуть огромные data URL */
   const publicLogo =
@@ -1236,8 +1991,8 @@ export default function PublicPage() {
   const publicFooterLogoShape =
     (readPublic('publicFooterLogoShape') as 'circle' | 'rounded' | 'square') || publicLogoShape
   const footerLogoDisplayShape = publicFooterLogoShape
-  const publicPhone = readPublic('publicPhone') || fld.phone
-  const publicEmail = readPublic('publicEmail') || fld.email
+  const publicPhone = phoneCleared ? '' : (storedPhone || fld.phone)
+  const publicEmail = emailCleared ? '' : (storedEmail || fld.email)
   const publicTelegram = readPublic('publicTelegram') || ''
   const publicViber = readPublic('publicViber') || ''
   const publicInstagram = readPublic('publicInstagram') || ''
@@ -1245,7 +2000,6 @@ export default function PublicPage() {
   const publicWhatsapp = readPublic('publicWhatsapp') || ''
   const publicTwitter = readPublic('publicTwitter') || ''
   const publicTiktok = readPublic('publicTiktok') || ''
-  const publicFooterAddress = readPublic('publicFooterAddress') || fld.address
   const rawBookingTitle = readPublic('publicBookingTitle') || ''
   const rawBookingSubtitle = readPublic('publicBookingSubtitle') || ''
   const isTypoBookingTitle = /Запп+ись|клтаврр/.test(rawBookingTitle)
@@ -1254,8 +2008,16 @@ export default function PublicPage() {
     !rawBookingTitle || isTypoBookingTitle ? hairLangDef.bookingTitle : rawBookingTitle
   const publicBookingSubtitle =
     !rawBookingSubtitle || isTypoBookingSubtitle ? hairLangDef.bookingSub : rawBookingSubtitle
-  const publicHeaderPrimaryCta = readPublic('publicHeaderPrimaryCta') || ''
-  const publicHeaderSecondaryCta = readPublic('publicHeaderSecondaryCta') || ''
+  const publicHeaderPrimaryCta = sanitizeLangScopedHeroCtaButton(
+    readPublic('publicHeaderPrimaryCta') || '',
+    publicLang,
+    'bookOnline',
+  )
+  const publicHeaderSecondaryCta = sanitizeLangScopedHeroCtaButton(
+    readPublic('publicHeaderSecondaryCta') || '',
+    publicLang,
+    'whereToFindQuestion',
+  )
   const publicHeaderExtraText = readPublic('publicHeaderExtraText') || ''
   const publicHeaderPrimaryCtaShape =
     (readPublic('publicHeaderPrimaryCtaShape') as 'square' | 'round') || 'round'
@@ -1622,12 +2384,30 @@ export default function PublicPage() {
     typeof window !== 'undefined' &&
     (!!localStorage.getItem(headerLayoutStorageKey) ||
       !!localStorage.getItem(`${headerLayoutStorageKey}_mobile`))
+  const hasMassageOrdinaryHeaderLayoutDraft =
+    massagePreview &&
+    validMassageSlot &&
+    !isMassagePristineTemplatePreview &&
+    isDraggableHeaderTheme &&
+    typeof window !== 'undefined' &&
+    (!!localStorage.getItem(massageDraftStorageKey(validMassageSlot, headerLayoutStorageKey)) ||
+      !!localStorage.getItem(massageDraftStorageKey(validMassageSlot, `${headerLayoutStorageKey}_mobile`)))
+  /** Превью 5 обычных массажных тем с черновиками (не welcome): палитра и секции синхронны с MassageConstructorPage */
+  const massageOrdinaryPreviewLive =
+    Boolean(
+      massagePreview &&
+        validMassageSlot &&
+        isMassageOrdinaryTemplateId(validMassageSlot) &&
+        !isMassagePristineTemplatePreview &&
+        isPreview
+    )
   /** Только hair: старый флаг «трогали хедер» без отдельного ключа темы */
   const hasHairLegacyCustomizedFlag =
     publicHeaderTheme === 'hair' &&
     typeof window !== 'undefined' &&
     !!localStorage.getItem('draft_headerHairCustomized')
   const hasHeaderCustomized =
+    hasMassageOrdinaryHeaderLayoutDraft ||
     (isDraggableHeaderTheme && publicHeaderTheme !== 'hair') ||
     hasOrdinaryHeaderLayoutDraft ||
     hasHairLegacyCustomizedFlag ||
@@ -1657,6 +2437,7 @@ export default function PublicPage() {
   /** Кастомные цвета на сохранённой странице; в превью — при редактировании или в демо шаблона */
   const applyHeaderColors =
     !isPreview ||
+    (massageOrdinaryPreviewLive && !isHeaderDragging && (isEditMode || showDraggableHeroReadOnly)) ||
     (isEditMode && !isHeaderDragging && hasHeaderCustomized) ||
     (showDraggableHeroReadOnly && !isHeaderDragging && hasHeaderCustomized) ||
     (isTemplateDemo && (publicHeaderTheme === 'barber' || publicHeaderTheme === 'cosmetology' || publicHeaderTheme === 'coloring' || publicHeaderTheme === 'manicure'))
@@ -1716,6 +2497,95 @@ export default function PublicPage() {
                   : headerColorsEnabled && applyHeaderColors && publicHeaderManicureColors.subtitle !== 'default'
                     ? { color: manicureSubtitleColor.color, textShadow: manicureSubtitleColor.glow }
                     : undefined
+
+  /** Хиро: палитра всегда в превью массажа (не зависит от applyHeaderColors / перетаскивания) */
+  const massageHeroPaletteOn =
+    massageOrdinaryPreviewLive && massagePreviewThemeColors !== undefined
+  const massageSectionPaletteOn =
+    massageOrdinaryPreviewLive && massagePreviewThemeColors !== undefined
+
+  const massageM = (k: keyof MassageThemeColors) =>
+    resolveMassageThemeColor(k, massagePreviewThemeColors as MassageThemeColors)
+
+  const headerTitleStyleForRender: React.CSSProperties | undefined = massageHeroPaletteOn
+    ? {
+        ...(headerTitleStyle ?? {}),
+        color: massageM('heroLine1'),
+        textShadow: '0 2px 28px rgba(0,0,0,0.5)',
+      }
+    : headerTitleStyle
+
+  const headerSubtitleStyleForRender: React.CSSProperties | undefined = massageHeroPaletteOn
+    ? {
+        ...(headerSubtitleStyle ?? {}),
+        color: massageM('heroSub'),
+        textShadow: '0 1px 16px rgba(0,0,0,0.45)',
+      }
+    : headerSubtitleStyle
+
+  const massageHeroBtnGlow = (hex: string) => `0 0 22px ${hex}55`
+
+  const headerPrimaryColorForRender = massageHeroPaletteOn
+    ? {
+        background: massageM('heroPrimBtnBg'),
+        text: '#ffffff',
+        glow: massageHeroBtnGlow(massageM('heroPrimBtnBg')),
+        borderColor: massageM('heroCtaBorder'),
+      }
+    : headerPrimaryColor
+
+  const headerSecondaryColorForRender = massageHeroPaletteOn
+    ? {
+        background: massageM('heroSecBtnBg'),
+        text: '#ffffff',
+        glow: massageHeroBtnGlow(massageM('heroSecBtnBg')),
+        borderColor: massageM('heroSecBtnBorder'),
+      }
+    : headerSecondaryColor
+
+  const galleryTitleMergedStyle: React.CSSProperties | undefined = massageSectionPaletteOn
+    ? { color: massageM('galTitle'), textShadow: '0 1px 18px rgba(0,0,0,0.35)' }
+    : galleryTitleColorOption
+      ? { color: galleryTitleColorOption.color, textShadow: galleryTitleColorOption.glow }
+      : undefined
+
+  const bookingTitleMergedStyle: React.CSSProperties | undefined = massageSectionPaletteOn
+    ? { color: massageM('ctaBlockTitle'), textShadow: '0 1px 18px rgba(0,0,0,0.35)' }
+    : bookingTitleColorOption
+      ? { color: bookingTitleColorOption.color, textShadow: bookingTitleColorOption.glow }
+      : undefined
+
+  const bookingSubtitleMergedStyle: React.CSSProperties | undefined = massageSectionPaletteOn
+    ? { color: massageM('ctaBlockSub'), textShadow: '0 1px 12px rgba(0,0,0,0.3)' }
+    : bookingSubtitleColorOption
+      ? { color: bookingSubtitleColorOption.color, textShadow: bookingSubtitleColorOption.glow }
+      : undefined
+
+  const worksGalleryTitleMergedStyle: React.CSSProperties | undefined = massageSectionPaletteOn
+    ? { color: massageM('svcBlockTitle'), textShadow: '0 1px 18px rgba(0,0,0,0.35)' }
+    : undefined
+
+  const mapLocationLabelMergedStyle: React.CSSProperties | undefined = massageSectionPaletteOn
+    ? { color: massageM('contactsLabel') }
+    : undefined
+
+  const mapWhereHeadingMergedStyle: React.CSSProperties | undefined = massageSectionPaletteOn
+    ? { color: massageM('contactsSectionHeading') }
+    : undefined
+
+  const massageFooterBlockTitleStyle: React.CSSProperties | undefined = massageSectionPaletteOn
+    ? { color: massageM('contactsBlockTitle') }
+    : undefined
+  const massageFooterContactLabelStyle: React.CSSProperties | undefined = massageSectionPaletteOn
+    ? { color: massageM('contactsLabel') }
+    : undefined
+  const massageFooterContactBodyStyle: React.CSSProperties | undefined = massageSectionPaletteOn
+    ? { color: massageM('contactsBody') }
+    : undefined
+  const massageFooterColumnRuleStyle: React.CSSProperties | undefined = massageSectionPaletteOn
+    ? { backgroundColor: massageM('contactsIcon'), opacity: 0.35 }
+    : undefined
+
   const headerPrimaryCustom =
     headerColorsEnabled &&
     applyHeaderColors &&
@@ -1738,6 +2608,8 @@ export default function PublicPage() {
       publicHeaderTheme === 'coloring' ||
       publicHeaderManicureColors.secondary !== 'default' ||
       publicHeaderTheme === 'manicure')
+  const headerPrimaryCustomForRender = massageHeroPaletteOn ? true : headerPrimaryCustom
+  const headerSecondaryCustomForRender = massageHeroPaletteOn ? true : headerSecondaryCustom
   const headerUseGlow = publicHeaderTheme === 'barber' || publicHeaderTheme === 'cosmetology' || publicHeaderTheme === 'coloring' || publicHeaderTheme === 'manicure'
   const getPrimaryIconClass = (defaultClass: string) =>
     publicHeaderTheme === 'manicure'
@@ -1773,30 +2645,78 @@ export default function PublicPage() {
             : publicHeaderBarberColors.primary === 'default'
               ? defaultClass
               : ''
+  const getPrimaryIconClassForRender = (defaultClass: string) =>
+    massageHeroPaletteOn ? 'brightness-0 invert' : getPrimaryIconClass(defaultClass)
   /** Изначальная позиция хедера темы «Парикмахерская» (логотип, название, описание, кнопки) */
   const HAIR_HEADER_INITIAL_PADDING = 'w-full px-4 pb-14 sm:pb-20 pt-40 sm:pt-32 md:pt-44 lg:pt-[22rem] xl:pt-[24rem] text-center justify-center'
+  /** Превью массажа: паттерн фона страницы — выбор из сайдбара или дефолт по слоту (в т.ч. спортивный 8498517). */
+  const massageBodyPatternChoiceStored =
+    massagePreview && validMassageSlot && typeof window !== 'undefined'
+      ? readMassageOrdinarySlotString(validMassageSlot, 'publicMassageBodyPatternChoice', publicLang)
+      : null
+  const massagePreviewBodyPatternImage =
+    massagePreview && validMassageSlot && isMassageOrdinaryTemplateId(validMassageSlot)
+      ? resolveMassageBodyPatternAssetUrl(massageBodyPatternChoiceStored, validMassageSlot)
+      : null
   const bodyBackground =
     publicBodyBackgroundChoice === 'bg-1'
-      ? { type: 'image', url: patternBg }
+      ? { type: 'image', url: massagePreviewBodyPatternImage ?? patternBg }
       : publicBodyBackgroundChoice === 'bg-2'
-        ? { type: 'image', url: manicurePattern }
+        ? { type: 'image', url: massagePreviewBodyPatternImage ?? manicurePattern }
         : publicBodyBackgroundChoice === 'bg-3'
-          ? { type: 'image', url: manicurePatternAlt }
+          ? { type: 'image', url: massagePreviewBodyPatternImage ?? manicurePatternAlt }
           : publicBodyBackgroundChoice === 'bg-4'
             ? { type: 'color', color: '#0b0b0b' }
             : publicBodyBackgroundChoice === 'bg-5'
               ? { type: 'color', color: '#e8e4df' }
-              : { type: 'image', url: patternBg }
+              : { type: 'image', url: massagePreviewBodyPatternImage ?? patternBg }
+  /** Затемнение поверх фона — слабее, чтобы паттерны и фото hero-зоны читались лучше. */
+  const bodyBgDarken =
+    massagePreviewBodyPatternImage != null
+      ? 'linear-gradient(180deg, rgba(0, 0, 0, 0.34), rgba(0, 0, 0, 0.45))'
+      : 'linear-gradient(180deg, rgba(0, 0, 0, 0.54), rgba(0, 0, 0, 0.64))'
   const bodyBackgroundImage =
     bodyBackground.type === 'image'
-      ? `linear-gradient(180deg, rgba(0, 0, 0, 0.78), rgba(0, 0, 0, 0.85)), url(${bodyBackground.url})`
+      ? `${bodyBgDarken}, url(${bodyBackground.url})`
       : publicBodyBackgroundChoice === 'bg-5'
         ? 'none'
-        : 'linear-gradient(180deg, rgba(0, 0, 0, 0.78), rgba(0, 0, 0, 0.85))'
+        : bodyBgDarken
   const bodyBackgroundColor =
     bodyBackground.type === 'color' ? bodyBackground.color : undefined
+  /** Паттерн + затемнение: градиент без повтора на весь блок; плитка — `auto`, кроме классического 12634 (фикс. ширина плитки). */
+  const bodyPatternTileSize = massageBodyPatternLayerBackgroundSize(bodyBackground.url)
+  const bodyShellSurfaceStyle =
+    bodyBackground.type === 'image'
+      ? {
+          backgroundImage: bodyBackgroundImage,
+          backgroundColor: bodyBackgroundColor,
+          backgroundRepeat: 'no-repeat, repeat',
+          backgroundSize: `100% 100%, ${bodyPatternTileSize}`,
+          backgroundPosition: '0 0, 0 0',
+          minHeight: '100vh',
+          width: '100%',
+        }
+      : {
+          backgroundImage: bodyBackgroundImage,
+          backgroundColor: bodyBackgroundColor,
+          ...(bodyBackgroundImage !== 'none'
+            ? { backgroundRepeat: 'no-repeat' as const, backgroundSize: '100% 100%' as const }
+            : {}),
+          minHeight: '100vh',
+          width: '100%',
+        }
   const publicAddressRaw = readPublic('publicAddress')
-  const publicAddress = publicAddressRaw !== '' ? (publicAddressRaw || publicFooterAddress) : ''
+  const publicAddressPrimaryRaw = isFooterFieldClearedMarker(publicAddressRaw) ? '' : publicAddressRaw
+  const publicAddressPrimaryResolved =
+    !publicAddressPrimaryRaw.trim()
+      ? ''
+      : isLegacyAddress(publicAddressPrimaryRaw)
+        ? fld.address
+        : publicAddressPrimaryRaw
+  const publicAddress =
+    publicAddressPrimaryResolved.trim() !== ''
+      ? (publicAddressPrimaryResolved || publicFooterAddress)
+      : ''
   const footerVisibility = (() => {
     const stored = readPublic('publicFooterVisibility')
     const defaults = { address: true, schedule: true, dayOff: true, phone: true, email: true }
@@ -1869,8 +2789,16 @@ export default function PublicPage() {
     }
   })()
   const publicPlaceName = readPublic('publicPlaceName') || ''
-  const publicHours = readPublic('publicHours') || fld.hours
-  const publicDayOff = readPublic('publicDayOff') || fld.dayOff
+  const publicHours = localizeFooterHoursLine(
+    hoursCleared ? '' : (storedHours || fld.hours),
+    publicLang,
+    fld.hours,
+  )
+  const publicDayOff = localizeFooterDayOffLine(
+    dayOffCleared ? '' : (storedDayOff || fld.dayOff),
+    publicLang,
+    fld.dayOff,
+  )
   const mapLat = Number.parseFloat(readPublic('publicMapLat') || '')
   const mapLng = Number.parseFloat(readPublic('publicMapLng') || '')
   const hasCoordsRaw = Number.isFinite(mapLat) && Number.isFinite(mapLng)
@@ -1895,16 +2823,43 @@ export default function PublicPage() {
     ? `https://www.google.com/maps/search/?api=1&query=${mapLat},${mapLng}&hl=en`
     : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(googleSearchQuery || googleMapQuery)}&hl=en`
   const heroBackgroundDefault =
-    publicHeaderTheme === 'barber'
-      ? barberRegularHeroBg
-      : publicHeaderTheme === 'cosmetology'
-        ? cosmetologyHeaderBg
-        : publicHeaderTheme === 'coloring'
-          ? coloringHeaderBg
-          : publicHeaderTheme === 'manicure'
-            ? manicureHeaderBg
-            : heroImage
+    massagePreview && validMassageSlot === 'barber'
+      ? massageThaiHeroBg
+      : massagePreview && validMassageSlot === 'cosmetology'
+        ? massageStoneHeroBg
+        : massagePreview && validMassageSlot === 'hair'
+          ? massageClassicHeroBg
+          : massagePreview && validMassageSlot === 'coloring'
+            ? massageAntistressHeroBg
+            : massagePreview && validMassageSlot === 'manicure'
+              ? massageSportsHeroBg
+              : publicHeaderTheme === 'barber'
+                ? barberRegularHeroBg
+                : publicHeaderTheme === 'cosmetology'
+                  ? cosmetologyHeaderBg
+                  : publicHeaderTheme === 'coloring'
+                    ? coloringHeaderBg
+                    : publicHeaderTheme === 'manicure'
+                      ? manicureHeaderBg
+                      : heroImage
   const heroBackgroundUrl = readPublic('publicHeroImage') || heroBackgroundDefault
+  /** Только превью массажа: фоновое видео в том же хедере, что у обычных салонов */
+  const massagePreviewHeroVideoSrc: string | null = (() => {
+    if (
+      isTemplateDemo ||
+      isPremiumTemplate ||
+      !massagePreview ||
+      !validMassageSlot ||
+      isMassagePristineTemplatePreview
+    ) {
+      return null
+    }
+    const raw = readPublic('publicHeroVideo') || ''
+    if (!raw) return null
+    if (raw === MASSAGE_HERO_VIDEO_IDB_MARKER) return massageIframeHeroVideoObjectUrl
+    if (!raw.startsWith('__')) return raw
+    return null
+  })()
   const galleryValuesRaw = [
     readPublic('publicGallery1') || '',
     readPublic('publicGallery2') || '',
@@ -1917,9 +2872,15 @@ export default function PublicPage() {
     readPublic('publicGallery9') || '',
     readPublic('publicGallery10') || '',
   ]
-  const galleryValues = galleryValuesRaw.map((v, i) =>
-    v === '__empty__' ? '' : (v || DEFAULT_WORKS_CAROUSEL_IMAGES[i] || '')
-  )
+  const galleryValues = galleryValuesRaw.map((v, i) => {
+    if (v === '__empty__') return ''
+    if (v) return v
+    if (massagePreview && validMassageSlot && isMassageOrdinaryTemplateId(validMassageSlot)) {
+      const md = getMassageSalonPhotoSlotDefaults(validMassageSlot)
+      return md[i % md.length] ?? ''
+    }
+    return DEFAULT_WORKS_CAROUSEL_IMAGES[i] || ''
+  })
   const worksImagesRaw = isTemplateDemo
     ? ['', '', '', '', '']
     : [
@@ -1930,13 +2891,28 @@ export default function PublicPage() {
         readPublic('publicWorks5'),
       ]
   const worksImages = worksImagesRaw.map((v) => (v && v !== '__empty__' ? v : ''))
-  const worksDisplayImages = useMemo(
-    () =>
-      worksImagesRaw.map((img, i) =>
-        img === '__empty__' ? '' : (img || DEFAULT_WORKS_IMAGES[i] || '')
-      ),
-    [worksImagesRaw[0], worksImagesRaw[1], worksImagesRaw[2], worksImagesRaw[3], worksImagesRaw[4], isTemplateDemo]
-  )
+  const worksDisplayImages = useMemo(() => {
+    const massageDefaults =
+      massagePreview && validMassageSlot && isMassageOrdinaryTemplateId(validMassageSlot)
+        ? getMassageSalonPhotoSlotDefaults(validMassageSlot)
+        : null
+    return worksImagesRaw.map((img, i) => {
+      if (img === '__empty__') return ''
+      if (img) return img
+      const massageFallback = massageDefaults?.[i]
+      if (massageFallback) return massageFallback
+      return DEFAULT_WORKS_IMAGES[i] || ''
+    })
+  }, [
+    worksImagesRaw[0],
+    worksImagesRaw[1],
+    worksImagesRaw[2],
+    worksImagesRaw[3],
+    worksImagesRaw[4],
+    isTemplateDemo,
+    massagePreview,
+    validMassageSlot,
+  ])
   const galleryKey = galleryValues.join('|')
   const galleryPreview = useMemo(
     () => galleryValues.filter(Boolean).slice(0, 10),
@@ -2086,141 +3062,133 @@ export default function PublicPage() {
     </div>
   ) : null
   const mobileBar = isMobile ? (
-    <div
-      className="border-t border-border/50 bg-background/95 overflow-hidden"
-      style={{
-        position: 'fixed',
-        left: 0,
-        right: 0,
-        bottom: 0,
-        zIndex: 9999,
-        width: '100vw',
-        maxWidth: '100vw',
-        paddingBottom: 'env(safe-area-inset-bottom)',
-        transform: 'translate3d(0, 0, 0)',
-        WebkitTransform: 'translate3d(0, 0, 0)',
-        willChange: 'transform',
-      }}
-    >
-      {isMobileSummaryOpen && (
-        <div className="border-b border-border/50 bg-background">
-          <div className="w-full px-4 pt-4 pb-3">
-            <div className="rounded-2xl border border-border/60 bg-card/95 shadow-[0_16px_40px_rgba(0,0,0,0.4)]">
-              <button
-                type="button"
-                onClick={() => setIsMobileSummaryOpen(false)}
-                className="w-full flex items-center justify-between px-4 py-3 border-b border-border/50"
+    <PublicBookingMobileBar
+      t={t as (key: string) => string}
+      currentStep={currentStep}
+      setCurrentStep={setCurrentStep}
+      isMobileSummaryOpen={isMobileSummaryOpen}
+      setIsMobileSummaryOpen={setIsMobileSummaryOpen}
+      canProceed={canProceed}
+      handleSubmit={handleSubmit}
+      selectedService={selectedService}
+      selectedStaff={selectedStaff}
+      formatDisplayDate={formatDisplayDate}
+      selectedDate={selectedDate}
+      selectedTime={selectedTime}
+      clientPhone={clientPhone}
+      clientSocialMethod={clientSocialMethod}
+      clientSocialHandle={clientSocialHandle}
+    />
+  ) : null
+
+  /** Общий оверлей календаря: нужен и на главной странице салона, и на отдельном маршруте /booking (запись с массажа и т.д.). */
+  const datePickerModal = isDatePickerOpen ? (
+    <>
+      <div
+        className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[10060]"
+        onClick={() => setIsDatePickerOpen(false)}
+      />
+      <div
+        className="fixed inset-0 z-[10070] flex items-center justify-center p-4"
+        onClick={(e) => {
+          if (e.target === e.currentTarget) {
+            setIsDatePickerOpen(false)
+          }
+        }}
+      >
+        <Card
+          className="w-full max-w-sm backdrop-blur-2xl bg-card/95 border border-border/50 shadow-2xl"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-lg">{t('selectDate')}</h3>
+              <Button variant="ghost" size="icon" onClick={() => setIsDatePickerOpen(false)} className="h-8 w-8">
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+            <div className="flex items-center justify-between mb-4">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => {
+                  const newDate = new Date(calendarDate)
+                  newDate.setMonth(newDate.getMonth() - 1)
+                  setCalendarDate(newDate)
+                }}
+                className="h-8 w-8"
               >
-                <span className="font-semibold text-foreground">{t('yourBooking')}</span>
-                <ChevronDown className="h-4 w-4 text-muted-foreground" />
-              </button>
-              <div className="px-4 py-4 space-y-3 text-sm">
-                <div className="flex items-start justify-between gap-3">
-                  <span className="text-muted-foreground">{t('serviceLabel')}</span>
-                  <span className="font-semibold text-right max-w-[60%] break-words">
-                    {selectedService?.name || t('notSelected')}
-                  </span>
+                <ChevronLeft className="w-4 h-4" />
+              </Button>
+              <span className="font-semibold text-sm">
+                {calendarDate.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' })}
+              </span>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => {
+                  const newDate = new Date(calendarDate)
+                  newDate.setMonth(newDate.getMonth() + 1)
+                  setCalendarDate(newDate)
+                }}
+                className="h-8 w-8"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </Button>
+            </div>
+            <div className="grid grid-cols-7 gap-1 mb-2">
+              {weekdaysShort.map((day) => (
+                <div key={day} className="text-center text-xs font-medium text-muted-foreground py-2">
+                  {day}
                 </div>
-                <div className="flex items-start justify-between gap-3">
-                  <span className="text-muted-foreground">{t('masterLabel')}</span>
-                  <span className="font-semibold text-right max-w-[60%] break-words">
-                    {selectedStaff?.name || t('notSelected')}
-                  </span>
-                </div>
-                <div className="flex items-start justify-between gap-3">
-                  <span className="text-muted-foreground">{t('dateTimeLabel')}</span>
-                  <span className="font-semibold text-right max-w-[60%] break-words">
-                    {formatDisplayDate(selectedDate)} {selectedTime || ''}
-                  </span>
-                </div>
-                <div className="flex items-start justify-between gap-3">
-                  <span className="text-muted-foreground">{t('phonePlaceholder')}</span>
-                  <span className="font-semibold text-right max-w-[60%] break-words">
-                    {clientPhone || t('notSelected')}
-                  </span>
-                </div>
-                <div className="flex items-start justify-between gap-3">
-                  <span className="text-muted-foreground">{t('socialNetworkLabel')}</span>
-                  <span className="font-semibold text-right max-w-[60%] break-words">
-                    {clientSocialMethod || '—'}
-                  </span>
-                </div>
-                <div className="flex items-start justify-between gap-3">
-                  <span className="text-muted-foreground">{t('contactHandlePlaceholder')}</span>
-                  <span className="font-semibold text-right max-w-[60%] break-words">
-                    {clientSocialHandle || '—'}
-                  </span>
-                </div>
-                <div className="flex items-start justify-between gap-3 pt-2 border-t border-border/40">
-                  <span className="text-muted-foreground">{t('priceLabel')}</span>
-                  <span className="font-semibold text-emerald-400">
-                    {selectedService ? `${selectedService.price} MDL` : '—'}
-                  </span>
-                </div>
-                <Button
-                  className="w-full mt-4 rounded-full"
-                  onClick={handleSubmit}
-                  disabled={!canProceed(4)}
-                >
-                  {t('sendRequest')}
-                </Button>
-              </div>
+              ))}
+            </div>
+            <div className="grid grid-cols-7 gap-1">
+              {getDaysInMonth(calendarDate).map((date, idx) => {
+                if (!date) {
+                  return <div key={idx} className="h-9" />
+                }
+                const dateStr = formatDateToLocalString(date)
+                return (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      setSelectedDate(dateStr)
+                      setSelectedTime(null)
+                      setIsDatePickerOpen(false)
+                    }}
+                    className={cn(
+                      'h-9 rounded-lg text-sm transition-all cursor-pointer',
+                      isSelected(date, selectedDate)
+                        ? 'bg-accent text-accent-foreground font-semibold'
+                        : isToday(date)
+                          ? 'bg-accent/20 text-accent font-semibold hover:bg-accent/30'
+                          : 'text-foreground hover:bg-accent/10 hover:text-accent'
+                    )}
+                  >
+                    {date.getDate()}
+                  </button>
+                )
+              })}
             </div>
           </div>
-        </div>
-      )}
-      <div className="w-full px-4 py-3 min-h-[68px] flex items-center gap-3">
-        <button
-          type="button"
-          onClick={() => setIsMobileSummaryOpen((prev) => !prev)}
-          className={cn(
-            "flex-1 h-11 rounded-full px-4 text-sm font-semibold text-white border border-white/25",
-            "bg-gradient-to-r from-slate-900/85 via-slate-800/80 to-slate-700/85",
-            "backdrop-blur-xl",
-            "transition hover:brightness-105 active:scale-[0.99]"
-          )}
-        >
-          <span className="inline-flex items-center justify-center gap-2">
-            {t('viewBooking')}
-            <ChevronUp className={cn('h-4 w-4 transition-transform', isMobileSummaryOpen && 'rotate-180')} />
-          </span>
-        </button>
-        <div className="flex items-center gap-2 shrink-0">
-          {currentStep > 1 && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setCurrentStep((prev) => Math.max(1, prev - 1))}
-            >
-              {t('back')}
-            </Button>
-          )}
-          <Button
-            size="sm"
-            onClick={() => {
-              if (currentStep < 4) {
-                setCurrentStep((prev) => Math.min(4, prev + 1))
-              } else {
-                setIsMobileSummaryOpen(true)
-              }
-            }}
-            disabled={!canProceed(currentStep)}
-          >
-            {t('next')}
-          </Button>
-        </div>
+        </Card>
       </div>
-    </div>
+    </>
   ) : null
 
   const isBookingPage = location.pathname.endsWith('/booking')
   if (isBookingPage) {
     const returnTo = searchParams.get('returnTo')
     const backUrl = returnTo || (urlSlug ? `/b/${urlSlug}${location.search || '?theme=premium-hair'}` : '/')
+
     return (
-      <div className="min-h-screen bg-background flex flex-col">
+      <div className="min-h-screen bg-background">
         {canUseDOM && successOverlay ? createPortal(successOverlay, document.body) : null}
-        <div className="flex shrink-0 items-center border-b border-border/60 px-4 py-3">
+        <div className="flex shrink-0 items-center border-b border-border/60 px-4 py-3 pt-[max(0.75rem,env(safe-area-inset-top,0px))]">
           <button
             type="button"
             onClick={() => navigate(backUrl)}
@@ -2230,7 +3198,14 @@ export default function PublicPage() {
             {t('back')}
           </button>
         </div>
-        <div className="flex-1 min-h-0 overflow-auto p-4">
+        <div
+          className={cn(
+            'p-4',
+            isMobile
+              ? 'pb-[calc(7.25rem+env(safe-area-inset-bottom,0px))]'
+              : 'overflow-auto'
+          )}
+        >
           <PublicBookingFormSection
             t={t}
             steps={steps}
@@ -2274,6 +3249,26 @@ export default function PublicPage() {
             socialRef={socialRef}
           />
         </div>
+        {isMobile ? (
+          <PublicBookingMobileBar
+            t={t as (key: string) => string}
+            currentStep={currentStep}
+            setCurrentStep={setCurrentStep}
+            isMobileSummaryOpen={isMobileSummaryOpen}
+            setIsMobileSummaryOpen={setIsMobileSummaryOpen}
+            canProceed={canProceed}
+            handleSubmit={handleSubmit}
+            selectedService={selectedService}
+            selectedStaff={selectedStaff}
+            formatDisplayDate={formatDisplayDate}
+            selectedDate={selectedDate}
+            selectedTime={selectedTime}
+            clientPhone={clientPhone}
+            clientSocialMethod={clientSocialMethod}
+            clientSocialHandle={clientSocialHandle}
+          />
+        ) : null}
+        {datePickerModal}
       </div>
     )
   }
@@ -2281,26 +3276,112 @@ export default function PublicPage() {
   const pd = PREMIUM_PUBLIC_DEFAULTS_BY_LANG[publicLang] ?? PREMIUM_PUBLIC_DEFAULTS_BY_LANG.ru
 
   if (publicHeaderThemeRaw === 'premium-hair' || publicHeaderThemeRaw === 'premium-barber') {
-    const nameDraftKey = typeof window !== 'undefined' && !isTemplateDemo ? `draft_publicName_${slugForDrafts}_${publicHeaderTheme}` : null
-    const premiumSiteNameRaw = nameDraftKey != null && typeof window !== 'undefined' ? window.localStorage.getItem(nameDraftKey) : null
-    const premiumSiteName = premiumSiteNameRaw !== null ? premiumSiteNameRaw : headerDisplayName
+    /** Черновик премиума: те же запасные slug/темы/зеркальные ключи, что и у readDraftNullable — иначе ввод «съезжает» в имя из регистрации. */
+    const readPremiumLocalDraft = (draftKey: string, mirrorDraftKey?: string): string | null => {
+      if (typeof window === 'undefined' || isTemplateDemo) return null
+      const slugStored = window.localStorage.getItem('publicSlug') || 'salon'
+      const slugCandidates = [...new Set([slugForDrafts, slugStored, 'salon'].filter((s) => String(s).length > 0))]
+      const themeCandidates =
+        publicHeaderThemeRaw !== publicHeaderTheme
+          ? [publicHeaderThemeRaw, publicHeaderTheme]
+          : [publicHeaderTheme]
+      const keys = mirrorDraftKey ? [draftKey, mirrorDraftKey] : [draftKey]
+      for (const sp of slugCandidates) {
+        for (const th of themeCandidates) {
+          for (const k of keys) {
+            const v = window.localStorage.getItem(`draft_${k}_${sp}_${th}`)
+            if (v !== null) return v
+          }
+        }
+      }
+      return null
+    }
+    const premiumSiteNameFromDraft = readPremiumLocalDraft('publicName')
+    const premiumSiteNameRaw =
+      premiumSiteNameFromDraft !== null
+        ? premiumSiteNameFromDraft
+        : typeof window !== 'undefined' && !isTemplateDemo
+          ? window.localStorage.getItem('publicName')
+          : null
+    const premiumSiteNameTrimmed = premiumSiteNameRaw?.trim() ?? ''
+    const premiumSiteName =
+      premiumSiteNameRaw !== null
+        ? premiumSiteNameTrimmed === ''
+          ? ''
+          : isPreview && isEditMode && !isTemplateDemo
+            ? premiumSiteNameTrimmed
+            : !isLegacyName(premiumSiteNameTrimmed)
+              ? premiumSiteNameTrimmed
+              : salonNameFromRegistration || headerDisplayName
+        : salonNameFromRegistration || headerDisplayName
     const userHeroVideo = isTemplateDemo ? null : (readPublic('publicHeroVideo') || null)
     const userHeroImage = isTemplateDemo ? null : (readPublic('publicHeroImage') || null)
+    const isIdbSalonHeroVideo =
+      !isTemplateDemo && userHeroVideo === SALON_PREMIUM_HERO_VIDEO_IDB_MARKER
+    const resolvedUserHeroVideo = isIdbSalonHeroVideo ? premiumSalonHeroVideoObjectUrl : userHeroVideo
     // Если пользователь загрузил фото — не показываем дефолтное видео поверх него
-    const heroVideoUrl = isTemplateDemo ? defaultHeroVideo : (userHeroVideo || (userHeroImage ? null : defaultHeroVideo))
+    const heroVideoUrl = isTemplateDemo
+      ? defaultHeroVideo
+      : isIdbSalonHeroVideo && resolvedUserHeroVideo === null
+        ? null
+        : resolvedUserHeroVideo || (userHeroImage ? null : defaultHeroVideo)
     const heroImageUrl = isTemplateDemo ? barberPremiumHeroBg : (userHeroImage || barberPremiumHeroBg)
-    const draftHeroSubtitle =
-      typeof window !== 'undefined' && !isTemplateDemo
-        ? window.localStorage.getItem(`draft_publicPremiumHeroSubtitle_${slugForDrafts}_${publicHeaderTheme}`)
-        : null
-    const draftHeroTitle =
-      typeof window !== 'undefined' && !isTemplateDemo
-        ? window.localStorage.getItem(`draft_publicPremiumHeroTitle_${slugForDrafts}_${publicHeaderTheme}`)
-        : null
-    const premiumHeroSubtitle = isTemplateDemo ? pd.heroSubtitle : (draftHeroSubtitle !== null ? draftHeroSubtitle : pd.heroSubtitle)
-    const premiumHeroTitle = isTemplateDemo ? pd.heroTitle : (draftHeroTitle !== null ? draftHeroTitle : pd.heroTitle)
-    const premiumHeroContactsLabel = isTemplateDemo ? uiText[publicLang].contacts : (readPublic('publicPremiumHeroContactsLabel') || uiText[publicLang].contacts)
-    const premiumBookLabel = isTemplateDemo ? uiText[publicLang].bookNow : (readPublic('publicPremiumBookLabel') || uiText[publicLang].bookNow)
+    /**
+     * В режиме редактирования: только черновик для текущего языка; если ещё не сохраняли — чистый pd.*.
+     * Старый ключ без суффикса языка не подмешиваем (там мог остаться «битый» текст после багов ввода).
+     */
+    const rawPremiumHeroSub = !isTemplateDemo
+      ? isPreview && skipHeaderJunkFilterInConstructorPreview && typeof window !== 'undefined'
+        ? (() => {
+            const k = `draft_publicPremiumHeroSubtitle_${slugForDrafts}_${publicHeaderTheme}_${publicLang}`
+            const v = window.localStorage.getItem(k)
+            if (v !== null) return v
+            return pd.heroSubtitle
+          })()
+        : readPublic('publicPremiumHeroSubtitle', pd.heroSubtitle)
+      : pd.heroSubtitle
+    const rawPremiumHeroTitle = !isTemplateDemo
+      ? isPreview && skipHeaderJunkFilterInConstructorPreview && typeof window !== 'undefined'
+        ? (() => {
+            const k = `draft_publicPremiumHeroTitle_${slugForDrafts}_${publicHeaderTheme}_${publicLang}`
+            const v = window.localStorage.getItem(k)
+            if (v !== null) return v
+            return pd.heroTitle
+          })()
+        : readPublic('publicPremiumHeroTitle', pd.heroTitle)
+      : pd.heroTitle
+    /**
+     * Как у обычного tagline: в превью конструктора (в т.ч. полный экран без edit) не применять isJunkHeaderText.
+     */
+    const premiumHeroSubtitle = isTemplateDemo
+      ? pd.heroSubtitle
+      : skipHeaderJunkFilterInConstructorPreview
+        ? rawPremiumHeroSub.trim() === ''
+          ? ''
+          : rawPremiumHeroSub
+        : rawPremiumHeroSub.trim() === ''
+          ? ''
+          : !isJunkHeaderText(rawPremiumHeroSub.trim())
+            ? rawPremiumHeroSub
+            : pd.heroSubtitle
+    const premiumHeroTitle = isTemplateDemo
+      ? pd.heroTitle
+      : skipHeaderJunkFilterInConstructorPreview
+        ? rawPremiumHeroTitle.trim() === ''
+          ? ''
+          : rawPremiumHeroTitle
+        : rawPremiumHeroTitle.trim() === ''
+          ? ''
+          : !isJunkHeaderText(rawPremiumHeroTitle.trim())
+            ? rawPremiumHeroTitle
+            : pd.heroTitle
+    /** Не использовать || после readPublic — пустая строка из черновика снова подменялась дефолтом */
+    const premiumHeroContactsLabel = isTemplateDemo
+      ? uiText[publicLang].contacts
+      : readPublic('publicPremiumHeroContactsLabel', uiText[publicLang].contacts)
+    const premiumBookLabel = isTemplateDemo
+      ? uiText[publicLang].bookNow
+      : readPublic('publicPremiumBookLabel', uiText[publicLang].bookNow)
     const premiumGoldColor = isTemplateDemo ? undefined : (readPublic('publicPremiumGoldColor') || undefined)
     const premiumHeaderBgColor = isTemplateDemo ? undefined : (readPublic('publicPremiumHeaderBgColor') || undefined)
     const premiumHeaderBgGlow = isTemplateDemo ? undefined : (readPublic('publicPremiumHeaderBgGlow') || undefined)
@@ -2364,33 +3445,76 @@ export default function PublicPage() {
       if (typeof window === 'undefined' || isTemplateDemo) return null
       const addressMapKeys = ['publicFooterAddress', 'publicAddress', 'publicMapEmbedUrl']
       const themeForKey = addressMapKeys.includes(key) ? publicHeaderThemeRaw : publicHeaderTheme
-      return window.localStorage.getItem(`draft_${key}_${slugForDrafts}_${themeForKey}`)
+      const slugStored = window.localStorage.getItem('publicSlug') || 'salon'
+      const slugCandidates = [...new Set([slugForDrafts, slugStored, 'salon'].filter((s) => String(s).length > 0))]
+      const themeCandidates =
+        publicHeaderThemeRaw !== publicHeaderTheme ? [publicHeaderThemeRaw, publicHeaderTheme] : [themeForKey]
+      for (const sp of slugCandidates) {
+        for (const th of themeCandidates) {
+          const draftKey = `draft_${key}_${sp}_${th}`
+          const fromDraft = window.localStorage.getItem(draftKey)
+          if (fromDraft !== null) return fromDraft
+          if (key === 'publicFooterAddress') {
+            const alt = window.localStorage.getItem(`draft_publicAddress_${sp}_${th}`)
+            if (alt !== null) return alt
+          }
+          if (key === 'publicAddress') {
+            const alt = window.localStorage.getItem(`draft_publicFooterAddress_${sp}_${th}`)
+            if (alt !== null) return alt
+          }
+        }
+      }
+      /** Как readPublic: без наследия `publicFooterAddress` и т.д. v всегда null → в шаблоне ?? ui.defAddr затирал ввод. */
+      const legacy = window.localStorage.getItem(key)
+      if (legacy !== null) return legacy
+      if (key === 'publicFooterAddress') {
+        const alt = window.localStorage.getItem('publicAddress')
+        if (alt !== null) return alt
+      }
+      if (key === 'publicAddress') {
+        const alt = window.localStorage.getItem('publicFooterAddress')
+        if (alt !== null) return alt
+      }
+      return null
     }
     const footerLangDef = FOOTER_DEFAULTS_BY_LANG[publicLang] ?? FOOTER_DEFAULTS_BY_LANG.ru
     const premiumFooterAddress = (() => {
       const v = readDraftNullable('publicFooterAddress')
-      return v !== null ? v : footerLangDef.address
+      if (v === null) return footerLangDef.address
+      if (isFooterFieldClearedMarker(v)) return ''
+      return v
     })()
     const premiumFooterPhone = (() => {
       const v = readDraftNullable('publicPhone')
-      return v !== null ? v : footerLangDef.phone
+      if (v === null) return footerLangDef.phone
+      if (isFooterFieldClearedMarker(v)) return ''
+      return v
     })()
     const premiumFooterHours = (() => {
       const v = readDraftNullable('publicHours')
-      return v !== null ? v : footerLangDef.hours
+      if (v === null) return footerLangDef.hours
+      if (isFooterFieldClearedMarker(v)) return ''
+      return localizeFooterHoursLine(v, publicLang, footerLangDef.hours)
     })()
     const premiumFooterDayOff = (() => {
       const v = readDraftNullable('publicDayOff')
-      return v !== null ? v : footerLangDef.dayOff
+      if (v === null) return footerLangDef.dayOff
+      if (isFooterFieldClearedMarker(v)) return ''
+      return localizeFooterDayOffLine(v, publicLang, footerLangDef.dayOff)
     })()
     const premiumFooterEmail = (() => {
       const v = readDraftNullable('publicEmail')
-      return v !== null ? v : footerLangDef.email
+      if (v === null) return footerLangDef.email
+      if (isFooterFieldClearedMarker(v)) return ''
+      return v
     })()
-    const footerNameDraftKey = typeof window !== 'undefined' && !isTemplateDemo
-      ? `draft_publicFooterSiteName_${slugForDrafts}_${publicHeaderTheme}` : null
-    const premiumFooterSiteNameRaw = footerNameDraftKey != null && typeof window !== 'undefined'
-      ? window.localStorage.getItem(footerNameDraftKey) : null
+    const premiumFooterSiteNameFromDraft = readPremiumLocalDraft('publicFooterSiteName', 'publicFooterName')
+    const premiumFooterSiteNameRaw =
+      premiumFooterSiteNameFromDraft !== null
+        ? premiumFooterSiteNameFromDraft
+        : typeof window !== 'undefined' && !isTemplateDemo
+          ? window.localStorage.getItem('publicFooterName')
+          : null
     const premiumFooterSiteName = premiumFooterSiteNameRaw !== null ? premiumFooterSiteNameRaw : premiumSiteName
     const premiumCtaVisible = (() => {
       const v = readDraftNullable('publicCtaBlockVisible')
@@ -2426,12 +3550,54 @@ export default function PublicPage() {
       if (typeof window === 'undefined') return
       const addressMapKeys = ['publicFooterAddress', 'publicAddress', 'publicMapEmbedUrl']
       const themeForKey = addressMapKeys.includes(key) ? publicHeaderThemeRaw : publicHeaderTheme
-      const storageKey = `draft_${key}_${slugForDrafts}_${themeForKey}`
+      const storageKey = PREMIUM_HERO_LANG_SCOPED_KEYS.has(key)
+        ? `draft_${key}_${slugForDrafts}_${themeForKey}_${publicLang}`
+        : `draft_${key}_${slugForDrafts}_${themeForKey}`
       const prev = window.localStorage.getItem(storageKey) ?? window.localStorage.getItem(key) ?? ''
       try {
         window.parent?.postMessage?.({ type: 'constructorUndoPush', key, value: prev || null, themeId: themeForKey }, '*')
       } catch { /* ignore */ }
       window.localStorage.setItem(storageKey, value)
+      if (key === 'publicName') {
+        try {
+          window.localStorage.setItem('publicName', value)
+        } catch {
+          /* ignore */
+        }
+      }
+      if (key === 'publicFooterSiteName') {
+        const mirrorFooterNameKey = `draft_publicFooterName_${slugForDrafts}_${themeForKey}`
+        try {
+          window.localStorage.setItem(mirrorFooterNameKey, value)
+          window.localStorage.setItem('publicFooterName', value)
+        } catch {
+          /* ignore */
+        }
+      }
+      /** Карта и open-in-maps читают `publicAddress`; футер — `publicFooterAddress`. Без синхронизации старый primary «дополнял» ввод. */
+      if (key === 'publicFooterAddress') {
+        const addrKey = `draft_publicAddress_${slugForDrafts}_${themeForKey}`
+        const prevAddr = window.localStorage.getItem(addrKey) ?? window.localStorage.getItem('publicAddress') ?? ''
+        try {
+          window.parent?.postMessage?.({
+            type: 'constructorUndoPush',
+            key: 'publicAddress',
+            value: prevAddr || null,
+            themeId: themeForKey,
+          }, '*')
+        } catch { /* ignore */ }
+        window.localStorage.setItem(addrKey, value)
+        /**
+         * Глобальные ключи — тот же fallback, что readDraftNullable/readPublic после draft_*.
+         * Если slug/theme в draft_* и parent-конструкторе расходятся на один кадр, без этого снова читается старый «City, street…».
+         */
+        try {
+          window.localStorage.setItem('publicFooterAddress', value)
+          window.localStorage.setItem('publicAddress', value)
+        } catch {
+          /* ignore */
+        }
+      }
       window.localStorage.setItem(`constructorHasUserEdits_${publicHeaderThemeRaw}`, '1')
       draftVersionTrigger()
     }
@@ -2440,7 +3606,7 @@ export default function PublicPage() {
       <PremiumBarberTemplate
         siteName={premiumSiteName}
         footerSiteName={premiumFooterSiteName}
-        tagline={publicTagline || pd.tagline}
+        tagline={publicTagline === '' ? '' : publicTagline || pd.tagline}
         onBookNow={() => navigate(urlSlug ? `/b/${urlSlug}/booking${location.search ? location.search : ''}` : '/')}
         bookLabel={premiumBookLabel}
         footerAddress={premiumFooterAddress}
@@ -2463,10 +3629,14 @@ export default function PublicPage() {
         whatsappUrl={publicWhatsapp || undefined}
         twitterUrl={publicTwitter || undefined}
         tiktokUrl={publicTiktok || undefined}
-        addressLabel={uiText[publicLang].addrLabel}
-        scheduleLabel={uiText[publicLang].schedLabel}
-        phoneLabel={uiText[publicLang].phoneLabel2}
-        emailLabel={uiText[publicLang].emailLabel2}
+        addressLabel={
+          !isTemplateDemo && footerLabels?.address?.trim() ? footerLabels.address : undefined
+        }
+        scheduleLabel={
+          !isTemplateDemo && footerLabels?.schedule?.trim() ? footerLabels.schedule : undefined
+        }
+        phoneLabel={!isTemplateDemo && footerLabels?.phone?.trim() ? footerLabels.phone : undefined}
+        emailLabel={!isTemplateDemo && footerLabels?.email?.trim() ? footerLabels.email : undefined}
         lang={publicLang}
         mapEmbedUrl={googleMapUrl}
         heroVideoUrl={heroVideoUrl || undefined}
@@ -2529,7 +3699,8 @@ export default function PublicPage() {
           footer: footerSectionRef,
         }}
       />
-      {/* Кнопка выбора языка для премиум-шаблона */}
+      {/* Кнопка выбора языка: в превью с edit — только языки из сайдбара конструктора; иначе — все доступные */}
+      {showPublicLangSwitcher && (
       <div className="fixed bottom-6 left-6 z-[200]">
         <div className="relative">
           <button
@@ -2551,7 +3722,7 @@ export default function PublicPage() {
                 { code: 'en' as const, icon: flagEn, label: 'English' },
                 { code: 'ro' as const, icon: flagRo, label: 'Română' },
               ] as const)
-                .filter((item) => item.code !== publicLang)
+                .filter((item) => item.code !== publicLang && langsForPublicSwitcher.includes(item.code))
                 .map((item) => (
                   <button
                     key={item.code}
@@ -2567,6 +3738,7 @@ export default function PublicPage() {
           )}
         </div>
       </div>
+      )}
       </>
     )
   }
@@ -2599,15 +3771,7 @@ export default function PublicPage() {
           </div>
         </div>
       )}
-      <div
-        style={{
-          backgroundImage: bodyBackgroundImage,
-          backgroundColor: bodyBackgroundColor,
-          backgroundRepeat: 'repeat',
-          backgroundSize: '720px',
-          backgroundPosition: 'center',
-        }}
-      >
+      <div style={bodyShellSurfaceStyle}>
       <header
         ref={headerSectionRef}
         className={cn(
@@ -2629,15 +3793,28 @@ export default function PublicPage() {
               cn('salon-hair-hero', (isEditMode || showDraggableHeroReadOnly) && 'salon-hair-hero--edit')
           )}
           style={{
-            backgroundImage: heroBackgroundUrl
-              ? `url("${heroBackgroundUrl}")`
-              : 'linear-gradient(120deg, rgba(17,17,17,0.9), rgba(31,41,55,0.85))',
+            backgroundImage: massagePreviewHeroVideoSrc
+              ? 'none'
+              : heroBackgroundUrl
+                ? `url("${heroBackgroundUrl}")`
+                : 'linear-gradient(120deg, rgba(17,17,17,0.9), rgba(31,41,55,0.85))',
             backgroundRepeat: 'no-repeat',
             backgroundSize: 'cover',
             backgroundPosition: publicHeaderTheme === 'barber' ? 'left center' : 'center 0%',
             backgroundColor: '#0b0b0b',
           }}
         >
+          {massagePreviewHeroVideoSrc ? (
+            <video
+              key={massagePreviewHeroVideoSrc}
+              className="pointer-events-none absolute inset-0 z-0 h-full w-full object-cover"
+              src={massagePreviewHeroVideoSrc}
+              muted
+              loop
+              autoPlay
+              playsInline
+            />
+          ) : null}
           <div
             className={cn(
               'absolute inset-0',
@@ -2683,7 +3860,7 @@ export default function PublicPage() {
               )}
               <h1
                 className="text-5xl sm:text-6xl md:text-7xl lg:text-8xl font-serif font-semibold tracking-[0.08em] text-white drop-shadow-[0_12px_34px_rgba(0,0,0,0.5)] whitespace-pre-wrap break-words overflow-visible"
-                style={headerTitleStyle}
+                style={headerTitleStyleForRender}
               >
                 {headerDisplayName}
               </h1>
@@ -2736,19 +3913,26 @@ export default function PublicPage() {
                 publicLogo={publicLogo}
                 publicHeaderLogoVisible={publicHeaderLogoVisible}
                 publicHeaderLogoShape={headerLogoDisplayShape}
-                headerTitleStyle={headerTitleStyle}
-                headerSubtitleStyle={headerSubtitleStyle}
-                headerPrimaryCustom={headerPrimaryCustom}
-                headerSecondaryCustom={headerSecondaryCustom}
-                barberPrimaryColor={headerPrimaryColor}
-                barberSecondaryColor={headerSecondaryColor}
+                headerTitleStyle={headerTitleStyleForRender}
+                headerSubtitleStyle={headerSubtitleStyleForRender}
+                headerPrimaryCustom={headerPrimaryCustomForRender}
+                headerSecondaryCustom={headerSecondaryCustomForRender}
+                barberPrimaryColor={headerPrimaryColorForRender}
+                barberSecondaryColor={headerSecondaryColorForRender}
                 publicHeaderPrimaryCtaShape={publicHeaderPrimaryCtaShape}
                 publicHeaderSecondaryCtaShape={publicHeaderSecondaryCtaShape}
-                getPrimaryIconClass={getPrimaryIconClass}
+                getPrimaryIconClass={getPrimaryIconClassForRender}
                 onBookClick={() => bookingSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
                 onMapClick={() => mapSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
                 bookLabel={t('bookOnline')}
                 mapLabel={t('whereToFindQuestion')}
+                draftLocale={publicLang}
+                persistDraft={massageHeroEditStorage?.persistDraft}
+                heroLayoutStorage={
+                  massagePreview && validMassageSlot
+                    ? massageHeroLayoutStorageForDraggable
+                    : massageHeroEditStorage?.heroLayoutStorage
+                }
                 hairTitleFontSizePx={isDraggableHeaderTheme ? hairTitleFontSizePx : undefined}
                 constructorMobilePreview={constructorMobilePreview}
               />
@@ -2779,7 +3963,7 @@ export default function PublicPage() {
                           ? 'font-cosmetology-title'
                           : 'font-serif'
                     )}
-                    style={{ ...headerTitleStyle, fontSize: `${hairTitleFontSizePx}px` }}
+                    style={{ ...headerTitleStyleForRender, fontSize: `${hairTitleFontSizePx}px` }}
                   >
                     {headerDisplayName}
                   </h1>
@@ -2788,7 +3972,7 @@ export default function PublicPage() {
                       'mt-3 sm:mt-4 text-base sm:text-lg md:text-2xl text-white/80 text-center mx-auto block w-full',
                       'max-w-[min(100%,calc(100vw-1.5rem))] px-2 whitespace-pre-wrap break-words leading-[1.35]'
                     )}
-                    style={headerSubtitleStyle}
+                    style={headerSubtitleStyleForRender}
                   >
                     {publicTagline}
                   </p>
@@ -2818,7 +4002,7 @@ export default function PublicPage() {
                           ? 'font-manicure-title'
                           : 'font-serif'
                     )}
-                    style={{ ...headerTitleStyle, fontSize: `${hairTitleFontSizePx}px` }}
+                    style={{ ...headerTitleStyleForRender, fontSize: `${hairTitleFontSizePx}px` }}
                   >
                     {headerDisplayName}
                   </h1>
@@ -2827,7 +4011,7 @@ export default function PublicPage() {
                       'mt-3 sm:mt-4 text-base sm:text-lg md:text-2xl text-white/80 text-center mx-auto block w-full',
                       'max-w-[min(100%,calc(100vw-1.5rem))] px-2 whitespace-pre-wrap break-words leading-[1.35]'
                     )}
-                    style={headerSubtitleStyle}
+                    style={headerSubtitleStyleForRender}
                   >
                     {publicTagline}
                   </p>
@@ -2869,7 +4053,7 @@ export default function PublicPage() {
                               ? 'text-left w-auto'
                               : 'text-center w-full'
                           )}
-                          style={headerTitleStyle}
+                          style={headerTitleStyleForRender}
                         >
                           {headerDisplayName}
                         </h1>
@@ -2896,7 +4080,7 @@ export default function PublicPage() {
                           'w-full text-center font-serif font-semibold tracking-[0.08em] text-white drop-shadow-[0_12px_34px_rgba(0,0,0,0.5)] overflow-visible max-w-[90%] mx-auto whitespace-pre-wrap break-words',
                           isDraggableHeaderTheme && 'salon-hair-mobile-title'
                         )}
-                        style={{ ...headerTitleStyle, fontSize: `${hairTitleFontSizePx}px` }}
+                        style={{ ...headerTitleStyleForRender, fontSize: `${hairTitleFontSizePx}px` }}
                       >
                         {headerDisplayName}
                       </h1>
@@ -2909,7 +4093,7 @@ export default function PublicPage() {
                         ? 'salon-hair-hero-tagline block w-full max-w-[min(100%,calc(100vw-1.5rem))] px-2 whitespace-pre-wrap break-words leading-[1.35]'
                         : 'inline-block max-w-[min(100%,calc(100vw-1.5rem))] px-2 whitespace-pre-wrap break-words leading-[1.35]'
                     )}
-                    style={headerSubtitleStyle}
+                    style={headerSubtitleStyleForRender}
                   >
                     {publicTagline}
                   </p>
@@ -2927,22 +4111,25 @@ export default function PublicPage() {
                               className={cn(
                       publicHeaderPrimaryCtaShape === 'round' ? 'rounded-full' : 'rounded-none',
                       'h-14 sm:h-16 md:h-[4.5rem] px-8 sm:px-12 md:px-14 text-base sm:text-lg md:text-xl border backdrop-blur-xl shadow-[0_12px_30px_rgba(0,0,0,0.35)] w-full sm:w-auto inline-flex items-center gap-2',
-                      headerPrimaryCustom ? '' : 'bg-primary/35 text-white border-primary/50 hover:bg-primary/45'
+                      headerPrimaryCustomForRender ? '' : 'bg-primary/35 text-white border-primary/50 hover:bg-primary/45'
                     )}
                     style={
-                      headerPrimaryCustom
-                        ? isHeaderGradient(headerPrimaryColor.background)
+                      headerPrimaryCustomForRender
+                        ? isHeaderGradient(headerPrimaryColorForRender.background)
                           ? {
-                              background: headerPrimaryColor.background,
-                              color: headerPrimaryColor.text,
-                              boxShadow: headerUseGlow ? headerPrimaryColor.glow : 'none',
-                              borderColor: 'borderColor' in headerPrimaryColor ? headerPrimaryColor.borderColor : headerPrimaryColor.background,
+                              background: headerPrimaryColorForRender.background,
+                              color: headerPrimaryColorForRender.text,
+                              boxShadow: headerUseGlow ? headerPrimaryColorForRender.glow : 'none',
+                              borderColor:
+                                'borderColor' in headerPrimaryColorForRender
+                                  ? headerPrimaryColorForRender.borderColor
+                                  : headerPrimaryColorForRender.background,
                             }
                           : {
-                              backgroundColor: headerPrimaryColor.background,
-                              color: headerPrimaryColor.text,
-                              boxShadow: headerUseGlow ? headerPrimaryColor.glow : 'none',
-                              borderColor: headerPrimaryColor.background,
+                              backgroundColor: headerPrimaryColorForRender.background,
+                              color: headerPrimaryColorForRender.text,
+                              boxShadow: headerUseGlow ? headerPrimaryColorForRender.glow : 'none',
+                              borderColor: headerPrimaryColorForRender.background,
                             }
                         : undefined
                     }
@@ -2953,7 +4140,7 @@ export default function PublicPage() {
                       alt=""
                       className={cn(
                         'h-5 w-5 opacity-80 translate-y-[1px]',
-                        getPrimaryIconClass('brightness-0 invert')
+                        getPrimaryIconClassForRender('brightness-0 invert')
                       )}
                     />
                     {publicHeaderPrimaryCta || t('bookOnline')}
@@ -2963,23 +4150,26 @@ export default function PublicPage() {
                     className={cn(
                       publicHeaderSecondaryCtaShape === 'round' ? 'rounded-full' : 'rounded-none',
                       'h-14 sm:h-16 md:h-[4.5rem] px-8 sm:px-12 md:px-14 text-base sm:text-lg md:text-xl backdrop-blur-xl w-full sm:w-auto inline-flex items-center gap-2',
-                      headerSecondaryCustom ? '' : 'border-white/35 text-white bg-white/10 hover:bg-white/20'
+                      headerSecondaryCustomForRender ? '' : 'border-white/35 text-white bg-white/10 hover:bg-white/20'
                     )}
                     style={
-                      headerSecondaryCustom
-                        ? isHeaderGradient(headerSecondaryColor.background)
+                      headerSecondaryCustomForRender
+                        ? isHeaderGradient(headerSecondaryColorForRender.background)
                           ? {
-                              background: headerSecondaryColor.background,
+                              background: headerSecondaryColorForRender.background,
                               backgroundColor: 'transparent',
-                              color: headerSecondaryColor.text,
-                              boxShadow: headerUseGlow ? headerSecondaryColor.glow : 'none',
-                              borderColor: 'borderColor' in headerSecondaryColor ? headerSecondaryColor.borderColor : headerSecondaryColor.background,
+                              color: headerSecondaryColorForRender.text,
+                              boxShadow: headerUseGlow ? headerSecondaryColorForRender.glow : 'none',
+                              borderColor:
+                                'borderColor' in headerSecondaryColorForRender
+                                  ? headerSecondaryColorForRender.borderColor
+                                  : headerSecondaryColorForRender.background,
                             }
                           : {
-                              backgroundColor: headerSecondaryColor.background,
-                              color: headerSecondaryColor.text,
-                              boxShadow: headerUseGlow ? headerSecondaryColor.glow : 'none',
-                              borderColor: headerSecondaryColor.background,
+                              backgroundColor: headerSecondaryColorForRender.background,
+                              color: headerSecondaryColorForRender.text,
+                              boxShadow: headerUseGlow ? headerSecondaryColorForRender.glow : 'none',
+                              borderColor: headerSecondaryColorForRender.background,
                             }
                         : undefined
                     }
@@ -2989,7 +4179,13 @@ export default function PublicPage() {
                   >
                     <MapPin
                       className="h-8 w-8 translate-y-[1px]"
-                      style={{ width: 28, height: 28, color: headerSecondaryCustom ? headerSecondaryColor.text : 'rgba(255,255,255,0.8)' }}
+                      style={{
+                        width: 28,
+                        height: 28,
+                        color: headerSecondaryCustomForRender
+                          ? headerSecondaryColorForRender.text
+                          : 'rgba(255,255,255,0.8)',
+                      }}
                     />
                     {publicHeaderSecondaryCta || t('whereToFindQuestion')}
                     </Button>
@@ -3029,21 +4225,13 @@ export default function PublicPage() {
                   }
                   }
                   className="w-full text-center text-xl sm:text-2xl md:text-3xl font-display font-semibold tracking-tight text-foreground bg-transparent border-b border-transparent hover:border-border/50 focus:border-primary focus:outline-none"
-                  style={
-                    galleryTitleColorOption
-                      ? { color: galleryTitleColorOption.color, textShadow: galleryTitleColorOption.glow }
-                      : undefined
-                  }
+                  style={galleryTitleMergedStyle}
                   placeholder={t('salonPhotos')}
                 />
               ) : (
                 <h2
                   className="text-center text-xl sm:text-2xl md:text-3xl font-display font-semibold tracking-tight text-foreground"
-                  style={
-                    galleryTitleColorOption
-                      ? { color: galleryTitleColorOption.color, textShadow: galleryTitleColorOption.glow }
-                      : undefined
-                  }
+                  style={galleryTitleMergedStyle}
                 >
                   {publicGalleryTitle}
                 </h2>
@@ -3200,11 +4388,7 @@ export default function PublicPage() {
                   }
                 }}
                 className="w-full text-center text-2xl sm:text-3xl md:text-4xl font-display font-semibold tracking-tight text-foreground bg-transparent rounded-lg border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/50 focus:ring-offset-2 focus:border-primary px-3 py-2"
-                style={
-                  bookingTitleColorOption
-                    ? { color: bookingTitleColorOption.color, textShadow: bookingTitleColorOption.glow }
-                    : undefined
-                }
+                style={bookingTitleMergedStyle}
                 placeholder={t('bookingTitle')}
               />
               <textarea
@@ -3223,11 +4407,7 @@ export default function PublicPage() {
                 }}
                 rows={2}
                 className="w-full text-center text-xs sm:text-sm md:text-base text-muted-foreground bg-transparent rounded-lg border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/50 focus:ring-offset-2 focus:border-primary resize-none placeholder:text-muted-foreground px-3 py-2"
-                style={
-                  bookingSubtitleColorOption
-                    ? { color: bookingSubtitleColorOption.color, textShadow: bookingSubtitleColorOption.glow }
-                    : undefined
-                }
+                style={bookingSubtitleMergedStyle}
                 placeholder={t('bookingSubtitle')}
               />
             </>
@@ -3235,21 +4415,13 @@ export default function PublicPage() {
             <>
               <h2
                 className="text-2xl sm:text-3xl md:text-4xl font-display font-semibold tracking-tight text-foreground"
-                style={
-                  bookingTitleColorOption
-                    ? { color: bookingTitleColorOption.color, textShadow: bookingTitleColorOption.glow }
-                    : undefined
-                }
+                style={bookingTitleMergedStyle}
               >
                 {publicBookingTitle || t('bookingTitle')}
               </h2>
               <p
                 className="text-xs sm:text-sm md:text-base text-muted-foreground"
-                style={
-                  bookingSubtitleColorOption
-                    ? { color: bookingSubtitleColorOption.color, textShadow: bookingSubtitleColorOption.glow }
-                    : undefined
-                }
+                style={bookingSubtitleMergedStyle}
               >
                 {publicBookingSubtitle || t('bookingSubtitle')}
               </p>
@@ -3303,7 +4475,10 @@ export default function PublicPage() {
         {galleryPreview.length > 0 && sectionVisibility.works && (
           <section ref={worksSectionRef} className="flex justify-center">
             <div className="w-full max-w-6xl">
-              <h2 className="text-center text-2xl sm:text-3xl font-display font-semibold tracking-tight text-foreground mb-4 sm:mb-5">
+              <h2
+                className="text-center text-2xl sm:text-3xl font-display font-semibold tracking-tight text-foreground mb-4 sm:mb-5"
+                style={worksGalleryTitleMergedStyle}
+              >
                 {t('worksGallery')}
               </h2>
               <div
@@ -3317,7 +4492,9 @@ export default function PublicPage() {
                 <CircularGallery
                   items={circularItems}
                   bend={1}
-                  textColor="#ffffff"
+                  textColor={
+                    massageSectionPaletteOn ? massageM('svcCardTitle') : '#ffffff'
+                  }
                   borderRadius={0.05}
                   scrollSpeed={2}
                   scrollEase={0.05}
@@ -3333,108 +4510,7 @@ export default function PublicPage() {
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8 sm:space-y-10">
         {canUseDOM && mobileBar ? createPortal(mobileBar, document.body) : null}
 
-        {isDatePickerOpen && (
-          <>
-            <div
-              className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[60]"
-              onClick={() => setIsDatePickerOpen(false)}
-            />
-            <div
-              className="fixed inset-0 z-[70] flex items-center justify-center p-4"
-              onClick={(e) => {
-                if (e.target === e.currentTarget) {
-                  setIsDatePickerOpen(false)
-                }
-              }}
-            >
-              <Card
-                className="w-full max-w-sm backdrop-blur-2xl bg-card/95 border border-border/50 shadow-2xl"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <div className="p-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="font-semibold text-lg">{t('selectDate')}</h3>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => setIsDatePickerOpen(false)}
-                      className="h-8 w-8"
-                    >
-                      <X className="w-4 h-4" />
-                    </Button>
-                  </div>
-                  <div className="flex items-center justify-between mb-4">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => {
-                        const newDate = new Date(calendarDate)
-                        newDate.setMonth(newDate.getMonth() - 1)
-                        setCalendarDate(newDate)
-                      }}
-                      className="h-8 w-8"
-                    >
-                      <ChevronLeft className="h-4 w-4" />
-                    </Button>
-                    <span className="font-semibold text-sm">
-                      {calendarDate.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' })}
-                    </span>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => {
-                        const newDate = new Date(calendarDate)
-                        newDate.setMonth(newDate.getMonth() + 1)
-                        setCalendarDate(newDate)
-                      }}
-                      className="h-8 w-8"
-                    >
-                      <ChevronRight className="h-4 w-4" />
-                    </Button>
-                  </div>
-                  <div className="grid grid-cols-7 gap-1 mb-2">
-                    {weekdaysShort.map((day) => (
-                      <div key={day} className="text-center text-xs font-medium text-muted-foreground py-2">
-                        {day}
-                      </div>
-                    ))}
-                  </div>
-                  <div className="grid grid-cols-7 gap-1">
-                    {getDaysInMonth(calendarDate).map((date, idx) => {
-                      if (!date) {
-                        return <div key={idx} className="h-9" />
-                      }
-                      const dateStr = formatDateToLocalString(date)
-                      return (
-                        <button
-                          key={idx}
-                          type="button"
-                          onClick={(e) => {
-                            e.preventDefault()
-                            e.stopPropagation()
-                            setSelectedDate(dateStr)
-                            setSelectedTime(null)
-                            setIsDatePickerOpen(false)
-                          }}
-                          className={cn(
-                            'h-9 rounded-lg text-sm transition-all cursor-pointer',
-                            isSelected(date, selectedDate)
-                              ? 'bg-accent text-accent-foreground font-semibold'
-                              : isToday(date)
-                              ? 'bg-accent/20 text-accent font-semibold hover:bg-accent/30'
-                              : 'text-foreground hover:bg-accent/10 hover:text-accent'
-                          )}
-                        >
-                          {date.getDate()}
-                        </button>
-                      )
-                    })}
-                  </div>
-                </div>
-              </Card>
-            </div>
-          </>
-        )}
+        {datePickerModal}
 
         {canUseDOM && activeGalleryImage
           ? createPortal(
@@ -3469,10 +4545,15 @@ export default function PublicPage() {
         <section ref={mapSectionRef} className="w-full space-y-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">
+              <p
+                className="text-xs uppercase tracking-[0.3em] text-muted-foreground"
+                style={mapLocationLabelMergedStyle}
+              >
                 {t('locationLabel')}
               </p>
-              <h3 className="text-lg font-semibold text-foreground">{t('whereToFind')}</h3>
+              <h3 className="text-lg font-semibold text-foreground" style={mapWhereHeadingMergedStyle}>
+                {t('whereToFind')}
+              </h3>
             </div>
             <button
               type="button"
@@ -3550,6 +4631,11 @@ export default function PublicPage() {
                             )
                           } catch { /* ignore */ }
                           window.localStorage.setItem(footerDraftKey, v)
+                          try {
+                            window.localStorage.setItem('publicFooterName', v)
+                          } catch {
+                            /* ignore */
+                          }
                           window.localStorage.setItem(`constructorHasUserEdits_${publicHeaderTheme}`, '1')
                           draftVersionTrigger()
                         }
@@ -3561,6 +4647,7 @@ export default function PublicPage() {
                       placeholder={FOOTER_DEFAULT_NAME}
                       style={{
                         minWidth: `${Math.min(40, Math.max(16, (footerDisplayName?.length || 0) + 2))}ch`,
+                        ...massageFooterBlockTitleStyle,
                       }}
                     />
                   ) : (
@@ -3571,6 +4658,7 @@ export default function PublicPage() {
                           ? 'salon-hair-footer-name max-w-full whitespace-pre-wrap break-words'
                           : 'max-w-[420px] overflow-hidden whitespace-nowrap'
                       )}
+                      style={massageFooterBlockTitleStyle}
                     >
                       {footerDisplayName}
                     </p>
@@ -3690,20 +4778,44 @@ export default function PublicPage() {
           </div>
 
           <div className="mt-20 salon-hair-footer-contacts-wrap">
-              <div className="salon-footer-contact-row flex flex-nowrap items-start justify-between gap-3 sm:gap-4 md:gap-6 text-center">
+              <div
+                key={`salon-footer-contact-${publicLang}`}
+                className="salon-footer-contact-row flex flex-nowrap items-start justify-between gap-3 sm:gap-4 md:gap-6 text-center"
+              >
                 {(
                   [
                     footerVisibility.address && {
                       id: 'address' as const,
-                      label: footerLabels?.address || t('addressLabel'),
-                      value: footerDisplayAddress || t('addressFallback'),
+                      label:
+                        useTranslatedFooterColumnLabels
+                          ? massagePreview && validMassageSlot
+                            ? uiText[publicLang].addrLabel
+                            : t('addressLabel')
+                          : massagePreview && validMassageSlot
+                            ? uiText[publicLang].addrLabel
+                            : footerLabels?.address?.trim()
+                              ? footerLabels.address
+                              : t('addressLabel'),
+                      value:
+                        isPreview && isEditMode
+                          ? footerDisplayAddress
+                          : footerDisplayAddress || t('addressFallback'),
                       extra: null as string | null,
                       draftKey: 'publicFooterAddress' as const,
                       extraDraftKey: null as string | null,
                     },
                     footerVisibility.schedule && {
                       id: 'schedule' as const,
-                      label: footerLabels?.schedule || t('scheduleLabel'),
+                      label:
+                        useTranslatedFooterColumnLabels
+                          ? massagePreview && validMassageSlot
+                            ? uiText[publicLang].schedLabel
+                            : t('scheduleLabel')
+                          : massagePreview && validMassageSlot
+                            ? uiText[publicLang].schedLabel
+                            : footerLabels?.schedule?.trim()
+                              ? footerLabels.schedule
+                              : t('scheduleLabel'),
                       value: footerDisplayHours,
                       extra: footerVisibility.dayOff ? footerDisplayDayOff : null,
                       draftKey: 'publicHours' as const,
@@ -3711,7 +4823,16 @@ export default function PublicPage() {
                     },
                     footerVisibility.phone && {
                       id: 'phone' as const,
-                      label: footerLabels?.phone || t('phoneLabel'),
+                      label:
+                        useTranslatedFooterColumnLabels
+                          ? massagePreview && validMassageSlot
+                            ? uiText[publicLang].phoneLabel2
+                            : t('phoneLabel')
+                          : massagePreview && validMassageSlot
+                            ? uiText[publicLang].phoneLabel2
+                            : footerLabels?.phone?.trim()
+                              ? footerLabels.phone
+                              : t('phoneLabel'),
                       value: footerDisplayPhone,
                       extra: null as string | null,
                       draftKey: 'publicPhone' as const,
@@ -3719,7 +4840,16 @@ export default function PublicPage() {
                     },
                     footerVisibility.email && {
                       id: 'email' as const,
-                      label: footerLabels?.email || t('emailLabel'),
+                      label:
+                        useTranslatedFooterColumnLabels
+                          ? massagePreview && validMassageSlot
+                            ? uiText[publicLang].emailLabel2
+                            : t('emailLabel')
+                          : massagePreview && validMassageSlot
+                            ? uiText[publicLang].emailLabel2
+                            : footerLabels?.email?.trim()
+                              ? footerLabels.email
+                              : t('emailLabel'),
                       value: footerDisplayEmail,
                       extra: null as string | null,
                       draftKey: 'publicEmail' as const,
@@ -3776,7 +4906,10 @@ export default function PublicPage() {
                               <X className="h-3.5 w-3.5" />
                             </button>
                           )}
-                <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground min-h-[18px]">
+                <p
+                            className="text-xs uppercase tracking-[0.3em] text-muted-foreground min-h-[18px]"
+                            style={massageFooterContactLabelStyle}
+                          >
                             {item.label}
                           </p>
                           {canEditFooter ? (
@@ -3786,17 +4919,60 @@ export default function PublicPage() {
                                 value={item.value}
                                 onChange={(e) => {
                                   const v = e.target.value
+                                  const toStore = serializeFooterFieldForStorage(v)
                                   if (typeof window !== 'undefined') {
-                                    const prev = window.localStorage.getItem(`draft_${item.draftKey}_${slugForDrafts}_${publicHeaderTheme}`) ?? window.localStorage.getItem(item.draftKey) ?? ''
+                                    const themeForDraft =
+                                      item.draftKey === 'publicFooterAddress'
+                                        ? publicHeaderThemeRaw
+                                        : publicHeaderTheme
+                                    const prev =
+                                      window.localStorage.getItem(
+                                        `draft_${item.draftKey}_${slugForDrafts}_${themeForDraft}`,
+                                      ) ?? window.localStorage.getItem(item.draftKey) ?? ''
                                     try {
-                                      window.parent?.postMessage?.({ type: 'constructorUndoPush', key: item.draftKey, value: prev || null, themeId: publicHeaderTheme }, '*')
+                                      window.parent?.postMessage?.({
+                                        type: 'constructorUndoPush',
+                                        key: item.draftKey,
+                                        value: prev || null,
+                                        themeId: themeForDraft,
+                                      }, '*')
                                     } catch { /* ignore */ }
-                                    window.localStorage.setItem(`draft_${item.draftKey}_${slugForDrafts}_${publicHeaderTheme}`, v)
+                                    window.localStorage.setItem(
+                                      `draft_${item.draftKey}_${slugForDrafts}_${themeForDraft}`,
+                                      toStore,
+                                    )
+                                    if (item.draftKey === 'publicFooterAddress') {
+                                      const addrKey = `draft_publicAddress_${slugForDrafts}_${publicHeaderThemeRaw}`
+                                      const prevAddr =
+                                        window.localStorage.getItem(addrKey) ??
+                                        window.localStorage.getItem('publicAddress') ??
+                                        ''
+                                      try {
+                                        window.parent?.postMessage?.({
+                                          type: 'constructorUndoPush',
+                                          key: 'publicAddress',
+                                          value: prevAddr || null,
+                                          themeId: publicHeaderThemeRaw,
+                                        }, '*')
+                                      } catch { /* ignore */ }
+                                      window.localStorage.setItem(addrKey, toStore)
+                                      try {
+                                        window.localStorage.setItem('publicFooterAddress', toStore)
+                                        window.localStorage.setItem('publicAddress', toStore)
+                                      } catch {
+                                        /* ignore */
+                                      }
+                                    }
+                                    syncSalonFooterFieldToMassageSlot(item.draftKey, toStore)
+                                    if (item.draftKey === 'publicFooterAddress') {
+                                      syncSalonFooterFieldToMassageSlot('publicAddress', toStore)
+                                    }
                                     window.localStorage.setItem(`constructorHasUserEdits_${publicHeaderTheme}`, '1')
                                     draftVersionTrigger()
                                   }
                                 }}
                                 className="w-full min-w-0 text-foreground text-lg md:text-xl font-semibold leading-relaxed bg-transparent border-b border-transparent hover:border-border/50 focus:border-primary focus:outline-none focus:ring-0 text-center"
+                                style={massageFooterContactBodyStyle}
                               />
                               {item.extra != null && item.extraDraftKey && (
                                 <input
@@ -3804,33 +4980,56 @@ export default function PublicPage() {
                                   value={item.extra}
                                   onChange={(e) => {
                                     const v = e.target.value
+                                    const toStore = serializeFooterFieldForStorage(v)
                                     if (typeof window !== 'undefined') {
                                       const prev = window.localStorage.getItem(`draft_${item.extraDraftKey}_${slugForDrafts}_${publicHeaderTheme}`) ?? window.localStorage.getItem(item.extraDraftKey) ?? ''
                                       try {
                                         window.parent?.postMessage?.({ type: 'constructorUndoPush', key: item.extraDraftKey, value: prev || null, themeId: publicHeaderTheme }, '*')
                                       } catch { /* ignore */ }
-                                      window.localStorage.setItem(`draft_${item.extraDraftKey}_${slugForDrafts}_${publicHeaderTheme}`, v)
+                                      window.localStorage.setItem(`draft_${item.extraDraftKey}_${slugForDrafts}_${publicHeaderTheme}`, toStore)
+                                      syncSalonFooterFieldToMassageSlot(item.extraDraftKey, toStore)
                                       window.localStorage.setItem(`constructorHasUserEdits_${publicHeaderTheme}`, '1')
                                       draftVersionTrigger()
                                     }
                                   }}
-                                  className="w-full min-w-0 text-red-500 text-sm md:text-base bg-transparent border-b border-transparent hover:border-border/50 focus:border-primary focus:outline-none focus:ring-0 text-center"
+                                  className={cn(
+                                    'w-full min-w-0 text-sm md:text-base bg-transparent border-b border-transparent hover:border-border/50 focus:border-primary focus:outline-none focus:ring-0 text-center',
+                                    massageSectionPaletteOn ? '' : 'text-red-500'
+                                  )}
+                                  style={massageSectionPaletteOn ? massageFooterContactLabelStyle : undefined}
                                 />
                               )}
                             </>
                           ) : (
                             <>
-                              <p className="text-foreground text-lg md:text-xl font-semibold leading-relaxed min-w-0 truncate">
+                              <p
+                                className="text-foreground text-lg md:text-xl font-semibold leading-relaxed min-w-0 truncate"
+                                style={massageFooterContactBodyStyle}
+                              >
                                 {item.value}
                               </p>
                               {item.extra && (
-                                <p className="text-red-500 text-sm md:text-base min-w-0 truncate">{item.extra}</p>
+                                <p
+                                  className={cn(
+                                    'text-sm md:text-base min-w-0 truncate',
+                                    massageSectionPaletteOn ? '' : 'text-red-500'
+                                  )}
+                                  style={massageSectionPaletteOn ? massageFooterContactLabelStyle : undefined}
+                                >
+                                  {item.extra}
+                                </p>
                               )}
                             </>
                           )}
               </div>
                         {index < arr.length - 1 && (
-                          <div className="hidden sm:block h-10 w-px shrink-0 bg-primary/30 mx-2 md:mx-4" />
+                          <div
+                            className={cn(
+                              'hidden sm:block h-10 w-px shrink-0 mx-2 md:mx-4',
+                              !massageSectionPaletteOn && 'bg-primary/30'
+                            )}
+                            style={massageFooterColumnRuleStyle}
+                          />
                         )}
               </div>
                     )
@@ -3840,7 +5039,7 @@ export default function PublicPage() {
           </div>
         </div>
       </footer>
-      {!hidePreviewChrome && (
+      {!hidePreviewChrome && showPublicLangSwitcher && (
         <>
       <div
         className={cn(
@@ -3868,7 +5067,7 @@ export default function PublicPage() {
                 { code: 'en' as const, icon: flagEn, label: 'English' },
                 { code: 'ro' as const, icon: flagRo, label: 'Română' },
               ]
-                .filter((item) => item.code !== publicLang)
+                .filter((item) => item.code !== publicLang && langsForPublicSwitcher.includes(item.code))
                 .map((item) => (
                   <button
                     key={item.code}
@@ -3905,7 +5104,7 @@ export default function PublicPage() {
                 { code: 'en' as const, icon: flagEn, label: 'English' },
                 { code: 'ro' as const, icon: flagRo, label: 'Română' },
               ]
-                .filter((item) => item.code !== publicLang)
+                .filter((item) => item.code !== publicLang && langsForPublicSwitcher.includes(item.code))
                 .map((item) => (
                   <button
                     key={item.code}

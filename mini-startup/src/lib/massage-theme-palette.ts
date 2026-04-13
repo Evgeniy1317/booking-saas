@@ -31,7 +31,18 @@ export type MassageThemeColors = {
   heroLine1?: string
   heroLine2?: string
   heroSub?: string
+  /** Hero: фон первой кнопки */
+  heroPrimBtnBg?: string
+  /** Hero: фон первой кнопки при наведении */
+  heroPrimBtnHover?: string
+  /** Hero: рамка первой кнопки */
   heroCtaBorder?: string
+  /** Hero: фон второй кнопки */
+  heroSecBtnBg?: string
+  /** Hero: фон второй кнопки при наведении */
+  heroSecBtnHover?: string
+  /** Hero: рамка второй кнопки */
+  heroSecBtnBorder?: string
   /** Блок «Услуги»: заголовок секции */
   svcBlockTitle?: string
   /** Блок «Услуги»: подзаголовок */
@@ -68,6 +79,28 @@ export type MassageThemeColors = {
   subsCtaText?: string
   /** Абонементы: кнопка акции — фон */
   subsCtaBg?: string
+  /** Блок записи (CTA): градиент фона — начало */
+  ctaBlockBgFrom?: string
+  /** Блок записи (CTA): градиент фона — конец */
+  ctaBlockBgTo?: string
+  /** Блок записи (CTA): заголовок */
+  ctaBlockTitle?: string
+  /** Блок записи (CTA): подзаголовок */
+  ctaBlockSub?: string
+  /** Блок записи (CTA): фон кнопки */
+  ctaBlockBtnBg?: string
+  /** Блок записи (CTA): текст кнопки */
+  ctaBlockBtnText?: string
+  /** Контакты: главный заголовок секции */
+  contactsBlockTitle?: string
+  /** Контакты: подзаголовок «Наши контакты» */
+  contactsSectionHeading?: string
+  /** Контакты: иконки (pin, часы, телефон, почта) */
+  contactsIcon?: string
+  /** Контакты: основной текст (адрес, график, телефон, email) */
+  contactsBody?: string
+  /** Контакты: подписи секций (написать онлайн, соцсети, подпись карты) */
+  contactsLabel?: string
 }
 
 const DEFAULTS: Record<keyof MassageThemeColors, string> = {
@@ -83,7 +116,12 @@ const DEFAULTS: Record<keyof MassageThemeColors, string> = {
   heroLine1: '#1a1a1a',
   heroLine2: '#1a1a1a',
   heroSub: '#4b5563',
+  heroPrimBtnBg: '#D4908F',
+  heroPrimBtnHover: '#C07F7E',
   heroCtaBorder: '#D4908F',
+  heroSecBtnBg: '#6b7280',
+  heroSecBtnHover: '#4b5563',
+  heroSecBtnBorder: '#FFFFFF40',
   svcBlockTitle: '#1a1a1a',
   svcBlockSub: '#9ca3af',
   svcCardTitle: '#1a1a1a',
@@ -102,11 +140,26 @@ const DEFAULTS: Record<keyof MassageThemeColors, string> = {
   subsCardBgTo: '#FDA4AF',
   subsCtaText: '#FFFFFF',
   subsCtaBg: '#D4908F',
+  ctaBlockBgFrom: '#D4908F',
+  ctaBlockBgTo: '#C07F7E',
+  ctaBlockTitle: '#FFFFFF',
+  ctaBlockSub: '#F5E8EA',
+  ctaBlockBtnBg: '#FFFFFF',
+  ctaBlockBtnText: '#D4908F',
+  contactsBlockTitle: '#1a1a1a',
+  contactsSectionHeading: '#1a1a1a',
+  contactsIcon: '#D4908F',
+  contactsBody: '#1a1a1a',
+  contactsLabel: '#9ca3af',
 }
 
-function hexFromId(id: string | undefined, fallbackHex: string): string {
-  if (!id || id === 'default') return fallbackHex
-  const opt = MASSAGE_HEADER_TEXT_OPTIONS.find(o => o.id === id)
+/** Пресеты из сайдбара (`gold`, `violet`…) или прямой `#hex` из старых данных */
+function resolveColorToken(raw: string | undefined, fallbackHex: string): string {
+  if (!raw || raw === 'default') return fallbackHex
+  const t = raw.trim()
+  if (/^#[0-9A-Fa-f]{3,8}$/i.test(t)) return t
+  if (/^rgba?\(/i.test(t)) return t
+  const opt = MASSAGE_HEADER_TEXT_OPTIONS.find(o => o.id === raw)
   return opt?.color ?? fallbackHex
 }
 
@@ -115,7 +168,7 @@ export function resolveMassageThemeColor(
   colors: MassageThemeColors | undefined
 ): string {
   const raw = colors?.[key]
-  return hexFromId(raw, DEFAULTS[key])
+  return resolveColorToken(raw, DEFAULTS[key])
 }
 
 export function parseMassageThemeColors(json: string | undefined): MassageThemeColors {
@@ -137,7 +190,12 @@ export function parseMassageThemeColors(json: string | undefined): MassageThemeC
       'heroLine1',
       'heroLine2',
       'heroSub',
+      'heroPrimBtnBg',
+      'heroPrimBtnHover',
       'heroCtaBorder',
+      'heroSecBtnBg',
+      'heroSecBtnHover',
+      'heroSecBtnBorder',
       'svcBlockTitle',
       'svcBlockSub',
       'svcCardTitle',
@@ -156,6 +214,17 @@ export function parseMassageThemeColors(json: string | undefined): MassageThemeC
       'subsCardBgTo',
       'subsCtaText',
       'subsCtaBg',
+      'ctaBlockBgFrom',
+      'ctaBlockBgTo',
+      'ctaBlockTitle',
+      'ctaBlockSub',
+      'ctaBlockBtnBg',
+      'ctaBlockBtnText',
+      'contactsBlockTitle',
+      'contactsSectionHeading',
+      'contactsIcon',
+      'contactsBody',
+      'contactsLabel',
     ]
     for (const k of keys) {
       const v = o[k]

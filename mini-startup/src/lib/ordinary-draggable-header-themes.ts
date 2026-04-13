@@ -1,7 +1,7 @@
 /**
  * Обычные (не premium) шаблоны с перетаскиваемым хедером.
  * Для всех id ниже одинаково: DraggableHeaderHair, черновики draft_headerLayout*,
- * полный размер / headerLayoutBranch, превью-embed, моб. ручка/точки — см. PublicPage и ConstructorPage.
+ * превью-embed, моб. ручка/точки — см. PublicPage и ConstructorPage.
  */
 export const ORDINARY_DRAGGABLE_HEADER_THEMES = [
   'hair',

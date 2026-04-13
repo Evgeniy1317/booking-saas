@@ -32,10 +32,35 @@ class ConstructorErrorBoundary extends Component<
     return this.props.children
   }
 }
-import { PanelRightOpen, Save, ArrowLeft, Maximize2, X, ChevronLeft, Pencil, RotateCcw, Plus, Video, ImageIcon, Smartphone, Monitor } from 'lucide-react'
+import {
+  PanelRightOpen,
+  Save,
+  ArrowLeft,
+  Maximize2,
+  X,
+  ChevronLeft,
+  Pencil,
+  RotateCcw,
+  Plus,
+  Video,
+  ImageIcon,
+  Smartphone,
+  Monitor,
+  Globe,
+  Check,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { flushDraftsToPublic } from '@/lib/constructor-save'
+import {
+  HERO_VIDEO_USE_IDB_MIN_BYTES,
+  SALON_PREMIUM_HERO_VIDEO_IDB_MARKER,
+  deleteSalonPremiumHeroVideoBlob,
+  saveSalonPremiumHeroVideoBlob,
+} from '@/lib/salon-premium-hero-video-idb'
+import { getEnabledSiteLangs, setEnabledSiteLangs, type PublicSiteLang } from '@/lib/public-site-langs'
+import { ORDINARY_SALON_LANG_SCOPED_KEYS } from '@/lib/public-lang-scoped-draft-keys'
+import { serializeFooterFieldForStorage } from '@/lib/public-footer-field-empty'
 import { cn } from '@/lib/utils'
 import iconHairCutting from '@/assets/images/constructor-images/free-icon-hair-cutting-4614189.png'
 import iconBarbershop from '@/assets/images/constructor-images/free-icon-barbershop-856572.png'
@@ -70,7 +95,6 @@ import {
   FOOTER_DEFAULTS_BY_LANG,
 } from '@/lib/hair-theme-defaults'
 import { compressImageForLogo } from '@/lib/compress-image'
-
 /** Дефолтные фото для слотов 1–3 карусели «Галерея работ» — отображаются в сайдбаре и в превью, пока не заданы свои */
 const WORKS_CAROUSEL_DEFAULTS = [worksCarousel1, worksCarousel2, worksCarousel3]
 /** Дефолтные фото для блока «О салоне» (премиум-шаблон) — слоты 1–3 по умолчанию */
@@ -98,31 +122,17 @@ const HEADER_LAYOUT_KEY_BY_THEME: Record<string, string> = {
   manicure: 'draft_headerLayoutManicure_v6',
 }
 
-/** Какую ветку localStorage (*_v6 vs *_mobile) подставить в «Полный размер», если last-branch ещё не сохраняли */
-function inferHeaderLayoutBranchForFullSize(themeId: string, previewMobileFrame: boolean): 'mobile' | 'desktop' | null {
-  if (typeof window === 'undefined') return null
-  if (themeId.startsWith('premium-')) return null
-  const tid = themeStorageId(themeId)
-  const storageBase = HEADER_LAYOUT_KEY_BY_THEME[tid]
-  if (!storageBase) return null
-  try {
-    const saved = window.localStorage.getItem(`constructorLastHeaderLayoutBranch_${tid}`)
-    if (saved === 'mobile' || saved === 'desktop') return saved
-    const mob = window.localStorage.getItem(`${storageBase}_mobile`)
-    const desk = window.localStorage.getItem(storageBase)
-    const hasMob = mob != null && mob !== ''
-    const hasDesk = desk != null && desk !== ''
-    if (hasMob && !hasDesk) return 'mobile'
-    if (hasDesk && !hasMob) return 'desktop'
-    if (hasMob && hasDesk) return previewMobileFrame ? 'mobile' : 'desktop'
-  } catch {
-    return null
-  }
-  return null
-}
-
 /** Флаг по теме: пользователь вносил правки в эту тему — показываем «Мой сайт» и не сбрасываем при переключении */
 const CONSTRUCTOR_HAS_USER_EDITS_PREFIX = 'constructorHasUserEdits_'
+
+const FOOTER_CLEARABLE_DRAFT_KEYS = new Set([
+  'publicHours',
+  'publicDayOff',
+  'publicFooterAddress',
+  'publicAddress',
+  'publicPhone',
+  'publicEmail',
+])
 
 /** Нормализованный id темы (без premium-) для ключей storage */
 function themeStorageId(themeId: string | null): string {
@@ -205,10 +215,12 @@ const SIDEBAR_UI: Record<SidebarLang, Record<string, string>> = {
   ru: {
     header: 'Шапка сайта', gallery: 'Фотографии салона', booking: 'Запись клиентов',
     works: 'Галерея работ', worksP: 'Наши услуги', map: 'Карта и адрес', cta: 'Блок записи', footer: 'Контактная информация',
-    heroBg: 'Фон для шапки', heroUploadHint: 'Можно загрузить видео или фото любого размера. Если загружено и то и другое — в шапке показывается видео.',
+    heroBg: 'Фон для шапки', heroUploadHint: 'Загрузите фото для шапки. В премиум-шаблонах можно также добавить видео.',
     videoLoaded: 'Видео загружено', videoShownInHeader: 'Отображается в шапке',
     changeVideo: 'Сменить видео', remove: 'Убрать', changePhoto: 'Сменить фото', photoBg: 'Фото фона', blackBg: 'Чёрный фон',
     addVideo: 'Добавить видео', addPhoto: 'Добавить фото', addVideoOverPhoto: 'Добавить видео поверх фото',
+    heroVideoNotForStandard: 'Видео в шапке доступно только в премиум-шаблонах. Удалите черновик видео или переключитесь на премиум.',
+    removeVideoFromDraft: 'Убрать видео из черновика',
     headerColor: 'Цвет хедера', headerGlow: 'Свечение', navColor: 'Цвет ссылок навигации', titleColor: 'Цвет названия салона',
     heroSubColor: 'Цвет подзаголовка hero', heroTitleColor: 'Цвет заголовка hero',
     btn1Border: 'Цвет рамки кнопки 1', btn2Border: 'Цвет рамки кнопки 2',
@@ -230,7 +242,14 @@ const SIDEBAR_UI: Record<SidebarLang, Record<string, string>> = {
     footerTitle: 'Контактная информация', footerDesc: 'Контактные данные отображаются в футере сайта. Поля редактируются в превью.',
     footerTitleColor: 'Цвет названия', footerTextColor: 'Цвет текста контактов', footerDayOffColor: 'Цвет выходного',
     galleryPhotos: 'Слоты фотографий (1–10)', bookingDesc: 'Форма бронирования находится на отдельной странице.',
-    bgStyle: 'Стиль фона страницы', restoreDesign: 'Вернуть изначальный дизайн', undoLast: 'Вернуть назад',
+    bgStyle: 'Стиль фона страницы',
+    siteLangs: 'Языки на сайте',
+    siteLangsHint:
+      'Отметьте языки, на которых будет доступен сайт. Если выбран один — переключатель флагов на сайте скрыт.',
+    langPickRu: 'Русский',
+    langPickEn: 'English',
+    langPickRo: 'Română',
+    restoreDesign: 'Вернуть изначальный дизайн', undoLast: 'Вернуть назад',
     designAlready: 'Изначальный дизайн уже используется', undoToDesign: 'Вернуть к изначальному дизайну шаблона',
     restoreHeader: 'Вернуть шапку к изначальному расположению', noUndo: 'Нет изменений для отмены', undoLastChange: 'Отменить последнее изменение',
     editThisTheme: 'Редактировать эту тему', fullSize: 'Полный размер', mobilePreview: 'Мобильный вид', webPreview: 'Веб-версия', save: 'Сохранить', saving: 'Сохранение...', saved: 'Сохранено ✓',
@@ -274,10 +293,12 @@ const SIDEBAR_UI: Record<SidebarLang, Record<string, string>> = {
   en: {
     header: 'Site header', gallery: 'Salon photos', booking: 'Client booking',
     works: 'Work gallery', worksP: 'Our services', map: 'Map & address', cta: 'Booking block', footer: 'Contact information',
-    heroBg: 'Header background', heroUploadHint: 'You can upload a video or photo of any size. If both are uploaded, the video is shown.',
+    heroBg: 'Header background', heroUploadHint: 'Upload a header photo. Premium templates also support video.',
     videoLoaded: 'Video uploaded', videoShownInHeader: 'Displayed in header',
     changeVideo: 'Change video', remove: 'Remove', changePhoto: 'Change photo', photoBg: 'Background photo', blackBg: 'Black background',
     addVideo: 'Add video', addPhoto: 'Add photo', addVideoOverPhoto: 'Add video over photo',
+    heroVideoNotForStandard: 'Header video is only available in premium templates. Remove the video draft or switch to a premium theme.',
+    removeVideoFromDraft: 'Remove video from draft',
     headerColor: 'Header color', headerGlow: 'Glow', navColor: 'Navigation link color', titleColor: 'Salon name color',
     heroSubColor: 'Hero subtitle color', heroTitleColor: 'Hero title color',
     btn1Border: 'Button 1 border color', btn2Border: 'Button 2 border color',
@@ -299,7 +320,13 @@ const SIDEBAR_UI: Record<SidebarLang, Record<string, string>> = {
     footerTitle: 'Contact information', footerDesc: 'Contact details are displayed in the site footer. Fields are edited in preview.',
     footerTitleColor: 'Name color', footerTextColor: 'Contact text color', footerDayOffColor: 'Day off color',
     galleryPhotos: 'Photo slots (1–10)', bookingDesc: 'The booking form is on a separate page.',
-    bgStyle: 'Page background style', restoreDesign: 'Restore original design', undoLast: 'Undo last',
+    bgStyle: 'Page background style',
+    siteLangs: 'Site languages',
+    siteLangsHint: 'Select languages for the site. If only one is on — the flag switcher is hidden.',
+    langPickRu: 'Russian',
+    langPickEn: 'English',
+    langPickRo: 'Romanian',
+    restoreDesign: 'Restore original design', undoLast: 'Undo last',
     designAlready: 'Original design is already in use', undoToDesign: 'Restore template original design',
     restoreHeader: 'Restore header to original layout', noUndo: 'No changes to undo', undoLastChange: 'Undo last change',
     editThisTheme: 'Edit this theme', fullSize: 'Full size', mobilePreview: 'Mobile view', webPreview: 'Web version', save: 'Save', saving: 'Saving...', saved: 'Saved ✓',
@@ -343,10 +370,12 @@ const SIDEBAR_UI: Record<SidebarLang, Record<string, string>> = {
   ro: {
     header: 'Antet site', gallery: 'Fotografii salon', booking: 'Programare clienți',
     works: 'Galerie lucrări', worksP: 'Serviciile noastre', map: 'Hartă și adresă', cta: 'Bloc programare', footer: 'Informații de contact',
-    heroBg: 'Fundal antet', heroUploadHint: 'Puteți încărca un video sau o fotografie de orice dimensiune. Dacă ambele sunt încărcate, se afișează videoul.',
+    heroBg: 'Fundal antet', heroUploadHint: 'Încărcați o fotografie pentru antet. Șabloanele premium permit și video.',
     videoLoaded: 'Video încărcat', videoShownInHeader: 'Afișat în antet',
     changeVideo: 'Schimbă video', remove: 'Elimină', changePhoto: 'Schimbă foto', photoBg: 'Foto fundal', blackBg: 'Fundal negru',
     addVideo: 'Adaugă video', addPhoto: 'Adaugă foto', addVideoOverPhoto: 'Adaugă video peste foto',
+    heroVideoNotForStandard: 'Video în antet este disponibil doar în șabloanele premium. Eliminați ciorna de video sau treceți la premium.',
+    removeVideoFromDraft: 'Elimină video din ciornă',
     headerColor: 'Culoare antet', headerGlow: 'Strălucire', navColor: 'Culoare linkuri navigare', titleColor: 'Culoare nume salon',
     heroSubColor: 'Culoare subtitlu hero', heroTitleColor: 'Culoare titlu hero',
     btn1Border: 'Culoare margine buton 1', btn2Border: 'Culoare margine buton 2',
@@ -368,7 +397,13 @@ const SIDEBAR_UI: Record<SidebarLang, Record<string, string>> = {
     footerTitle: 'Informații de contact', footerDesc: 'Datele de contact se afișează în subsolul site-ului. Câmpurile se editează în previzualizare.',
     footerTitleColor: 'Culoare nume', footerTextColor: 'Culoare text contact', footerDayOffColor: 'Culoare zi liberă',
     galleryPhotos: 'Sloturi foto (1–10)', bookingDesc: 'Formularul de programare se află pe o pagină separată.',
-    bgStyle: 'Stil fundal pagină', restoreDesign: 'Restaurează designul original', undoLast: 'Anulează',
+    bgStyle: 'Stil fundal pagină',
+    siteLangs: 'Limbi pe site',
+    siteLangsHint: 'Alegeți limbile site-ului. O singură limbă — fără comutator de steaguri.',
+    langPickRu: 'Rusă',
+    langPickEn: 'Engleză',
+    langPickRo: 'Română',
+    restoreDesign: 'Restaurează designul original', undoLast: 'Anulează',
     designAlready: 'Designul original este deja folosit', undoToDesign: 'Restaurează designul original al șablonului',
     restoreHeader: 'Restaurează antetul la aspectul original', noUndo: 'Nicio modificare de anulat', undoLastChange: 'Anulează ultima modificare',
     editThisTheme: 'Editează această temă', fullSize: 'Dimensiune completă', mobilePreview: 'Vizualizare mobilă', webPreview: 'Versiune web', save: 'Salvează', saving: 'Salvare...', saved: 'Salvat ✓',
@@ -503,6 +538,8 @@ const HEADER_BUTTON_OPTIONS_MANICURE = [
   { id: 'black', label: 'Black', background: '#0b0b0b', text: '#ffffff', glow: '0 0 18px rgba(0,0,0,0.6)' },
 ] as const
 
+const SITE_LANG_ORDER: PublicSiteLang[] = ['ru', 'en', 'ro']
+
 export default function ConstructorPage() {
   const navigate = useNavigate()
   const sLang: SidebarLang = (typeof window !== 'undefined' ? localStorage.getItem('publicLang') as SidebarLang : null) ?? 'ru'
@@ -515,6 +552,9 @@ export default function ConstructorPage() {
   const [visibleSectionId, setVisibleSectionId] = useState<string | null>(null)
   const [, setRestoreTick] = useState(0)
   const [, setStoragePoll] = useState(0)
+  const [siteLangsPick, setSiteLangsPick] = useState<PublicSiteLang[]>(() =>
+    typeof window !== 'undefined' ? getEnabledSiteLangs() : [...SITE_LANG_ORDER]
+  )
   const [undoStack, setUndoStack] = useState<{ key: string; value: string | null; themeId?: string }[]>([])
   const MAX_UNDO = 50
   /** true пока после сброса к исходному дизайну не было ни одного нового изменения */
@@ -572,6 +612,22 @@ export default function ConstructorPage() {
     return () => mq.removeEventListener('change', apply)
   }, [])
 
+  /** Нет сохранённого языка сайта — подставить язык из админки (`language`), превью откроется на нём; смена флага на сайте по-прежнему пишет `publicLang` */
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const pub = localStorage.getItem('publicLang')
+    if (pub === 'ru' || pub === 'en' || pub === 'ro') return
+    const adm = localStorage.getItem('language')
+    if (adm === 'ru' || adm === 'en' || adm === 'ro') {
+      try {
+        localStorage.setItem('publicLang', adm)
+      } catch {
+        /* ignore */
+      }
+      setStoragePoll((n) => n + 1)
+    }
+  }, [])
+
   /** Реальное узкое окно: выключаем режим 390px — превью и так на всю ширину */
   useEffect(() => {
     if (!constructorShellNarrow || !previewMobileFrame) return
@@ -602,7 +658,7 @@ export default function ConstructorPage() {
       if (e.data?.type === 'publicPageSectionInView' && typeof e.data?.sectionId === 'string') {
         setVisibleSectionId(e.data.sectionId)
       }
-      if (e.data?.type === 'constructorEditsChanged') {
+      if (e.data?.type === 'constructorEditsChanged' || e.data?.type === 'constructorPublicLangChanged') {
         setStoragePoll((n) => n + 1)
       }
       if (e.data?.type === 'constructorUndoPush' && typeof e.data?.key === 'string') {
@@ -803,6 +859,30 @@ export default function ConstructorPage() {
     }
   }, [])
 
+  useEffect(() => {
+    if (panelStage !== 'edit') return
+    setSiteLangsPick(getEnabledSiteLangs())
+  }, [panelStage])
+
+  const toggleSiteLang = useCallback(
+    (code: PublicSiteLang) => {
+      setSiteLangsPick((prev) => {
+        let next: PublicSiteLang[]
+        if (prev.includes(code)) {
+          if (prev.length <= 1) return prev
+          next = prev.filter((c) => c !== code)
+        } else {
+          next = SITE_LANG_ORDER.filter((c) => prev.includes(c) || c === code)
+        }
+        setEnabledSiteLangs(next)
+        setStoragePoll((n) => n + 1)
+        queueMicrotask(() => notifyIframeDraft())
+        return next
+      })
+    },
+    [notifyIframeDraft]
+  )
+
   const setDraft = useCallback(
     (key: string, value: string) => {
       if (typeof window === 'undefined') return
@@ -816,16 +896,49 @@ export default function ConstructorPage() {
       // Адрес и карта для премиум-шаблонов — по полному id темы, чтобы не переходить на другие шаблоны
       const addressMapKeys = ['publicFooterAddress', 'publicAddress', 'publicMapEmbedUrl']
       const themeForKey = addressMapKeys.includes(key) ? themeId : tid
+      const pubLang = (window.localStorage.getItem('publicLang') as PublicSiteLang) || 'ru'
       const storageKey =
-        key === 'publicHeaderTheme' ? `draft_${key}` : `draft_${key}_${slug}_${themeForKey}`
-      const prev =
-        window.localStorage.getItem(storageKey) ??
-        (key === 'publicHeaderTheme' ? null : window.localStorage.getItem(key))
+        key === 'publicHeaderTheme'
+          ? `draft_${key}`
+          : ORDINARY_SALON_LANG_SCOPED_KEYS.has(key)
+            ? `draft_${key}_${slug}_${themeForKey}_${pubLang}`
+            : `draft_${key}_${slug}_${themeForKey}`
+      if (key === 'publicHeroVideo') {
+        const isPremiumVid = themeId === 'premium-hair' || themeId === 'premium-barber'
+        if (isPremiumVid && value !== SALON_PREMIUM_HERO_VIDEO_IDB_MARKER) {
+          void deleteSalonPremiumHeroVideoBlob(slug, tid)
+        }
+      }
+      const valueToStore = FOOTER_CLEARABLE_DRAFT_KEYS.has(key)
+        ? serializeFooterFieldForStorage(value)
+        : value
+      let prev: string | null = window.localStorage.getItem(storageKey)
+      if (
+        prev === null &&
+        ORDINARY_SALON_LANG_SCOPED_KEYS.has(key) &&
+        pubLang === 'ru'
+      ) {
+        prev = window.localStorage.getItem(`draft_${key}_${slug}_${themeForKey}`)
+      }
+      if (prev === null && key !== 'publicHeaderTheme') {
+        prev = window.localStorage.getItem(key)
+      }
       setUndoStack((prevStack) => {
         const next = [...prevStack, { key, value: prev, themeId: themeForKey }]
         return next.slice(-MAX_UNDO)
       })
-      window.localStorage.setItem(storageKey, value)
+      window.localStorage.setItem(storageKey, valueToStore)
+      if (key === 'publicFooterAddress' || key === 'publicAddress') {
+        try {
+          window.localStorage.setItem('publicFooterAddress', valueToStore)
+          window.localStorage.setItem('publicAddress', valueToStore)
+        } catch {
+          /* ignore */
+        }
+      }
+      if (ORDINARY_SALON_LANG_SCOPED_KEYS.has(key) && pubLang === 'ru') {
+        window.localStorage.setItem(`draft_${key}_${slug}_${themeForKey}`, valueToStore)
+      }
       if (key !== 'publicHeaderTheme')
         window.localStorage.setItem(CONSTRUCTOR_HAS_USER_EDITS_PREFIX + slug + '_' + tid, '1')
       setStoragePoll((n) => n + 1)
@@ -840,10 +953,13 @@ export default function ConstructorPage() {
     setUndoStack((prev) => {
       if (prev.length === 0) return prev
       const last = prev[prev.length - 1]
+      const undoPubLang = (window.localStorage.getItem('publicLang') as PublicSiteLang) || 'ru'
       const storageKey =
         last.key === 'publicHeaderTheme' || !last.themeId
           ? `draft_${last.key}`
-          : `draft_${last.key}_${slug}_${last.themeId}`
+          : ORDINARY_SALON_LANG_SCOPED_KEYS.has(last.key)
+            ? `draft_${last.key}_${slug}_${last.themeId}_${undoPubLang}`
+            : `draft_${last.key}_${slug}_${last.themeId}`
       if (last.value === null || last.value === undefined) {
         window.localStorage.removeItem(storageKey)
       } else {
@@ -909,15 +1025,6 @@ export default function ConstructorPage() {
     if (typeof window !== 'undefined') {
       q.set('draftSlug', slug)
       q.set('draftTheme', th)
-      /* Та же ветка *_v6 / *_v6_mobile, что при перетаскивании в превью (ширина iframe ≠ ширина вкладки) */
-      if (!th.startsWith('premium-')) {
-        try {
-          const branch = inferHeaderLayoutBranchForFullSize(th, previewMobileFrame)
-          if (branch) q.set('headerLayoutBranch', branch)
-        } catch {
-          /* ignore */
-        }
-      }
     }
     const fullViewUrl = `/b/${slug}?${q.toString()}`
     const narrow =
@@ -1344,6 +1451,80 @@ export default function ConstructorPage() {
                           )
                         })}
                       </ul>
+                      <div className="mt-4 pt-3 border-t border-border/40">
+                        <div
+                          className={cn(
+                            'relative overflow-hidden rounded-2xl border border-primary/15',
+                            'bg-gradient-to-br from-primary/[0.08] via-card/95 to-card',
+                            'shadow-[0_12px_40px_-16px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.06)]'
+                          )}
+                        >
+                          <div
+                            className="pointer-events-none absolute -right-8 -top-10 h-28 w-28 rounded-full bg-primary/15 blur-3xl"
+                            aria-hidden
+                          />
+                          <div className="relative space-y-3 p-3">
+                            <div className="flex items-center justify-center gap-2">
+                              <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/15 text-primary shadow-inner ring-1 ring-primary/20">
+                                <Globe className="h-3.5 w-3.5" aria-hidden />
+                              </span>
+                              <h3 className="text-[11px] font-bold uppercase tracking-[0.14em] text-foreground/95">
+                                {s.siteLangs}
+                              </h3>
+                            </div>
+                            <p className="text-[10px] leading-relaxed text-muted-foreground text-center px-0.5">
+                              {s.siteLangsHint}
+                            </p>
+                            <div className="flex flex-col gap-2">
+                              {SITE_LANG_ORDER.map((code) => {
+                                const on = siteLangsPick.includes(code)
+                                const flag = code === 'ru' ? '🇷🇺' : code === 'en' ? '🇬🇧' : '🇷🇴'
+                                const label =
+                                  code === 'ru' ? s.langPickRu : code === 'en' ? s.langPickEn : s.langPickRo
+                                return (
+                                  <button
+                                    key={code}
+                                    type="button"
+                                    onClick={() => toggleSiteLang(code)}
+                                    className={cn(
+                                      'group flex w-full items-center gap-2.5 rounded-xl border px-2.5 py-2 text-left transition-all duration-200',
+                                      'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-card',
+                                      on
+                                        ? 'border-primary/45 bg-primary/12 shadow-[0_0_0_1px_rgba(59,130,246,0.2),0_4px_14px_-4px_rgba(59,130,246,0.35)]'
+                                        : 'border-border/35 bg-background/30 hover:border-border/60 hover:bg-muted/25'
+                                    )}
+                                  >
+                                    <span
+                                      className={cn(
+                                        'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-lg',
+                                        'border border-white/10 bg-gradient-to-b from-white/12 to-white/[0.04]',
+                                        'shadow-[inset_0_1px_0_rgba(255,255,255,0.12)]'
+                                      )}
+                                      aria-hidden
+                                    >
+                                      {flag}
+                                    </span>
+                                    <span className="min-w-0 flex-1 text-[13px] font-semibold leading-tight text-foreground">
+                                      {label}
+                                    </span>
+                                    <span
+                                      className={cn(
+                                        'flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 transition-all',
+                                        on
+                                          ? 'border-primary bg-primary text-primary-foreground shadow-[0_0_14px_rgba(59,130,246,0.45)]'
+                                          : 'border-border/55 bg-transparent text-transparent'
+                                      )}
+                                      aria-hidden
+                                    >
+                                      {on && <Check className="h-3.5 w-3.5" strokeWidth={2.8} />}
+                                    </span>
+                                  </button>
+                                )
+                              })}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
                       {!(currentHeaderTheme === 'premium-hair' || currentHeaderTheme === 'premium-barber') && (
                         <>
                           <div className="flex items-center gap-2 my-5">
@@ -1432,9 +1613,9 @@ export default function ConstructorPage() {
                             setStoragePoll((n) => n + 1)
                             notifyIframeDraft()
                           }
-                          const removeVideo = () => {
+                          const removePremiumHeroVideoAndPhoto = () => {
                             if (typeof window === 'undefined') return
-                            // Убираем видео + фото → чёрный фон
+                            void deleteSalonPremiumHeroVideoBlob(slug, tid)
                             window.localStorage.removeItem(`draft_publicHeroVideo_${slug}_${tid}`)
                             window.localStorage.removeItem(`draft_publicHeroVideo_${tid}`)
                             window.localStorage.removeItem('publicHeroVideo')
@@ -1445,10 +1626,49 @@ export default function ConstructorPage() {
                             notifyIframeDraft()
                           }
 
+                          const removeOrdinaryHeroVideoDraftOnly = () => {
+                            if (typeof window === 'undefined') return
+                            window.localStorage.removeItem(`draft_publicHeroVideo_${slug}_${tid}`)
+                            window.localStorage.removeItem(`draft_publicHeroVideo_${tid}`)
+                            window.localStorage.removeItem('publicHeroVideo')
+                            setStoragePoll((n) => n + 1)
+                            notifyIframeDraft()
+                          }
+
+                          const onPickHeroVideo = (file: File) => {
+                            if (!isPremium || !file.type.startsWith('video/')) return
+                            const applyDataUrl = () => {
+                              const reader = new FileReader()
+                              reader.onload = () => {
+                                const r = typeof reader.result === 'string' ? reader.result : ''
+                                if (r) {
+                                  setDraft('publicHeroVideo', r)
+                                  setStoragePoll((n) => n + 1)
+                                  notifyIframeDraft()
+                                }
+                              }
+                              reader.readAsDataURL(file)
+                            }
+                            if (file.size >= HERO_VIDEO_USE_IDB_MIN_BYTES) {
+                              void (async () => {
+                                try {
+                                  await saveSalonPremiumHeroVideoBlob(slug, tid, file)
+                                  setDraft('publicHeroVideo', SALON_PREMIUM_HERO_VIDEO_IDB_MARKER)
+                                  setStoragePoll((n) => n + 1)
+                                  notifyIframeDraft()
+                                } catch {
+                                  applyDataUrl()
+                                }
+                              })()
+                            } else {
+                              applyDataUrl()
+                            }
+                          }
+
                           return (
                             <div className="space-y-3">
                               {/* Текущий фон — визуальная карточка */}
-                              {heroVideo ? (
+                              {isPremium && heroVideo ? (
                                 <div className="rounded-xl overflow-hidden border border-white/10 bg-black">
                                   {/* Имитация тёмного видео-превью */}
                                   <div className="relative h-20 bg-gradient-to-br from-zinc-900 to-black flex items-center justify-center gap-3">
@@ -1463,18 +1683,17 @@ export default function ConstructorPage() {
                                     <span className="absolute top-2 right-2 h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
                                   </div>
                                   <div className="flex gap-2 p-2 bg-zinc-900/80">
-                                    <input id="constructor-hero-video-upload" type="file" accept="video/*" className="hidden"
+                                    <input id="constructor-hero-video-replace" type="file" accept="video/*" className="hidden"
                                       onChange={(e) => {
-                                        const file = e.target.files?.[0]; if (!file) return
-                                        const reader = new FileReader()
-                                        reader.onload = () => { const r = typeof reader.result === 'string' ? reader.result : ''; if (r) { setDraft('publicHeroVideo', r); setStoragePoll((n) => n + 1); notifyIframeDraft() } }
-                                        reader.readAsDataURL(file); e.target.value = ''
+                                        const file = e.target.files?.[0]
+                                        e.target.value = ''
+                                        if (file) onPickHeroVideo(file)
                                       }}
                                     />
-                                    <label htmlFor="constructor-hero-video-upload" className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg border border-white/20 bg-white/5 hover:bg-white/10 text-xs font-medium text-white/70 cursor-pointer transition-colors">
+                                    <label htmlFor="constructor-hero-video-replace" className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg border border-white/20 bg-white/5 hover:bg-white/10 text-xs font-medium text-white/70 cursor-pointer transition-colors">
                                       <Video className="h-3.5 w-3.5" /> {s.changeVideo}
                                     </label>
-                                    <button type="button" onClick={removeVideo} className="flex-1 px-3 py-1.5 rounded-lg border border-red-500/30 bg-red-500/10 hover:bg-red-500/20 text-xs font-medium text-red-400 transition-colors">
+                                    <button type="button" onClick={removePremiumHeroVideoAndPhoto} className="flex-1 px-3 py-1.5 rounded-lg border border-red-500/30 bg-red-500/10 hover:bg-red-500/20 text-xs font-medium text-red-400 transition-colors">
                                       {s.remove}
                                     </button>
                                   </div>
@@ -1505,6 +1724,17 @@ export default function ConstructorPage() {
                                     </button>
                                   </div>
                                 </div>
+                              ) : !isPremium && heroVideo ? (
+                                <div className="rounded-xl overflow-hidden border border-amber-500/30 bg-amber-500/5 p-3 space-y-2">
+                                  <p className="text-xs text-amber-200/90">{s.heroVideoNotForStandard}</p>
+                                  <button
+                                    type="button"
+                                    onClick={removeOrdinaryHeroVideoDraftOnly}
+                                    className="w-full px-3 py-2 rounded-lg border border-red-500/30 bg-red-500/10 hover:bg-red-500/20 text-xs font-medium text-red-400 transition-colors"
+                                  >
+                                    {s.removeVideoFromDraft}
+                                  </button>
+                                </div>
                               ) : (
                                 /* Пустой фон — показываем чёрный блок */
                                 <div className="rounded-xl overflow-hidden border border-white/10">
@@ -1514,17 +1744,29 @@ export default function ConstructorPage() {
                                 </div>
                               )}
 
-                              {/* Кнопки загрузки (если нет ни видео, ни фото — или докинуть второй тип) */}
+                              {!isPremium && heroVideo && heroImage && (
+                                <div className="rounded-xl overflow-hidden border border-amber-500/30 bg-amber-500/5 p-3 space-y-2">
+                                  <p className="text-xs text-amber-200/90">{s.heroVideoNotForStandard}</p>
+                                  <button
+                                    type="button"
+                                    onClick={removeOrdinaryHeroVideoDraftOnly}
+                                    className="w-full px-3 py-2 rounded-lg border border-red-500/30 bg-red-500/10 hover:bg-red-500/20 text-xs font-medium text-red-400 transition-colors"
+                                  >
+                                    {s.removeVideoFromDraft}
+                                  </button>
+                                </div>
+                              )}
+
+                              {/* Кнопки загрузки */}
                               {!heroVideo && !heroImage && (
                                 <div className="flex flex-col gap-2">
                                   {isPremium && (
                                     <>
                                       <input id="constructor-hero-video-upload" type="file" accept="video/*" className="hidden"
                                         onChange={(e) => {
-                                          const file = e.target.files?.[0]; if (!file) return
-                                          const reader = new FileReader()
-                                          reader.onload = () => { const r = typeof reader.result === 'string' ? reader.result : ''; if (r) { setDraft('publicHeroVideo', r); setStoragePoll((n) => n + 1); notifyIframeDraft() } }
-                                          reader.readAsDataURL(file); e.target.value = ''
+                                          const file = e.target.files?.[0]
+                                          e.target.value = ''
+                                          if (file) onPickHeroVideo(file)
                                         }}
                                       />
                                       <label htmlFor="constructor-hero-video-upload" className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border-2 border-dashed border-border/60 bg-card/20 hover:border-primary/50 hover:bg-primary/5 text-sm font-medium cursor-pointer transition-colors">
@@ -1547,18 +1789,17 @@ export default function ConstructorPage() {
                                   </label>
                                 </div>
                               )}
-                              {/* Если есть фото но нет видео — для премиума показываем кнопку добавить видео */}
-                              {!heroVideo && heroImage && isPremium && (
+                              {/* Если есть фото но нет видео — только премиум */}
+                              {isPremium && !heroVideo && heroImage && (
                                 <div className="pt-1">
-                                  <input id="constructor-hero-video-upload" type="file" accept="video/*" className="hidden"
+                                  <input id="constructor-hero-video-over-photo" type="file" accept="video/*" className="hidden"
                                     onChange={(e) => {
-                                      const file = e.target.files?.[0]; if (!file) return
-                                      const reader = new FileReader()
-                                      reader.onload = () => { const r = typeof reader.result === 'string' ? reader.result : ''; if (r) { setDraft('publicHeroVideo', r); setStoragePoll((n) => n + 1); notifyIframeDraft() } }
-                                      reader.readAsDataURL(file); e.target.value = ''
+                                      const file = e.target.files?.[0]
+                                      e.target.value = ''
+                                      if (file) onPickHeroVideo(file)
                                     }}
                                   />
-                                  <label htmlFor="constructor-hero-video-upload" className="w-full inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-dashed border-border/50 bg-card/10 hover:border-primary/40 hover:bg-primary/5 text-sm font-medium cursor-pointer transition-colors text-muted-foreground">
+                                  <label htmlFor="constructor-hero-video-over-photo" className="w-full inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-dashed border-border/50 bg-card/10 hover:border-primary/40 hover:bg-primary/5 text-sm font-medium cursor-pointer transition-colors text-muted-foreground">
                                     <Video className="h-4 w-4 shrink-0" />
                                     <span>{s.addVideoOverPhoto}</span>
                                   </label>

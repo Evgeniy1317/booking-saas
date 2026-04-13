@@ -17,6 +17,10 @@ import {
 } from '@/lib/hair-theme-defaults'
 import heroImage from '@/assets/images/constructor-images/pexels-emirhan-sayar-478511598-35844822.jpg'
 import iconMarketing from '@/assets/images/constructor-images/free-icon-marketing-10476712.png'
+import { getMassageTemplateSlot } from '@/lib/massage-draft'
+import { PREMIUM_MASSAGE_SLOT } from '@/lib/massage-template-registry'
+import type { PublicSiteLang } from '@/lib/public-site-langs'
+import { displayFooterFieldStored, serializeFooterFieldForStorage } from '@/lib/public-footer-field-empty'
 
 const slugify = (value: string) => {
   const slug = value
@@ -30,11 +34,65 @@ const draftKey = (key: string) => `draft_${key}`
 const getDraftValue = (key: string) => localStorage.getItem(draftKey(key))
 const getDraftOrPublic = (key: string, fallback = '') =>
   getDraftValue(key) ?? localStorage.getItem(key) ?? fallback
+
+function readFooterClearableField(key: string, fallback: string): string {
+  return displayFooterFieldStored(getDraftOrPublic(key, fallback))
+}
 const setDraftValue = (key: string, value: string) => {
   localStorage.setItem(draftKey(key), value)
 }
 const removeDraftValue = (key: string) => {
   localStorage.removeItem(draftKey(key))
+}
+
+function themeStorageId(themeId: string): string {
+  if (!themeId) return 'hair'
+  return themeId.startsWith('premium-') ? themeId.replace('premium-', '') : themeId
+}
+
+function getSalonSlugForDrafts(): string {
+  if (typeof window === 'undefined') return 'salon'
+  return localStorage.getItem('publicSlug') || 'salon'
+}
+
+/** Читает то же, что PublicPage.readPublic для lang-scoped полей салона (slug + theme + publicLang). */
+function readOrdinaryLangScopedDraft(key: string, fallback: string): string {
+  if (typeof window === 'undefined') return fallback
+  const slug = getSalonSlugForDrafts()
+  const themeRaw =
+    getDraftValue('publicHeaderTheme') ||
+    localStorage.getItem('draft_publicHeaderTheme') ||
+    localStorage.getItem('publicHeaderTheme') ||
+    'hair'
+  const tid = themeStorageId(themeRaw)
+  const lang = (localStorage.getItem('publicLang') as PublicSiteLang) || 'ru'
+  const withLang = `draft_${key}_${slug}_${tid}_${lang}`
+  let v = localStorage.getItem(withLang)
+  if (v === null && lang === 'ru') {
+    v = localStorage.getItem(`draft_${key}_${slug}_${tid}`)
+  }
+  if (v !== null) return v
+  return getDraftOrPublic(key, fallback)
+}
+
+function writeOrdinaryLangScopedDraftTriplet(
+  headerTheme: string,
+  primaryCta: string,
+  secondaryCta: string,
+  footerLabelsJson: string,
+) {
+  if (typeof window === 'undefined') return
+  const slug = getSalonSlugForDrafts()
+  const tid = themeStorageId(headerTheme)
+  const lang = (localStorage.getItem('publicLang') as PublicSiteLang) || 'ru'
+  const write = (key: string, value: string) => {
+    const base = `draft_${key}_${slug}_${tid}`
+    localStorage.setItem(`${base}_${lang}`, value)
+    if (lang === 'ru') localStorage.setItem(base, value)
+  }
+  write('publicHeaderPrimaryCta', primaryCta)
+  write('publicHeaderSecondaryCta', secondaryCta)
+  write('publicFooterLabels', footerLabelsJson)
 }
 
 const settingsText = {
@@ -119,6 +177,11 @@ const settingsText = {
     dayOffSuffix: ' — выходной',
     defaultHours: 'Пн–Сб, 09:00–19:00',
     defaultDayOff: 'Вс — выходной',
+    salonSiteCardTitle: 'Сайт вашего салона',
+    salonSiteCardDescription:
+      'Соберите страницу из блоков в конструкторе — шапка, галерея, запись и карта. Результат виден сразу.',
+    salonSiteConstructorCta: 'Конструктор',
+    salonSiteOpenSite: 'Открыть сайт',
   },
   en: {
     notificationsTitle: 'Notifications',
@@ -201,6 +264,11 @@ const settingsText = {
     dayOffSuffix: ' — day off',
     defaultHours: 'Mon–Sat, 09:00–19:00',
     defaultDayOff: 'Sun — day off',
+    salonSiteCardTitle: 'Your salon website',
+    salonSiteCardDescription:
+      'Build your page from blocks in the builder — header, gallery, booking, and map. See the result instantly.',
+    salonSiteConstructorCta: 'Builder',
+    salonSiteOpenSite: 'Open website',
   },
   ro: {
     notificationsTitle: 'Notificări',
@@ -283,6 +351,11 @@ const settingsText = {
     dayOffSuffix: ' — zi liberă',
     defaultHours: 'Lu–Sa, 09:00–19:00',
     defaultDayOff: 'Du — zi liberă',
+    salonSiteCardTitle: 'Site-ul salonului tău',
+    salonSiteCardDescription:
+      'Construiește pagina din blocuri în constructor — antet, galerie, programare și hartă. Rezultatul se vede imediat.',
+    salonSiteConstructorCta: 'Constructor',
+    salonSiteOpenSite: 'Deschide site-ul',
   },
 } as const
 
@@ -349,14 +422,17 @@ export default function Settings() {
     })
   }
   
-  const [business] = useState({
-    name: 'Luxe Studio',
-    description: 'Professional beauty services',
-    logo: null as File | null,
-    primary_color: '#1a1a1a',
-    phone: '+373 123 456 789',
-    address: 'Chisinau, str. Example 1',
-    email: 'jane@luxestudio.com',
+  const [business] = useState(() => {
+    const storedName = typeof window !== 'undefined' ? localStorage.getItem('businessName') : null
+    return {
+      name: storedName || 'Luxe Studio',
+      description: 'Professional beauty services',
+      logo: null as File | null,
+      primary_color: '#1a1a1a',
+      phone: '+373 123 456 789',
+      address: 'Chisinau, str. Example 1',
+      email: 'jane@luxestudio.com',
+    }
   })
 
   const [notificationSettings, setNotificationSettings] = useState({
@@ -378,16 +454,16 @@ export default function Settings() {
   const [publicPage, setPublicPage] = useState(() => ({
     name: getDraftOrPublic('publicName', business.name),
     tagline: getDraftOrPublic('publicTagline', business.description),
-    phone: getDraftOrPublic('publicPhone', business.phone),
-    email: getDraftOrPublic('publicEmail', business.email),
-    footerAddress: getDraftOrPublic('publicFooterAddress', business.address),
-    address: getDraftOrPublic('publicAddress', business.address),
+    phone: readFooterClearableField('publicPhone', business.phone),
+    email: readFooterClearableField('publicEmail', business.email),
+    footerAddress: readFooterClearableField('publicFooterAddress', business.address),
+    address: readFooterClearableField('publicAddress', business.address),
     placeName: getDraftOrPublic('publicPlaceName', ''),
     telegram: getDraftOrPublic('publicTelegram', ''),
     viber: getDraftOrPublic('publicViber', ''),
     instagram: getDraftOrPublic('publicInstagram', ''),
-    hours: getDraftOrPublic('publicHours', st('defaultHours')),
-    dayOff: getDraftOrPublic('publicDayOff', st('defaultDayOff')),
+    hours: readFooterClearableField('publicHours', st('defaultHours')),
+    dayOff: readFooterClearableField('publicDayOff', st('defaultDayOff')),
     mapLat: getDraftOrPublic('publicMapLat', '47.0105'),
     mapLng: getDraftOrPublic('publicMapLng', '28.8575'),
     logo: getDraftOrPublic('publicLogo', ''),
@@ -491,8 +567,8 @@ export default function Settings() {
       settingsHairDef.bookingSub,
   }))
   const [headerCtas, setHeaderCtas] = useState(() => ({
-    primary: getDraftOrPublic('publicHeaderPrimaryCta', 'Записаться онлайн'),
-    secondary: getDraftOrPublic('publicHeaderSecondaryCta', 'Где нас найти?'),
+    primary: readOrdinaryLangScopedDraft('publicHeaderPrimaryCta', 'Записаться онлайн'),
+    secondary: readOrdinaryLangScopedDraft('publicHeaderSecondaryCta', 'Где нас найти?'),
   }))
   const [headerCtaShapes, setHeaderCtaShapes] = useState(() => ({
     primary:
@@ -596,7 +672,7 @@ export default function Settings() {
     getDraftOrPublic('publicBodyBackgroundChoice', 'bg-2')
   )
   const [footerLabels, _setFooterLabels] = useState(() => {
-    const stored = getDraftOrPublic('publicFooterLabels')
+    const stored = readOrdinaryLangScopedDraft('publicFooterLabels', '')
     if (!stored) {
       return {
         address: 'Адрес',
@@ -790,16 +866,16 @@ export default function Settings() {
   useEffect(() => {
     setDraftValue('publicName', publicPage.name)
     setDraftValue('publicTagline', publicPage.tagline)
-    setDraftValue('publicPhone', publicPage.phone)
-    setDraftValue('publicEmail', publicPage.email)
-    setDraftValue('publicFooterAddress', publicPage.footerAddress)
-    setDraftValue('publicAddress', publicPage.address)
+    setDraftValue('publicPhone', serializeFooterFieldForStorage(publicPage.phone))
+    setDraftValue('publicEmail', serializeFooterFieldForStorage(publicPage.email))
+    setDraftValue('publicFooterAddress', serializeFooterFieldForStorage(publicPage.footerAddress))
+    setDraftValue('publicAddress', serializeFooterFieldForStorage(publicPage.address))
     setDraftValue('publicPlaceName', publicPage.placeName)
     setDraftValue('publicTelegram', publicPage.telegram)
     setDraftValue('publicViber', publicPage.viber)
     setDraftValue('publicInstagram', publicPage.instagram)
-    setDraftValue('publicHours', publicPage.hours)
-    setDraftValue('publicDayOff', publicPage.dayOff)
+    setDraftValue('publicHours', serializeFooterFieldForStorage(publicPage.hours))
+    setDraftValue('publicDayOff', serializeFooterFieldForStorage(publicPage.dayOff))
     setDraftValue('publicMapLat', publicPage.mapLat)
     setDraftValue('publicMapLng', publicPage.mapLng)
     setDraftValue('publicLogoShape', publicPage.logoShape)
@@ -829,7 +905,14 @@ export default function Settings() {
   useEffect(() => {
     setDraftValue('publicHeaderPrimaryCta', headerCtas.primary)
     setDraftValue('publicHeaderSecondaryCta', headerCtas.secondary)
-  }, [headerCtas])
+    setDraftValue('publicFooterLabels', JSON.stringify(footerLabels))
+    writeOrdinaryLangScopedDraftTriplet(
+      headerTheme,
+      headerCtas.primary,
+      headerCtas.secondary,
+      JSON.stringify(footerLabels),
+    )
+  }, [headerCtas, footerLabels, headerTheme])
   useEffect(() => {
     setDraftValue('publicHeaderPrimaryCtaShape', headerCtaShapes.primary)
     setDraftValue('publicHeaderSecondaryCtaShape', headerCtaShapes.secondary)
@@ -852,9 +935,6 @@ export default function Settings() {
   useEffect(() => {
     setDraftValue('publicFooterVisibility', JSON.stringify(footerVisibility))
   }, [footerVisibility])
-  useEffect(() => {
-    setDraftValue('publicFooterLabels', JSON.stringify(footerLabels))
-  }, [footerLabels])
   useEffect(() => {
     setDraftValue('publicSocialVisibility', JSON.stringify(socialVisibility))
   }, [socialVisibility])
@@ -1080,17 +1160,18 @@ export default function Settings() {
       secondary: latestSecondaryCta,
     }))
     localStorage.setItem('publicName', publicPage.name)
+    localStorage.setItem('businessName', publicPage.name)
     localStorage.setItem('publicTagline', publicPage.tagline)
-    localStorage.setItem('publicPhone', publicPage.phone)
-    localStorage.setItem('publicEmail', publicPage.email)
-    localStorage.setItem('publicFooterAddress', publicPage.footerAddress)
-    localStorage.setItem('publicAddress', publicPage.address)
+    localStorage.setItem('publicPhone', serializeFooterFieldForStorage(publicPage.phone))
+    localStorage.setItem('publicEmail', serializeFooterFieldForStorage(publicPage.email))
+    localStorage.setItem('publicFooterAddress', serializeFooterFieldForStorage(publicPage.footerAddress))
+    localStorage.setItem('publicAddress', serializeFooterFieldForStorage(publicPage.address))
     localStorage.setItem('publicPlaceName', publicPage.placeName)
     localStorage.setItem('publicTelegram', publicPage.telegram)
     localStorage.setItem('publicViber', publicPage.viber)
     localStorage.setItem('publicInstagram', publicPage.instagram)
-    localStorage.setItem('publicHours', publicPage.hours)
-    localStorage.setItem('publicDayOff', publicPage.dayOff)
+    localStorage.setItem('publicHours', serializeFooterFieldForStorage(publicPage.hours))
+    localStorage.setItem('publicDayOff', serializeFooterFieldForStorage(publicPage.dayOff))
     localStorage.setItem('publicMapLat', publicPage.mapLat)
     localStorage.setItem('publicMapLng', publicPage.mapLng)
     localStorage.setItem('publicLogoShape', publicPage.logoShape)
@@ -1135,6 +1216,12 @@ export default function Settings() {
     localStorage.setItem('publicGalleryLayout', galleryLayout)
     localStorage.setItem('publicFooterVisibility', JSON.stringify(footerVisibility))
     localStorage.setItem('publicFooterLabels', JSON.stringify(footerLabels))
+    writeOrdinaryLangScopedDraftTriplet(
+      headerTheme,
+      latestPrimaryCta,
+      latestSecondaryCta,
+      JSON.stringify(footerLabels),
+    )
     localStorage.setItem('publicSocialVisibility', JSON.stringify(socialVisibility))
     localStorage.setItem('publicSectionVisibility', JSON.stringify(sectionVisibility))
 
@@ -1367,11 +1454,11 @@ export default function Settings() {
                   <img src={iconMarketing} alt="" className="h-12 w-12 object-contain" />
                 </div>
                 <h3 className="text-2xl sm:text-3xl font-bold text-foreground tracking-tight">
-                  Сайт вашего салона
+                  {st('salonSiteCardTitle')}
                 </h3>
               </div>
               <p className="text-muted-foreground text-sm sm:text-base leading-relaxed max-w-md">
-                Соберите страницу из блоков в конструкторе — шапка, галерея, запись и карта. Результат виден сразу.
+                {st('salonSiteCardDescription')}
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-3 shrink-0">
@@ -1380,21 +1467,53 @@ export default function Settings() {
                 size="lg"
                 className="rounded-xl h-11 px-6 font-semibold shadow-lg shadow-primary/20 hover:shadow-primary/30 transition-shadow gap-2"
                 onClick={() => {
+                  try {
+                    localStorage.setItem('publicLang', language)
+                  } catch {
+                    /* ignore */
+                  }
                   const bt = localStorage.getItem('businessType') || ''
                   navigate(bt === 'massage' ? '/constructor-massage' : '/constructor')
                 }}
               >
                 <PenLine className="h-4 w-4" />
-                Конструктор
+                {st('salonSiteConstructorCta')}
               </Button>
               <Button
                 variant="outline"
                 size="lg"
                 className="rounded-xl h-11 px-6 font-semibold border-2 border-primary/40 bg-transparent hover:bg-primary/10 hover:border-primary/60 transition-colors gap-2"
-                onClick={() => window.open(`/b/${publicSlug}?preview=1`, '_blank')}
+                onClick={() => {
+                  try {
+                    localStorage.setItem('publicLang', language)
+                  } catch {
+                    /* ignore */
+                  }
+                  const bt = localStorage.getItem('businessType') || ''
+                  if (bt === 'massage') {
+                    const slot = getMassageTemplateSlot()
+                    const slugForMassage =
+                      (typeof window !== 'undefined' && localStorage.getItem('publicSlug')) || publicSlug
+                    const q = new URLSearchParams()
+                    q.set('preview', '1')
+                    q.set('full', '1')
+                    q.set('_', String(Date.now()))
+                    const path =
+                      slot === PREMIUM_MASSAGE_SLOT
+                        ? `/massage-preview?${q.toString()}`
+                        : (() => {
+                            q.set('massagePreview', '1')
+                            q.set('massageSlot', slot)
+                            return `/b/${slugForMassage}?${q.toString()}`
+                          })()
+                    window.open(path, '_blank')
+                  } else {
+                    window.open(`/b/${publicSlug}?preview=1`, '_blank')
+                  }
+                }}
               >
                 <ExternalLink className="h-4 w-4" />
-                Открыть сайт
+                {st('salonSiteOpenSite')}
               </Button>
             </div>
           </div>

@@ -1,16 +1,68 @@
-import { useState, useEffect, useRef, useMemo, useCallback, type MouseEvent } from 'react'
+﻿import { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback, type MouseEvent } from 'react'
 import { cn } from '@/lib/utils'
 import type { MassageThemeColors } from '@/lib/massage-theme-palette'
 import { resolveMassageThemeColor } from '@/lib/massage-theme-palette'
+import { getMassageDraft } from '@/lib/massage-draft'
+import {
+  DEFAULT_WORLD_MAP_EMBED_URL,
+  FOOTER_DEFAULT_ADDRESS,
+  FOOTER_DEFAULTS_BY_LANG,
+} from '@/lib/hair-theme-defaults'
+import { getEnabledSiteLangs } from '@/lib/public-site-langs'
+import flagRu from '@/assets/images/russia.png'
+import flagEn from '@/assets/images/united-kingdom.png'
+import flagRo from '@/assets/images/flag.png'
+import type {
+  Lang,
+  MassageServiceMerged,
+  MassageSubscriptionItemMerged,
+  MassageSpecialistMerged,
+  MassageCatalogProductMerged,
+} from '@/lib/massage-template-model'
+import {
+  GAL_TABS,
+  SERVICES,
+  mergeMassageServicesFromDraft,
+  serializeMassageServicesForDraft,
+  MASSAGE_SERVICES_MAX,
+  mergeMassageGalleryFromDraft,
+  serializeMassageGalleryForDraft,
+  MASSAGE_GALLERY_MAX_SECTIONS,
+  MASSAGE_GALLERY_PHOTOS_PER_SECTION,
+  MASSAGE_GALLERY_TAB_LABEL_MAX,
+  mergeMassageCatalogFromDraft,
+  serializeMassageCatalogForDraft,
+  createMassageCatalogProductFromTemplate,
+  MASSAGE_CATALOG_MAX,
+  MAX_CATALOG_NAME_LEN,
+  MAX_CATALOG_BRAND_LEN,
+  MAX_CATALOG_INFO_LINE,
+  formatCatalogPriceDisplay,
+  mergeMassageSubscriptionsFromDraft,
+  serializeMassageSubscriptionsForDraft,
+  MASSAGE_SUBSCRIPTION_PRESETS as SUBS,
+  MASSAGE_SUBSCRIPTION_PRESET_COUNT,
+  mergeMassageSpecsFromDraft,
+  serializeMassageSpecsForDraft,
+  createMassageSpecFromTemplate,
+  MASSAGE_SPECS_MAX,
+  MAX_SVC_TITLE_LEN,
+  MAX_SVC_DESC_LEN,
+  MAX_SVC_PRICE_LEN,
+  MAX_CATALOG_TITLE_LEN,
+  parseCatalogPriceText,
+  normalizeCatalogCurrencyInput,
+} from '@/lib/massage-template-model'
 
-export type Lang = 'ru' | 'en' | 'ro'
-
-export type MassageServiceMerged = {
-  title: string
-  desc: string
-  price: string
-  image?: string
-  hideImage: boolean
+/**
+ * В iframe превью проп отстаёт от localStorage до следующего рендера — для мутаций читаем актуальный JSON здесь.
+ * В режиме welcomeTemplateView localStorage не трогаем (приветственный экран без черновиков редактирования).
+ */
+function readMassageSubsJsonRaw(prop: string | undefined, welcomeTemplateView: boolean): string | undefined {
+  if (typeof window === 'undefined') return prop
+  if (welcomeTemplateView) return prop?.trim() ? prop : undefined
+  const v = getMassageDraft('publicMassageSubsJson')
+  return v.trim() !== '' ? v : undefined
 }
 
 interface MassageTemplateProps {
@@ -30,9 +82,15 @@ interface MassageTemplateProps {
   massageThemeColors?: MassageThemeColors
   onBookNow?: () => void
   isEditMode?: boolean
+  /** Только дефолты шаблона, без черновиков из localStorage (экран выбора темы в конструкторе) */
+  welcomeTemplateView?: boolean
   heroTitle1?: string
   heroTitle2?: string
   heroSub?: string
+  /** Черновик подписи основной кнопки hero (язык — через суффикс __lang в storage) */
+  heroBookOnline?: string
+  /** Черновик подписи кнопки «Где нас найти» */
+  heroWhereFind?: string
   headerPhone?: string
   headerAddress?: string
   headerTagline?: string
@@ -74,6 +132,35 @@ interface MassageTemplateProps {
   massageSubsCtaHidden?: string
   /** 'true' — скрыть блок и пункт меню «Абонементы» */
   massageSubsHidden?: string
+  /** Заголовок блока «Каталог» */
+  massageCatalogTitle?: string
+  /** JSON массива товаров { products: { id, name, brand, price, oldPrice, info[] }[] } */
+  massageCatalogJson?: string
+  /** 'true' — скрыть блок «Каталог» и пункт меню */
+  massageCatalogHidden?: string
+  /** Заголовок блока «Специалисты» */
+  massageSpecsTitle?: string
+  /** JSON списка { items: { id, name, role, exp, image? }[] } */
+  massageSpecsJson?: string
+  /** 'true' — скрыть блок «Специалисты» */
+  massageSpecsHidden?: string
+  /** Блок записи (CTA): тексты черновика */
+  massageCtaTitle?: string
+  massageCtaSub?: string
+  massageCtaBtn?: string
+  /** 'true' — скрыть блок записи (CTA) на сайте */
+  massageCtaHidden?: string
+  /** Контакты: переопределение заголовков и текста */
+  massageContactTitle?: string
+  massageContactOurHeading?: string
+  /** Многострочный график работ (\n) */
+  massageContactSchedule?: string
+  massageContactEmail?: string
+  /** Координаты для карты (из поиска адреса в конструкторе) */
+  mapLat?: string
+  mapLng?: string
+  /** Подпись над картой («Адрес салона») */
+  massageContactMapLabel?: string
 }
 
 const UI: Record<Lang, Record<string, string>> = {
@@ -86,8 +173,11 @@ const UI: Record<Lang, Record<string, string>> = {
     bookVisit: 'ЗАПИСАТЬСЯ НА ПРИЕМ',
     heroTitle1: 'СТУДИЯ',
     heroTitle2: 'МАССАЖА',
-    heroSub: 'Самые эффективные и приятные массажные услуги для вашего здоровья и благополучия',
+    heroSub:
+      'Самые эффективные и приятные услуги в массажных салонах — для вашего здоровья и благополучия',
     heroCta: 'ЗАПИСАТЬСЯ НА ПЕРВИЧНЫЙ СЕАНС',
+    heroBookOnline: 'Записаться онлайн',
+    heroWhereFind: 'Где нас найти?',
     svcTitle: 'ВЫБЕРИТЕ НУЖНУЮ УСЛУГУ',
     svcSub: 'Мы предлагаем следующие виды массажа',
     svcAddCard: 'Добавить карточку',
@@ -106,12 +196,16 @@ const UI: Record<Lang, Record<string, string>> = {
     subsEmptyHint: 'Добавьте абонементы в панели справа.',
     catTitle: 'КАТАЛОГ НАШИХ ТОВАРОВ',
     catDiscount: '% Скидка',
+    catEmptyHint: 'Добавьте товары в панели справа.',
+    catOldPriceHint: 'Старая цена (зачёркнутая, если выше текущей)',
+    catCurrencyHint: 'Знак валюты у цены (по умолчанию $). Редактируйте вручную.',
     currency: '$',
     specTitle: 'НАШИ СЕРТИФИЦИРОВАННЫЕ СПЕЦИАЛИСТЫ',
+    specsHiddenBanner: 'Блок «Специалисты» скрыт на сайте. Снимите галочку в сайдбаре, чтобы снова показать.',
+    ctaHiddenBanner: 'Блок записи скрыт на сайте. Снимите галочку в сайдбаре, чтобы снова показать.',
     contactTitle: 'СВЯЖИТЕСЬ С НАМИ ЛЮБЫМ УДОБНЫМ СПОСОБОМ',
     ourContacts: 'Наши контакты',
     salonAddr: 'АДРЕС САЛОНА:',
-    writeOnline: 'ПИШИТЕ, МЫ ОНЛАЙН',
     socials: 'МЫ В СОЦСЕТЯХ',
     email: 'info@studio.ru',
     workHours: 'Пн-Пт: 9:00 - 18:00',
@@ -130,8 +224,11 @@ const UI: Record<Lang, Record<string, string>> = {
     bookVisit: 'BOOK AN APPOINTMENT',
     heroTitle1: 'MASSAGE',
     heroTitle2: 'STUDIO',
-    heroSub: 'The most effective and pleasant massage services for your health and well-being',
+    heroSub:
+      'The most effective and pleasant treatments at our massage salons — for your health and well-being',
     heroCta: 'BOOK YOUR FIRST SESSION',
+    heroBookOnline: 'Book online',
+    heroWhereFind: 'Where to find us?',
     svcTitle: 'CHOOSE THE SERVICE YOU NEED',
     svcSub: 'We offer the following types of massage',
     svcAddCard: 'Add card',
@@ -150,12 +247,16 @@ const UI: Record<Lang, Record<string, string>> = {
     subsEmptyHint: 'Add subscriptions in the right panel.',
     catTitle: 'OUR PRODUCT CATALOG',
     catDiscount: '% Off',
+    catEmptyHint: 'Add products in the right panel.',
+    catOldPriceHint: 'Old price (strikethrough when higher than current)',
+    catCurrencyHint: 'Currency symbol (default $). Edit manually.',
     currency: '$',
     specTitle: 'OUR CERTIFIED SPECIALISTS',
+    specsHiddenBanner: 'The Specialists block is hidden on the site. Uncheck it in the sidebar to show it again.',
+    ctaHiddenBanner: 'The booking block is hidden on the site. Uncheck it in the sidebar to show it again.',
     contactTitle: 'CONTACT US IN ANY CONVENIENT WAY',
     ourContacts: 'Our contacts',
     salonAddr: 'SALON ADDRESS:',
-    writeOnline: 'WRITE TO US ONLINE',
     socials: 'FOLLOW US',
     email: 'info@studio.com',
     workHours: 'Mon-Fri: 9:00 - 18:00',
@@ -174,8 +275,11 @@ const UI: Record<Lang, Record<string, string>> = {
     bookVisit: 'PROGRAMARE',
     heroTitle1: 'STUDIO',
     heroTitle2: 'DE MASAJ',
-    heroSub: 'Cele mai eficiente și plăcute servicii de masaj pentru sănătatea dumneavoastră',
+    heroSub:
+      'Cele mai eficiente și plăcute servicii în saloanele de masaj — pentru sănătatea și confortul dumneavoastră',
     heroCta: 'PROGRAMEAZĂ PRIMA ȘEDINȚĂ',
+    heroBookOnline: 'Programează-te online',
+    heroWhereFind: 'Unde ne găsiți?',
     svcTitle: 'ALEGEȚI SERVICIUL POTRIVIT',
     svcSub: 'Oferim următoarele tipuri de masaj',
     svcAddCard: 'Adaugă card',
@@ -194,12 +298,16 @@ const UI: Record<Lang, Record<string, string>> = {
     subsEmptyHint: 'Adăugați abonamente în panoul din dreapta.',
     catTitle: 'CATALOGUL PRODUSELOR NOASTRE',
     catDiscount: '% Reducere',
+    catEmptyHint: 'Adăugați produse în panoul din dreapta.',
+    catOldPriceHint: 'Preț vechi (tăiat dacă e mai mare decât cel curent)',
+    catCurrencyHint: 'Simbol monedă (implicit $). Editați manual.',
     currency: 'lei',
     specTitle: 'SPECIALIȘTII NOȘTRI CERTIFICAȚI',
+    specsHiddenBanner: 'Blocul Specialiști este ascuns pe site. Debifați în bara laterală pentru a-l afișa din nou.',
+    ctaHiddenBanner: 'Blocul de programare este ascuns pe site. Debifați în bara laterală pentru a-l afișa din nou.',
     contactTitle: 'CONTACTAȚI-NE ÎN ORICE MOD CONVENABIL',
     ourContacts: 'Contactele noastre',
     salonAddr: 'ADRESA SALONULUI:',
-    writeOnline: 'SCRIȚI-NE ONLINE',
     socials: 'URMĂRIȚI-NE',
     email: 'info@studio.ro',
     workHours: 'Lun-Vin: 9:00 - 18:00',
@@ -218,292 +326,21 @@ const NAV: Record<Lang, string[]> = {
 }
 const NAV_IDS = ['our-services', 'about', 'gallery', 'promos', 'catalog', 'masters', 'contacts']
 
-export const SERVICES: Record<Lang, { title: string; desc: string; price: string }[]> = {
-  ru: [
-    { title: 'КЛАССИЧЕСКИЙ МАССАЖ', desc: 'Снимает напряжение и улучшает кровообращение', price: '$32' },
-    { title: 'РЕЛАКСАЦИОННЫЙ МАССАЖ', desc: 'Помогает снять стресс и напряжение.', price: '$28' },
-    { title: 'ТЕРАПЕВТИЧЕСКИЙ МАССАЖ', desc: 'Улучшает общее состояние и способствует восстановлению', price: '$36' },
-    { title: 'ТАЙСКИЙ МАССАЖ', desc: 'Восстанавливает энергетический баланс и гибкость', price: '$40' },
-    { title: 'СПОРТИВНЫЙ МАССАЖ', desc: 'Оптимизирует физическую форму и ускоряет восстановление', price: '$34' },
-    { title: 'РЕЛАКСАЦИОННЫЙ МАССАЖ', desc: 'Помогает снять стресс и напряжение.', price: '$28' },
-    { title: 'АНТИЦЕЛЛЮЛИТНЫЙ МАССАЖ', desc: 'Снижает проявления целлюлита и улучшает тонус кожи', price: '$38' },
-    { title: 'АРОМАТЕРАПИЯ', desc: 'Использование эфирных масел для полного расслабления', price: '$28' },
-  ],
-  en: [
-    { title: 'CLASSIC MASSAGE', desc: 'Relieves tension and improves circulation', price: 'from $32' },
-    { title: 'RELAXATION MASSAGE', desc: 'Helps relieve stress and tension', price: 'from $28' },
-    { title: 'THERAPEUTIC MASSAGE', desc: 'Improves overall condition and aids recovery', price: 'from $36' },
-    { title: 'THAI MASSAGE', desc: 'Restores energy balance and flexibility', price: 'from $40' },
-    { title: 'SPORTS MASSAGE', desc: 'Optimizes physical form and speeds recovery', price: 'from $34' },
-    { title: 'RELAXATION MASSAGE', desc: 'Helps relieve stress and tension', price: 'from $28' },
-    { title: 'ANTI-CELLULITE MASSAGE', desc: 'Reduces cellulite and improves skin tone', price: 'from $38' },
-    { title: 'AROMATHERAPY', desc: 'Essential oils for complete relaxation', price: 'from $28' },
-  ],
-  ro: [
-    { title: 'MASAJ CLASIC', desc: 'Ameliorează tensiunea și îmbunătățește circulația', price: 'de la 120 lei' },
-    { title: 'MASAJ DE RELAXARE', desc: 'Ajută la ameliorarea stresului', price: 'de la 110 lei' },
-    { title: 'MASAJ TERAPEUTIC', desc: 'Îmbunătățește starea generală și recuperarea', price: 'de la 130 lei' },
-    { title: 'MASAJ THAILANDEZ', desc: 'Restabilește echilibrul energetic și flexibilitatea', price: 'de la 150 lei' },
-    { title: 'MASAJ SPORTIV', desc: 'Optimizează forma fizică și recuperarea', price: 'de la 125 lei' },
-    { title: 'MASAJ DE RELAXARE', desc: 'Ajută la ameliorarea stresului', price: 'de la 110 lei' },
-    { title: 'MASAJ ANTICELULITIC', desc: 'Reduce celulita și îmbunătățește tonusul pielii', price: 'de la 140 lei' },
-    { title: 'AROMATERAPIE', desc: 'Uleiuri esențiale pentru relaxare completă', price: 'de la 110 lei' },
-  ],
+function isMassageFooterPlaceholderAddress(addr: string): boolean {
+  const t = addr.trim()
+  if (!t) return true
+  if (t === FOOTER_DEFAULT_ADDRESS) return true
+  return (Object.values(FOOTER_DEFAULTS_BY_LANG) as Array<{ address: string }>).some(d => d.address === t)
 }
 
-/** Макс. карточек услуг; при пустом JSON — 8 карточек по умолчанию */
-export const MASSAGE_SERVICES_MAX = 12
-export const MASSAGE_SERVICES_DEFAULT_COUNT = 8
-
-/** Слияние дефолтов услуг с JSON из localStorage (конструктор) */
-export function mergeMassageServicesFromDraft(lang: Lang, raw?: string): MassageServiceMerged[] {
-  const base = SERVICES[lang] ?? SERVICES.ru
-  let prev: { title?: string; desc?: string; price?: string; image?: string; noImage?: boolean; hideImage?: boolean }[] = []
-  try {
-    if (raw?.trim()) prev = JSON.parse(raw)
-  } catch {
-    prev = []
-  }
-  if (!Array.isArray(prev)) prev = []
-
-  let len = prev.length
-  if (len === 0) len = MASSAGE_SERVICES_DEFAULT_COUNT
-  else len = Math.min(Math.max(len, 1), MASSAGE_SERVICES_MAX)
-
-  return Array.from({ length: len }, (_, i) => {
-    const b = base[i % base.length]
-    const p = prev[i] ?? {}
-    return {
-      title: typeof p.title === 'string' && p.title.length > 0 ? p.title : b.title,
-      desc: typeof p.desc === 'string' && p.desc.length > 0 ? p.desc : b.desc,
-      price: typeof p.price === 'string' && p.price.length > 0 ? p.price : b.price,
-      image: typeof p.image === 'string' && p.image.length > 0 ? p.image : undefined,
-      hideImage: p.noImage === true || p.hideImage === true,
-    }
-  })
-}
-
-export function serializeMassageServicesForDraft(merged: MassageServiceMerged[]): string {
-  return JSON.stringify(
-    merged.map(m => ({
-      title: m.title,
-      desc: m.desc,
-      price: m.price,
-      ...(m.image ? { image: m.image } : {}),
-      ...(m.hideImage ? { noImage: true } : {}),
-    }))
-  )
-}
-
-const MAX_SVC_TITLE_LEN = 200
-const MAX_SVC_DESC_LEN = 600
-const MAX_SVC_PRICE_LEN = 80
-
-const GAL_TABS: Record<Lang, string[]> = {
-  ru: ['Сеансы массажа', 'Ароматерапия', 'Холл', 'Интерьер', 'Специалисты'],
-  en: ['Massage sessions', 'Aromatherapy', 'Hall', 'Interior', 'Specialists'],
-  ro: ['Ședințe de masaj', 'Aromaterapie', 'Hol', 'Interior', 'Specialiști'],
-}
-
-export const MASSAGE_GALLERY_MAX_SECTIONS = 6
-export const MASSAGE_GALLERY_PHOTOS_PER_SECTION = 12
-/** Макс. длина названия вкладки секции (в сайдбаре конструктора) */
-export const MASSAGE_GALLERY_TAB_LABEL_MAX = 120
-
-export type MassageGallerySectionMerged = {
-  id: string
-  label: string
-  photos: (string | null)[]
-}
-
-function ensureGalleryPhotoSlots(photos: unknown): (string | null)[] {
-  const arr = Array.isArray(photos) ? photos : []
-  const out: (string | null)[] = []
-  for (let i = 0; i < MASSAGE_GALLERY_PHOTOS_PER_SECTION; i++) {
-    const v = arr[i]
-    out.push(typeof v === 'string' && v.length > 0 ? v : null)
-  }
-  return out
-}
-
-/** Секции галереи + до 12 фото на секцию; по умолчанию — вкладки из GAL_TABS */
-export function mergeMassageGalleryFromDraft(lang: Lang, raw?: string): MassageGallerySectionMerged[] {
-  const tabs = GAL_TABS[lang] ?? GAL_TABS.ru
-  const defaultSections = (): MassageGallerySectionMerged[] =>
-    tabs.map((label, i) => ({
-      id: `g-${i}`,
-      label,
-      photos: Array(MASSAGE_GALLERY_PHOTOS_PER_SECTION).fill(null) as (string | null)[],
-    }))
-
-  try {
-    if (!raw?.trim()) return defaultSections()
-    const parsed = JSON.parse(raw) as { sections?: unknown }
-    if (!parsed || !Array.isArray(parsed.sections) || parsed.sections.length === 0) return defaultSections()
-
-    const rawSecs = parsed.sections.slice(0, MASSAGE_GALLERY_MAX_SECTIONS)
-    const out: MassageGallerySectionMerged[] = []
-    for (let i = 0; i < rawSecs.length; i++) {
-      const s = rawSecs[i] as { id?: unknown; label?: unknown; photos?: unknown }
-      const id = typeof s.id === 'string' && s.id ? s.id : `g-${i}`
-      const defaultLabel = tabs[i] ?? tabs[tabs.length - 1] ?? '—'
-      /** Пустую строку сохраняем как есть — иначе в сайдбаре нельзя очистить поле и ввести новое название. */
-      const label =
-        typeof s.label === 'string'
-          ? s.label.slice(0, MASSAGE_GALLERY_TAB_LABEL_MAX)
-          : defaultLabel
-      out.push({ id, label, photos: ensureGalleryPhotoSlots(s.photos) })
-    }
-    if (out.length === 0) return defaultSections()
-    return out
-  } catch {
-    return defaultSections()
-  }
-}
-
-export function serializeMassageGalleryForDraft(merged: MassageGallerySectionMerged[]): string {
-  return JSON.stringify({
-    sections: merged.map(s => ({
-      id: s.id,
-      label: s.label,
-      photos: s.photos,
-    })),
-  })
-}
-
-const SUBS: Record<Lang, { title: string; desc: string; pct: string }[]> = {
-  ru: [
-    { title: 'АБОНЕМЕНТ НА 3 ПРОЦЕДУРЫ', desc: 'Идеальный старт для знакомства с нашими услугами', pct: '5%' },
-    { title: 'АБОНЕМЕНТ НА 5 ПРОЦЕДУР', desc: 'Помогает снять стресс и напряжение', pct: '10%' },
-    { title: 'АБОНЕМЕНТ НА 10 ПРОЦЕДУР', desc: 'Регулярный уход за вашим здоровьем', pct: '15%' },
-    { title: 'АБОНЕМЕНТ НА 15 ПРОЦЕДУР', desc: 'Полный курс восстановления и расслабления', pct: '20%' },
-    { title: 'АБОНЕМЕНТ НА 20 ПРОЦЕДУР', desc: 'Максимальная забота о вашем теле', pct: '25%' },
-    { title: 'АБОНЕМЕНТ НА 30 ПРОЦЕДУР', desc: 'VIP программа на весь сезон', pct: '30%' },
-    { title: 'АБОНЕМЕНТ НА 50 ПРОЦЕДУР', desc: 'Безлимитная программа для постоянных клиентов', pct: '50%' },
-  ],
-  en: [
-    { title: '3 SESSION PACKAGE', desc: 'A perfect start to explore our services', pct: '5%' },
-    { title: '5 SESSION PACKAGE', desc: 'Helps relieve stress and tension', pct: '10%' },
-    { title: '10 SESSION PACKAGE', desc: 'Regular care for your health', pct: '15%' },
-    { title: '15 SESSION PACKAGE', desc: 'Full recovery and relaxation course', pct: '20%' },
-    { title: '20 SESSION PACKAGE', desc: 'Maximum care for your body', pct: '25%' },
-    { title: '30 SESSION PACKAGE', desc: 'VIP program for the whole season', pct: '30%' },
-    { title: '50 SESSION PACKAGE', desc: 'Unlimited program for loyal clients', pct: '50%' },
-  ],
-  ro: [
-    { title: 'ABONAMENT 3 ȘEDINȚE', desc: 'Un start perfect pentru a explora serviciile noastre', pct: '5%' },
-    { title: 'ABONAMENT 5 ȘEDINȚE', desc: 'Ajută la ameliorarea stresului', pct: '10%' },
-    { title: 'ABONAMENT 10 ȘEDINȚE', desc: 'Îngrijire regulată pentru sănătatea ta', pct: '15%' },
-    { title: 'ABONAMENT 15 ȘEDINȚE', desc: 'Curs complet de recuperare și relaxare', pct: '20%' },
-    { title: 'ABONAMENT 20 ȘEDINȚE', desc: 'Maximă grijă pentru corpul tău', pct: '25%' },
-    { title: 'ABONAMENT 30 ȘEDINȚE', desc: 'Program VIP pentru tot sezonul', pct: '30%' },
-    { title: 'ABONAMENT 50 ȘEDINȚE', desc: 'Program nelimitat pentru clienți fideli', pct: '50%' },
-  ],
-}
-
-export const MASSAGE_SUBSCRIPTION_PRESETS = SUBS
-
-export type MassageSubscriptionItemMerged = {
-  id: string
-  templateIndex: number
-  title?: string
-  desc?: string
-}
-
-export function mergeMassageSubscriptionsFromDraft(lang: Lang, raw?: string): MassageSubscriptionItemMerged[] {
-  const catalog = SUBS[lang] ?? SUBS.ru
-  const defaultItems = (): MassageSubscriptionItemMerged[] =>
-    catalog.map((_, i) => ({ id: `sub-${i}`, templateIndex: i }))
-  if (!raw?.trim()) return defaultItems()
-  try {
-    const parsed = JSON.parse(raw) as { items?: unknown }
-    if (!parsed || !Array.isArray(parsed.items)) return defaultItems()
-    const out: MassageSubscriptionItemMerged[] = []
-    const seenTemplateIndexes = new Set<number>()
-    for (const row of parsed.items) {
-      const r = row as { id?: unknown; templateIndex?: unknown; title?: unknown; desc?: unknown }
-      const id = typeof r.id === 'string' && r.id ? r.id : `sub-${out.length}`
-      const ti =
-        typeof r.templateIndex === 'number' && Number.isFinite(r.templateIndex)
-          ? Math.max(0, Math.min(catalog.length - 1, Math.floor(r.templateIndex)))
-          : 0
-      // Один пресет скидки должен быть только один раз.
-      if (seenTemplateIndexes.has(ti)) continue
-      seenTemplateIndexes.add(ti)
-      const title = typeof r.title === 'string' ? r.title.slice(0, 220) : undefined
-      const desc = typeof r.desc === 'string' ? r.desc.slice(0, 320) : undefined
-      out.push({ id, templateIndex: ti, title, desc })
-    }
-    return out
-  } catch {
-    return defaultItems()
-  }
-}
-
-export function serializeMassageSubscriptionsForDraft(merged: MassageSubscriptionItemMerged[]): string {
-  return JSON.stringify({ items: merged })
-}
-
-export const MASSAGE_SUBSCRIPTION_PRESET_COUNT = SUBS.ru.length
-
-const SUBS_VISIBLE = 3
-
-const PRODUCTS: Record<Lang, { name: string; brand: string; price: number; oldPrice: number; info: string[] }[]> = {
-  ru: [
-    { name: 'Масло массажное лаванда', brand: 'SPA Natural', price: 440, oldPrice: 900, info: ['Бренд: SPA Natural', 'Вид: масло массажное', 'Эффект: расслабление', 'Для кого: для всех'] },
-    { name: 'Крем для массажа питательный', brand: 'Organic', price: 1400, oldPrice: 2000, info: ['Бренд: Organic', 'Вид: крем массажный', 'Эффект: питание, увлажнение', 'Для кого: для женщин'] },
-    { name: 'Масло эфирное мята', brand: 'AromaLife', price: 780, oldPrice: 900, info: ['Бренд: AromaLife', 'Вид: эфирное масло', 'Эффект: тонизирование', 'Для кого: для всех'] },
-    { name: 'Бальзам разогревающий хвойный', brand: 'ThermoSpa', price: 990, oldPrice: 1000, info: ['Бренд: ThermoSpa', 'Вид: бальзам', 'Эффект: разогрев, расслабление', 'Для кого: для всех'] },
-    { name: 'Скраб солевой морской', brand: 'OceanSpa', price: 620, oldPrice: 850, info: ['Бренд: OceanSpa', 'Вид: скраб', 'Эффект: пилинг, обновление', 'Для кого: для всех'] },
-    { name: 'Масло кокосовое для массажа', brand: 'CocoRelax', price: 530, oldPrice: 750, info: ['Бренд: CocoRelax', 'Вид: масло массажное', 'Эффект: увлажнение', 'Для кого: для всех'] },
-    { name: 'Гель охлаждающий ментоловый', brand: 'CoolTouch', price: 350, oldPrice: 500, info: ['Бренд: CoolTouch', 'Вид: гель', 'Эффект: охлаждение, снятие боли', 'Для кого: для спортсменов'] },
-    { name: 'Аромасвеча для релаксации', brand: 'ZenLight', price: 280, oldPrice: 400, info: ['Бренд: ZenLight', 'Вид: аромасвеча', 'Эффект: релаксация', 'Для кого: для дома'] },
-  ],
-  en: [
-    { name: 'Lavender massage oil', brand: 'SPA Natural', price: 15, oldPrice: 30, info: ['Brand: SPA Natural', 'Type: massage oil', 'Effect: relaxation'] },
-    { name: 'Nourishing massage cream', brand: 'Organic', price: 45, oldPrice: 65, info: ['Brand: Organic', 'Type: massage cream', 'Effect: nourishing'] },
-    { name: 'Peppermint essential oil', brand: 'AromaLife', price: 25, oldPrice: 30, info: ['Brand: AromaLife', 'Type: essential oil', 'Effect: invigorating'] },
-    { name: 'Warming herbal balm', brand: 'ThermoSpa', price: 32, oldPrice: 35, info: ['Brand: ThermoSpa', 'Type: balm', 'Effect: warming'] },
-    { name: 'Sea salt scrub', brand: 'OceanSpa', price: 20, oldPrice: 28, info: ['Brand: OceanSpa', 'Type: scrub', 'Effect: exfoliation'] },
-    { name: 'Coconut massage oil', brand: 'CocoRelax', price: 18, oldPrice: 25, info: ['Brand: CocoRelax', 'Type: massage oil', 'Effect: moisturizing'] },
-    { name: 'Cooling menthol gel', brand: 'CoolTouch', price: 12, oldPrice: 17, info: ['Brand: CoolTouch', 'Type: gel', 'Effect: cooling, pain relief'] },
-    { name: 'Relaxation aroma candle', brand: 'ZenLight', price: 10, oldPrice: 14, info: ['Brand: ZenLight', 'Type: aroma candle', 'Effect: relaxation'] },
-  ],
-  ro: [
-    { name: 'Ulei de masaj lavandă', brand: 'SPA Natural', price: 80, oldPrice: 160, info: ['Brand: SPA Natural', 'Tip: ulei de masaj', 'Efect: relaxare'] },
-    { name: 'Cremă de masaj nutritivă', brand: 'Organic', price: 250, oldPrice: 360, info: ['Brand: Organic', 'Tip: cremă masaj', 'Efect: nutriție'] },
-    { name: 'Ulei esențial de mentă', brand: 'AromaLife', price: 140, oldPrice: 160, info: ['Brand: AromaLife', 'Tip: ulei esențial', 'Efect: tonifiere'] },
-    { name: 'Balsam de încălzire', brand: 'ThermoSpa', price: 180, oldPrice: 190, info: ['Brand: ThermoSpa', 'Tip: balsam', 'Efect: încălzire'] },
-    { name: 'Scrub cu sare de mare', brand: 'OceanSpa', price: 110, oldPrice: 150, info: ['Brand: OceanSpa', 'Tip: scrub', 'Efect: exfoliere'] },
-    { name: 'Ulei de cocos pentru masaj', brand: 'CocoRelax', price: 95, oldPrice: 135, info: ['Brand: CocoRelax', 'Tip: ulei de masaj', 'Efect: hidratare'] },
-    { name: 'Gel răcoritor cu mentol', brand: 'CoolTouch', price: 65, oldPrice: 90, info: ['Brand: CoolTouch', 'Tip: gel', 'Efect: răcorire'] },
-    { name: 'Lumânare aromatică', brand: 'ZenLight', price: 50, oldPrice: 72, info: ['Brand: ZenLight', 'Tip: lumânare', 'Efect: relaxare'] },
-  ],
-}
-
-const SPECS: Record<Lang, { name: string; role: string; exp: string }[]> = {
-  ru: [
-    { name: 'Анна Петрова', role: 'Главный специалист', exp: 'Опыт 12 лет · Классический, спортивный массаж' },
-    { name: 'Мария Иванова', role: 'Массажист', exp: 'Опыт 8 лет · Лимфодренажный, антицеллюлитный' },
-    { name: 'Александра Иванова', role: 'Руководитель компании', exp: 'Опыт 15 лет · Управление, стратегия развития' },
-    { name: 'Ольга Козлова', role: 'Массажист', exp: 'Опыт 6 лет · Тайский, расслабляющий массаж' },
-    { name: 'Елена Смирнова', role: 'Косметолог-массажист', exp: 'Опыт 10 лет · Массаж лица, лифтинг' },
-  ],
-  en: [
-    { name: 'Anna Petrova', role: 'Lead specialist', exp: '12 years · Classic & sports massage' },
-    { name: 'Maria Ivanova', role: 'Massage therapist', exp: '8 years · Lymphatic drainage, anti-cellulite' },
-    { name: 'Alexandra Ivanova', role: 'Company director', exp: '15 years · Management & strategy' },
-    { name: 'Olga Kozlova', role: 'Massage therapist', exp: '6 years · Thai & relaxation massage' },
-    { name: 'Elena Smirnova', role: 'Cosmetologist-therapist', exp: '10 years · Facial massage, lifting' },
-  ],
-  ro: [
-    { name: 'Anna Petrova', role: 'Specialist principal', exp: '12 ani · Masaj clasic și sportiv' },
-    { name: 'Maria Ivanova', role: 'Terapeut masaj', exp: '8 ani · Drenaj limfatic, anticelulitic' },
-    { name: 'Alexandra Ivanova', role: 'Director companie', exp: '15 ani · Management și strategie' },
-    { name: 'Olga Kozlova', role: 'Terapeut masaj', exp: '6 ani · Masaj thailandez și de relaxare' },
-    { name: 'Elena Smirnova', role: 'Cosmetolog-terapeut', exp: '10 ani · Masaj facial, lifting' },
-  ],
-}
+/** Премиум-массаж, экран выбора темы: нейтральные ссылки, чтобы в шапке были иконки соцсетей до заполнения полей */
+const MASSAGE_WELCOME_DEMO_SOCIAL = {
+  whatsappUrl: 'https://www.whatsapp.com/',
+  telegramUrl: 'https://t.me/',
+  instagramUrl: 'https://www.instagram.com/',
+  vkUrl: 'https://vk.com/',
+  facebookUrl: 'https://www.facebook.com/',
+} as const
 
 const SVC_COLORS = [
   ['#F5E0DF', '#E8C8C7'],
@@ -526,7 +363,6 @@ const GALLERY_COLORS = [
   ['#E2DBD8', '#D0C8C2'],
   ['#E0D8D5', '#D5CBC5'],
 ]
-const VISIBLE_GAL = 4
 
 const PINK = '#D4908F'
 const PINK_DARK = '#C07F7E'
@@ -536,6 +372,7 @@ const BG = '#FAF8F6'
 /** Лимиты символов для hero-блока в режиме редактирования конструктора */
 const MAX_HERO_TITLE_LINE = 80
 const MAX_HERO_SUB = 400
+const MAX_HERO_BTN_LABEL = 80
 const MAX_ABOUT_TITLE = 500
 const MAX_ABOUT_TEXT = 2500
 const MAX_ABOUT_MISSION = 600
@@ -585,6 +422,16 @@ const Pin = ({ size = 'w-5 h-5' }: { size?: string }) => (
   <svg className={`${size} shrink-0`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
     <path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
     <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1 1 15 0Z" />
+  </svg>
+)
+
+const PencilSquare = ({ size = 'w-5 h-5' }: { size?: string }) => (
+  <svg className={`${size} shrink-0`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5} aria-hidden>
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10"
+    />
   </svg>
 )
 const Clock = ({ size = 'w-5 h-5' }: { size?: string }) => (
@@ -686,9 +533,12 @@ export default function MassageTemplate({
   massageThemeColors,
   onBookNow,
   isEditMode = false,
+  welcomeTemplateView = false,
   heroTitle1: heroTitle1Prop,
   heroTitle2: heroTitle2Prop,
   heroSub: heroSubProp,
+  heroBookOnline: heroBookOnlineProp,
+  heroWhereFind: heroWhereFindProp,
   headerPhone,
   headerAddress,
   headerTagline,
@@ -719,6 +569,23 @@ export default function MassageTemplate({
   massageSubsCtaUrl: massageSubsCtaUrlProp,
   massageSubsCtaHidden: massageSubsCtaHiddenProp,
   massageSubsHidden: massageSubsHiddenProp,
+  massageCatalogTitle: massageCatalogTitleProp,
+  massageCatalogJson: massageCatalogJsonProp,
+  massageCatalogHidden: massageCatalogHiddenProp,
+  massageSpecsTitle: massageSpecsTitleProp,
+  massageSpecsJson: massageSpecsJsonProp,
+  massageSpecsHidden: massageSpecsHiddenProp,
+  massageCtaTitle: massageCtaTitleProp,
+  massageCtaSub: massageCtaSubProp,
+  massageCtaBtn: massageCtaBtnProp,
+  massageCtaHidden: massageCtaHiddenProp,
+  massageContactTitle: massageContactTitleProp,
+  massageContactOurHeading: massageContactOurHeadingProp,
+  massageContactSchedule: massageContactScheduleProp,
+  massageContactEmail: massageContactEmailProp,
+  mapLat: mapLatProp,
+  mapLng: mapLngProp,
+  massageContactMapLabel: massageContactMapLabelProp,
 }: MassageTemplateProps) {
   const t = UI[lang] ?? UI.ru
   const theme = massageThemeColors
@@ -727,10 +594,59 @@ export default function MassageTemplate({
   const galSubCol = col('galSub')
   const galTabActiveCol = col('galTabActive')
   const subsCtaTextCol = col('subsCtaText')
+  const subsBlockTitleCol = col('subsBlockTitle')
+  const subsCardTitleCol = col('subsCardTitle')
+  const subsCardDescCol = col('subsCardDesc')
+  const subsCardBgFrom = col('subsCardBgFrom')
+  const subsCardBgTo = col('subsCardBgTo')
+  const subsCtaBgCol = col('subsCtaBg')
+  const contactsBlockTitleCol = col('contactsBlockTitle')
+  const contactsSectionHeadingCol = col('contactsSectionHeading')
+  const contactsIconCol = col('contactsIcon')
+  const contactsBodyCol = col('contactsBody')
+  const contactsLabelCol = col('contactsLabel')
   const galTabsFallback = GAL_TABS[lang] ?? GAL_TABS.ru
   const logoShapeClass =
     headerLogoShape === 'square' ? 'rounded-none' : headerLogoShape === 'rounded' ? 'rounded-xl' : 'rounded-full'
   const showHeaderLogo = headerLogoVisible !== false && !!headerLogoUrl && headerLogoUrl.length > 0
+
+  const socialUrls = useMemo(() => {
+    if (!welcomeTemplateView) {
+      return {
+        telegramUrl,
+        viberUrl,
+        whatsappUrl,
+        instagramUrl,
+        facebookUrl,
+        vkUrl,
+        twitterUrl,
+        tiktokUrl,
+      }
+    }
+    const d = MASSAGE_WELCOME_DEMO_SOCIAL
+    const p = (saved: string, demo: string) => (saved.trim() ? saved : demo)
+    return {
+      whatsappUrl: p(whatsappUrl, d.whatsappUrl),
+      telegramUrl: p(telegramUrl, d.telegramUrl),
+      instagramUrl: p(instagramUrl, d.instagramUrl),
+      vkUrl: p(vkUrl, d.vkUrl),
+      facebookUrl: p(facebookUrl, d.facebookUrl),
+      viberUrl: viberUrl.trim(),
+      twitterUrl: twitterUrl.trim(),
+      tiktokUrl: tiktokUrl.trim(),
+    }
+  }, [
+    welcomeTemplateView,
+    telegramUrl,
+    viberUrl,
+    whatsappUrl,
+    instagramUrl,
+    facebookUrl,
+    vkUrl,
+    twitterUrl,
+    tiktokUrl,
+  ])
+
   const displayServices = useMemo(
     () => mergeMassageServicesFromDraft(lang, massageServicesJson),
     [lang, massageServicesJson]
@@ -780,8 +696,9 @@ export default function MassageTemplate({
 
   const subsCatalog = SUBS[lang] ?? SUBS.ru
   const displaySubItems = useMemo(
-    () => mergeMassageSubscriptionsFromDraft(lang, massageSubsJsonProp),
-    [lang, massageSubsJsonProp]
+    () =>
+      mergeMassageSubscriptionsFromDraft(lang, readMassageSubsJsonRaw(massageSubsJsonProp, welcomeTemplateView)),
+    [lang, massageSubsJsonProp, welcomeTemplateView]
   )
   const displaySubs = useMemo(
     () =>
@@ -798,31 +715,42 @@ export default function MassageTemplate({
     [displaySubItems, subsCatalog]
   )
 
+  const catalogBlockHidden = massageCatalogHiddenProp === 'true'
   const subsBlockHidden = massageSubsHiddenProp === 'true'
+  const specsHidden = massageSpecsHiddenProp === 'true'
+  const ctaBlockHidden = massageCtaHiddenProp === 'true'
   const navItems = useMemo(() => {
     const labels = NAV[lang] ?? NAV.ru
-    const pairs = labels.map((label, i) => ({ label, id: NAV_IDS[i] }))
-    if (subsBlockHidden) return pairs.filter(p => p.id !== 'promos')
+    let pairs = labels.map((label, i) => ({ label, id: NAV_IDS[i] }))
+    if (subsBlockHidden) pairs = pairs.filter(p => p.id !== 'promos')
+    if (catalogBlockHidden) pairs = pairs.filter(p => p.id !== 'catalog')
+    if (specsHidden) pairs = pairs.filter(p => p.id !== 'masters')
     return pairs
-  }, [lang, subsBlockHidden])
+  }, [lang, subsBlockHidden, catalogBlockHidden, specsHidden])
 
   const removeSubItem = useCallback(
     (id: string) => {
       if (!onSaveDraft) return
-      const current = mergeMassageSubscriptionsFromDraft(lang, massageSubsJsonProp)
+      const current = mergeMassageSubscriptionsFromDraft(
+        lang,
+        readMassageSubsJsonRaw(massageSubsJsonProp, welcomeTemplateView)
+      )
       const next = current.filter(row => row.id !== id)
       onSaveDraft('publicMassageSubsJson', serializeMassageSubscriptionsForDraft(next))
     },
-    [lang, massageSubsJsonProp, onSaveDraft]
+    [lang, massageSubsJsonProp, onSaveDraft, welcomeTemplateView]
   )
   const patchSubItem = useCallback(
-    (index: number, patch: Partial<MassageSubscriptionItemMerged>) => {
+    (itemId: string, patch: Partial<MassageSubscriptionItemMerged>) => {
       if (!onSaveDraft) return
-      const current = mergeMassageSubscriptionsFromDraft(lang, massageSubsJsonProp)
-      const next = current.map((row, i) => (i === index ? { ...row, ...patch } : row))
+      const current = mergeMassageSubscriptionsFromDraft(
+        lang,
+        readMassageSubsJsonRaw(massageSubsJsonProp, welcomeTemplateView)
+      )
+      const next = current.map(row => (row.id === itemId ? { ...row, ...patch } : row))
       onSaveDraft('publicMassageSubsJson', serializeMassageSubscriptionsForDraft(next))
     },
-    [lang, massageSubsJsonProp, onSaveDraft]
+    [lang, massageSubsJsonProp, onSaveDraft, welcomeTemplateView]
   )
 
   const removeGallerySection = useCallback(
@@ -836,14 +764,102 @@ export default function MassageTemplate({
     [lang, massageGalleryJsonProp, onSaveDraft]
   )
 
-  const products = PRODUCTS[lang] ?? PRODUCTS.ru
-  const specs = SPECS[lang] ?? SPECS.ru
+  const displaySpecs = useMemo(
+    () => mergeMassageSpecsFromDraft(lang, massageSpecsJsonProp),
+    [lang, massageSpecsJsonProp]
+  )
+  const specsTitleDisplay =
+    massageSpecsTitleProp != null && massageSpecsTitleProp.trim() !== ''
+      ? massageSpecsTitleProp
+      : t.specTitle
+
+  const ctaTitleDisplay =
+    massageCtaTitleProp != null && massageCtaTitleProp.trim() !== '' ? massageCtaTitleProp : t.ctaTitle
+  const ctaSubDisplay =
+    massageCtaSubProp != null && massageCtaSubProp.trim() !== '' ? massageCtaSubProp : t.ctaSub
+  const ctaBtnDisplay =
+    massageCtaBtnProp != null && massageCtaBtnProp.trim() !== '' ? massageCtaBtnProp : t.ctaBtn
+
+  const ctaBgFrom = col('ctaBlockBgFrom')
+  const ctaBgTo = col('ctaBlockBgTo')
+  const ctaTitleCol = col('ctaBlockTitle')
+  const ctaSubCol = col('ctaBlockSub')
+  const ctaBtnBgCol = col('ctaBlockBtnBg')
+  const ctaBtnTextCol = col('ctaBlockBtnText')
+
+  const defaultContactSchedule = useMemo(
+    () => [t.workHours, t.workWeekend, t.dayOff].join('\n'),
+    [t.workHours, t.workWeekend, t.dayOff]
+  )
+  const contactTitleDisplay =
+    massageContactTitleProp != null && massageContactTitleProp.trim() !== ''
+      ? massageContactTitleProp
+      : t.contactTitle
+  const contactOurHeadingDisplay =
+    massageContactOurHeadingProp != null && massageContactOurHeadingProp.trim() !== ''
+      ? massageContactOurHeadingProp
+      : t.ourContacts
+  const contactScheduleDisplay =
+    massageContactScheduleProp != null && massageContactScheduleProp.trim() !== ''
+      ? massageContactScheduleProp
+      : defaultContactSchedule
+  const contactEmailDisplay =
+    massageContactEmailProp != null && massageContactEmailProp.trim() !== ''
+      ? massageContactEmailProp
+      : t.email
+  const contactMapCaptionDisplay =
+    massageContactMapLabelProp != null && massageContactMapLabelProp.trim() !== ''
+      ? massageContactMapLabelProp
+      : t.salonAddr
+
+  const contactMapEmbedSrc = useMemo(() => {
+    if (welcomeTemplateView) return DEFAULT_WORLD_MAP_EMBED_URL
+    const z = 17
+    const lat = mapLatProp ? parseFloat(mapLatProp) : NaN
+    const lng = mapLngProp ? parseFloat(mapLngProp) : NaN
+    if (Number.isFinite(lat) && Number.isFinite(lng)) {
+      return `https://www.google.com/maps?q=${lat},${lng}&z=${z}&output=embed&hl=en`
+    }
+    const addrTrim = (headerAddress ?? '').trim()
+    if (isMassageFooterPlaceholderAddress(addrTrim)) return DEFAULT_WORLD_MAP_EMBED_URL
+    return `https://www.google.com/maps?q=${encodeURIComponent(addrTrim)}&z=${z}&output=embed&hl=en`
+  }, [welcomeTemplateView, mapLatProp, mapLngProp, headerAddress])
+
+  const patchSpec = useCallback(
+    (specId: string, patch: Partial<MassageSpecialistMerged>) => {
+      if (!onSaveDraft) return
+      const current = mergeMassageSpecsFromDraft(lang, massageSpecsJsonProp)
+      const next = current.map(row => (row.id === specId ? { ...row, ...patch } : row))
+      onSaveDraft('publicMassageSpecsJson', serializeMassageSpecsForDraft(next))
+    },
+    [lang, massageSpecsJsonProp, onSaveDraft]
+  )
+
+  const removeSpec = useCallback(
+    (specId: string) => {
+      if (!onSaveDraft) return
+      const current = mergeMassageSpecsFromDraft(lang, massageSpecsJsonProp)
+      const next = current.filter(row => row.id !== specId)
+      onSaveDraft('publicMassageSpecsJson', serializeMassageSpecsForDraft(next))
+    },
+    [lang, massageSpecsJsonProp, onSaveDraft]
+  )
 
   const name =
     ((headerSiteName !== undefined && headerSiteName !== '' ? headerSiteName : null) ?? siteName) || 'Lotos'
   const heroLine1 = heroTitle1Prop || t.heroTitle1
   const heroLine2 = heroTitle2Prop || t.heroTitle2
   const heroSubText = heroSubProp || t.heroSub
+  const heroBookLabel = welcomeTemplateView
+    ? t.heroBookOnline
+    : heroBookOnlineProp != null && heroBookOnlineProp.trim() !== ''
+      ? heroBookOnlineProp.trim()
+      : t.heroBookOnline
+  const heroWhereLabel = welcomeTemplateView
+    ? t.heroWhereFind
+    : heroWhereFindProp != null && heroWhereFindProp.trim() !== ''
+      ? heroWhereFindProp.trim()
+      : t.heroWhereFind
 
   const defaultAboutHeadline = `${t.aboutTitle} ${name.toUpperCase()}`
   const aboutHeadlineDisplay =
@@ -867,12 +883,54 @@ export default function MassageTemplate({
       ? massageSubsTitleProp
       : t.subsTitle
 
+  const catalogTitleDisplay =
+    massageCatalogTitleProp != null && massageCatalogTitleProp.trim() !== ''
+      ? massageCatalogTitleProp
+      : t.catTitle
+
+  const displayCatalog = useMemo(
+    () => mergeMassageCatalogFromDraft(lang, massageCatalogJsonProp),
+    [lang, massageCatalogJsonProp]
+  )
+
+  const patchCatalogProduct = useCallback(
+    (index: number, patch: Partial<MassageCatalogProductMerged>) => {
+      if (!onSaveDraft) return
+      const current = mergeMassageCatalogFromDraft(lang, massageCatalogJsonProp)
+      const next = current.map((row, i) => (i === index ? { ...row, ...patch } : row))
+      onSaveDraft('publicMassageCatalogJson', serializeMassageCatalogForDraft(next))
+    },
+    [lang, massageCatalogJsonProp, onSaveDraft]
+  )
+
+  const removeCatalogProduct = useCallback(
+    (productId: string) => {
+      if (!onSaveDraft) return
+      const current = mergeMassageCatalogFromDraft(lang, massageCatalogJsonProp)
+      const next = current.filter(row => row.id !== productId)
+      onSaveDraft('publicMassageCatalogJson', serializeMassageCatalogForDraft(next))
+    },
+    [lang, massageCatalogJsonProp, onSaveDraft]
+  )
+
   const rootRef = useRef<HTMLDivElement>(null)
   const topBarRef = useRef<HTMLDivElement>(null)
   const navRef = useRef<HTMLElement>(null)
   const [heroH, setHeroH] = useState('70vh')
   const [activeGalTab, setActiveGalTab] = useState(0)
   const [showScrollTop, setShowScrollTop] = useState(false)
+  const [isLangOpen, setIsLangOpen] = useState(false)
+  const enabledLangs = useMemo(() => getEnabledSiteLangs(), [])
+  const showLangSwitcher = enabledLangs.length > 1
+
+  const handleLangChange = useCallback((code: Lang) => {
+    setIsLangOpen(false)
+    try {
+      localStorage.setItem('publicLang', code)
+      window.parent.postMessage({ type: 'constructorPublicLangChanged' }, '*')
+      window.location.reload()
+    } catch { /* ignore */ }
+  }, [])
 
   const gallerySlidesTripled = useMemo(() => {
     const cur =
@@ -910,15 +968,47 @@ export default function MassageTemplate({
     return () => window.removeEventListener('resize', calc)
   }, [])
 
+  /** Карусели: на узком экране 1–2 карточки, на планшете 3, на десктопе как раньше */
+  const [visibleGal, setVisibleGal] = useState(4)
+  const [visibleSubs, setVisibleSubs] = useState(3)
+  const [visibleCat, setVisibleCat] = useState(4)
+  useEffect(() => {
+    const upd = () => {
+      const w = window.innerWidth
+      if (w < 480) {
+        setVisibleGal(1)
+        setVisibleSubs(1)
+        setVisibleCat(1)
+      } else if (w < 640) {
+        setVisibleGal(2)
+        setVisibleSubs(2)
+        setVisibleCat(2)
+      } else if (w < 1024) {
+        setVisibleGal(3)
+        setVisibleSubs(3)
+        setVisibleCat(3)
+      } else {
+        setVisibleGal(4)
+        setVisibleSubs(3)
+        setVisibleCat(4)
+      }
+    }
+    upd()
+    window.addEventListener('resize', upd)
+    return () => window.removeEventListener('resize', upd)
+  }, [])
+
   const galTotal = MASSAGE_GALLERY_PHOTOS_PER_SECTION
-  const galCanScroll = galTotal > VISIBLE_GAL
+  const galCanScroll = galTotal > visibleGal
   const [galSlide, setGalSlide] = useState(galCanScroll ? galTotal : 0)
   const [galSmooth, setGalSmooth] = useState(true)
 
   const subsTotal = displaySubs.length
-  const subsCanScroll = subsTotal > SUBS_VISIBLE
+  const subsCanScroll = subsTotal > visibleSubs
   const [subsSlide, setSubsSlide] = useState(subsCanScroll ? subsTotal : 0)
   const [subsSmooth, setSubsSmooth] = useState(true)
+  /** Пока карусель отключена (≤3 карточек), старый subsSlide от «длинной» карусели уводит ряд за экран до useEffect — обнуляем сразу. */
+  const subsSlideVisual = subsCanScroll ? subsSlide : 0
 
   const handleSubsCtaClick = (e: MouseEvent<HTMLButtonElement>) => {
     e.preventDefault()
@@ -928,11 +1018,17 @@ export default function MassageTemplate({
   }
   const subsCtaHidden = massageSubsCtaHiddenProp === 'true'
 
-  const CAT_VISIBLE = 4
-  const catTotal = products.length
+  const catTotal = displayCatalog.length
   const [catSlide, setCatSlide] = useState(0)
   const catAtStart = catSlide === 0
-  const catAtEnd = catSlide >= catTotal - CAT_VISIBLE
+  const catAtEnd = catTotal <= visibleCat ? true : catSlide >= catTotal - visibleCat
+
+  useEffect(() => {
+    setCatSlide(s => {
+      const maxStart = Math.max(0, displayCatalog.length - visibleCat)
+      return s > maxStart ? maxStart : s
+    })
+  }, [displayCatalog.length, visibleCat])
 
   const galPrev = () => { setGalSmooth(true); setGalSlide(s => s - 1) }
   const galNext = () => { setGalSmooth(true); setGalSlide(s => s + 1) }
@@ -982,14 +1078,14 @@ export default function MassageTemplate({
 
   useEffect(() => {
     setGalSlide(galCanScroll ? galTotal : 0)
-  }, [activeGalTab, galTotal, galCanScroll])
+  }, [activeGalTab, galTotal, galCanScroll, visibleGal])
   useEffect(() => {
     if (!subsSmooth) requestAnimationFrame(() => requestAnimationFrame(() => setSubsSmooth(true)))
   }, [subsSmooth])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     setSubsSlide(subsCanScroll ? subsTotal : 0)
-  }, [subsTotal, subsCanScroll])
+  }, [subsTotal, subsCanScroll, visibleSubs])
 
   useEffect(() => {
     const scrollParent = rootRef.current?.closest('[data-scroll-container]') as HTMLElement | null
@@ -1029,35 +1125,36 @@ export default function MassageTemplate({
       style={{ background: BG, fontFamily: "'Georgia', 'Times New Roman', serif" }}
     >
 
-      {/* ============ HEADER (шапка: контакты + меню + hero) — якорь для конструктора ============ */}
-      <div id="massage-block-header">
-      {/* ============ TOP CONTACT BAR ============ */}
+      {/* ============ TOP CONTACT BAR — в потоке; навигация ниже — sticky (как на десктопе на всех ширинах). ============ */}
       <div
+        id="massage-block-header"
         ref={topBarRef}
         className="w-full border-b border-gray-100"
         style={{ backgroundColor: col('topBarBg') }}
       >
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between gap-6 flex-wrap">
-            {/* Logo + tagline */}
-            <div className="flex items-center gap-3 min-w-0">
-              {showHeaderLogo && (
-                <img
-                  src={headerLogoUrl!}
-                  alt=""
-                  className={`h-14 w-14 shrink-0 object-cover border border-gray-200/80 ${logoShapeClass}`}
-                />
-              )}
+        <div className="max-w-7xl mx-auto px-3 sm:px-5 md:px-6 py-3 sm:py-4 flex flex-col gap-4 md:flex-row md:items-center md:justify-between md:gap-6">
+            {/* Logo + название + теглайн: по центру на мобильных, слева на md+ */}
+            <div className="flex flex-col items-center text-center gap-2 w-full min-w-0 md:flex-row md:items-center md:text-left md:justify-start md:gap-3 md:w-auto">
+              <div className="flex flex-col items-center gap-2 sm:flex-row sm:items-center sm:gap-3">
+                {showHeaderLogo && (
+                  <img
+                    src={headerLogoUrl!}
+                    alt=""
+                    className={`h-11 w-11 sm:h-14 sm:w-14 shrink-0 object-cover border border-gray-200/80 ${logoShapeClass}`}
+                  />
+                )}
+                <span
+                  className={`text-2xl sm:text-3xl italic font-bold leading-tight min-w-0 max-w-full px-1${isEditMode ? ' border-b border-dashed border-b-pink-300 cursor-text' : ''}`}
+                  style={{ color: col('siteName') }}
+                  contentEditable={!!isEditMode}
+                  suppressContentEditableWarning
+                  onBlur={e => isEditMode && onSaveDraft?.('publicSiteName', e.currentTarget.textContent ?? '')}
+                >
+                  {name}
+                </span>
+              </div>
               <span
-                className={`text-3xl italic font-bold leading-none${isEditMode ? ' border-b border-dashed border-b-pink-300 cursor-text' : ''}`}
-                style={{ color: col('siteName') }}
-                contentEditable={!!isEditMode}
-                suppressContentEditableWarning
-                onBlur={e => isEditMode && onSaveDraft?.('publicSiteName', e.currentTarget.textContent ?? '')}
-              >
-                {name}
-              </span>
-              <span
-                className={`text-[11px] leading-snug whitespace-pre-line max-w-[140px] border-l border-gray-200 pl-3${isEditMode ? ' border-b border-dashed border-b-pink-300 cursor-text' : ''}`}
+                className={`text-[10px] sm:text-[11px] leading-snug whitespace-pre-line w-full max-w-md md:max-w-[140px] md:border-l border-gray-200 md:pl-3 pt-1 md:pt-0 border-t border-gray-100 md:border-t-0 mt-0.5 md:mt-0${isEditMode ? ' border-b border-dashed border-b-pink-300 cursor-text' : ''}`}
                 style={{ fontFamily: 'sans-serif', color: col('tagline') }}
                 contentEditable={!!isEditMode}
                 suppressContentEditableWarning
@@ -1068,7 +1165,7 @@ export default function MassageTemplate({
             </div>
 
             {/* Address */}
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 sm:gap-3 w-full md:w-auto min-w-0">
               <div
                 className="w-10 h-10 rounded-full flex items-center justify-center shrink-0"
                 style={{ background: PINK_LIGHT, color: col('contactOnline') }}
@@ -1076,7 +1173,7 @@ export default function MassageTemplate({
                 <Pin size="w-5 h-5" />
               </div>
               <div
-                className={`text-sm font-semibold${isEditMode ? ' border-b border-dashed border-b-pink-300 cursor-text' : ''}`}
+                className={`text-xs sm:text-sm font-semibold min-w-0 flex-1${isEditMode ? ' border-b border-dashed border-b-pink-300 cursor-text' : ''}`}
                 style={{ color: col('address') }}
                 contentEditable={!!isEditMode}
                 suppressContentEditableWarning
@@ -1087,14 +1184,14 @@ export default function MassageTemplate({
             </div>
 
             {/* Social icons */}
-            <div className="flex items-center gap-3 flex-wrap">
-              {whatsappUrl && (
+            <div className="flex items-center justify-center md:justify-start gap-2 sm:gap-3 flex-wrap w-full md:w-auto">
+              {socialUrls.whatsappUrl && (
                 <div className="relative">
                   {isEditMode && onSaveDraft && (
                     <button type="button" onClick={() => onSaveDraft('publicWhatsapp', '')} className="absolute -top-1.5 -right-1.5 h-4 w-4 rounded-full bg-red-500 text-white flex items-center justify-center text-[8px] z-10 hover:bg-red-600">✕</button>
                   )}
                   {!isEditMode ? (
-                    <a href={whatsappUrl} target="_blank" rel="noopener noreferrer" className="inline-block">
+                    <a href={socialUrls.whatsappUrl} target="_blank" rel="noopener noreferrer" className="inline-block">
                       <SocialCircle bg="#25D366"><WhatsAppIcon className="w-5 h-5" /></SocialCircle>
                     </a>
                   ) : (
@@ -1102,13 +1199,13 @@ export default function MassageTemplate({
                   )}
                 </div>
               )}
-              {viberUrl && (
+              {socialUrls.viberUrl && (
                 <div className="relative">
                   {isEditMode && onSaveDraft && (
                     <button type="button" onClick={() => onSaveDraft('publicViber', '')} className="absolute -top-1.5 -right-1.5 h-4 w-4 rounded-full bg-red-500 text-white flex items-center justify-center text-[8px] z-10 hover:bg-red-600">✕</button>
                   )}
                   {!isEditMode ? (
-                    <a href={viberUrl} target="_blank" rel="noopener noreferrer" className="inline-block">
+                    <a href={socialUrls.viberUrl} target="_blank" rel="noopener noreferrer" className="inline-block">
                       <SocialCircle bg="#7F00FF"><ViberIcon className="w-5 h-5" /></SocialCircle>
                     </a>
                   ) : (
@@ -1116,13 +1213,13 @@ export default function MassageTemplate({
                   )}
                 </div>
               )}
-              {telegramUrl && (
+              {socialUrls.telegramUrl && (
                 <div className="relative">
                   {isEditMode && onSaveDraft && (
                     <button type="button" onClick={() => onSaveDraft('publicTelegram', '')} className="absolute -top-1.5 -right-1.5 h-4 w-4 rounded-full bg-red-500 text-white flex items-center justify-center text-[8px] z-10 hover:bg-red-600">✕</button>
                   )}
                   {!isEditMode ? (
-                    <a href={telegramUrl} target="_blank" rel="noopener noreferrer" className="inline-block">
+                    <a href={socialUrls.telegramUrl} target="_blank" rel="noopener noreferrer" className="inline-block">
                       <SocialCircle bg="#0088cc"><TelegramIcon className="w-5 h-5" /></SocialCircle>
                     </a>
                   ) : (
@@ -1130,13 +1227,13 @@ export default function MassageTemplate({
                   )}
                 </div>
               )}
-              {instagramUrl && (
+              {socialUrls.instagramUrl && (
                 <div className="relative">
                   {isEditMode && onSaveDraft && (
                     <button type="button" onClick={() => onSaveDraft('publicInstagram', '')} className="absolute -top-1.5 -right-1.5 h-4 w-4 rounded-full bg-red-500 text-white flex items-center justify-center text-[8px] z-10 hover:bg-red-600">✕</button>
                   )}
                   {!isEditMode ? (
-                    <a href={instagramUrl} target="_blank" rel="noopener noreferrer" className="inline-block">
+                    <a href={socialUrls.instagramUrl} target="_blank" rel="noopener noreferrer" className="inline-block">
                       <SocialCircle bg="#E1306C"><InstagramIcon className="w-5 h-5" /></SocialCircle>
                     </a>
                   ) : (
@@ -1144,13 +1241,13 @@ export default function MassageTemplate({
                   )}
                 </div>
               )}
-              {facebookUrl && (
+              {socialUrls.facebookUrl && (
                 <div className="relative">
                   {isEditMode && onSaveDraft && (
                     <button type="button" onClick={() => onSaveDraft('publicFacebook', '')} className="absolute -top-1.5 -right-1.5 h-4 w-4 rounded-full bg-red-500 text-white flex items-center justify-center text-[8px] z-10 hover:bg-red-600">✕</button>
                   )}
                   {!isEditMode ? (
-                    <a href={facebookUrl} target="_blank" rel="noopener noreferrer" className="inline-block">
+                    <a href={socialUrls.facebookUrl} target="_blank" rel="noopener noreferrer" className="inline-block">
                       <SocialCircle bg="#1877F2"><FacebookIcon className="w-5 h-5" /></SocialCircle>
                     </a>
                   ) : (
@@ -1158,13 +1255,13 @@ export default function MassageTemplate({
                   )}
                 </div>
               )}
-              {vkUrl && (
+              {socialUrls.vkUrl && (
                 <div className="relative">
                   {isEditMode && onSaveDraft && (
                     <button type="button" onClick={() => onSaveDraft('publicVk', '')} className="absolute -top-1.5 -right-1.5 h-4 w-4 rounded-full bg-red-500 text-white flex items-center justify-center text-[8px] z-10 hover:bg-red-600">✕</button>
                   )}
                   {!isEditMode ? (
-                    <a href={vkUrl} target="_blank" rel="noopener noreferrer" className="inline-block">
+                    <a href={socialUrls.vkUrl} target="_blank" rel="noopener noreferrer" className="inline-block">
                       <SocialCircle bg="#4680C2"><VKIcon className="w-5 h-5" /></SocialCircle>
                     </a>
                   ) : (
@@ -1172,13 +1269,13 @@ export default function MassageTemplate({
                   )}
                 </div>
               )}
-              {twitterUrl && (
+              {socialUrls.twitterUrl && (
                 <div className="relative">
                   {isEditMode && onSaveDraft && (
                     <button type="button" onClick={() => onSaveDraft('publicTwitter', '')} className="absolute -top-1.5 -right-1.5 h-4 w-4 rounded-full bg-red-500 text-white flex items-center justify-center text-[8px] z-10 hover:bg-red-600">✕</button>
                   )}
                   {!isEditMode ? (
-                    <a href={twitterUrl} target="_blank" rel="noopener noreferrer" className="inline-block">
+                    <a href={socialUrls.twitterUrl} target="_blank" rel="noopener noreferrer" className="inline-block">
                       <SocialCircle bg="#0f1419"><TwitterIcon className="w-5 h-5" /></SocialCircle>
                     </a>
                   ) : (
@@ -1186,13 +1283,13 @@ export default function MassageTemplate({
                   )}
                 </div>
               )}
-              {tiktokUrl && (
+              {socialUrls.tiktokUrl && (
                 <div className="relative">
                   {isEditMode && onSaveDraft && (
                     <button type="button" onClick={() => onSaveDraft('publicTiktok', '')} className="absolute -top-1.5 -right-1.5 h-4 w-4 rounded-full bg-red-500 text-white flex items-center justify-center text-[8px] z-10 hover:bg-red-600">✕</button>
                   )}
                   {!isEditMode ? (
-                    <a href={tiktokUrl} target="_blank" rel="noopener noreferrer" className="inline-block">
+                    <a href={socialUrls.tiktokUrl} target="_blank" rel="noopener noreferrer" className="inline-block">
                       <SocialCircle bg="#010101"><TikTokIcon className="w-5 h-5" /></SocialCircle>
                     </a>
                   ) : (
@@ -1203,7 +1300,7 @@ export default function MassageTemplate({
             </div>
 
             {/* Contact info */}
-            <div className="text-right">
+            <div className="text-center md:text-right w-full md:w-auto border-t border-gray-100 md:border-t-0 pt-3 md:pt-0">
               <div
                 className={`text-xs font-medium${isEditMode ? ' border-b border-dashed border-b-pink-300 cursor-text' : ''}`}
                 style={{ color: col('contactOnline'), fontFamily: 'sans-serif' }}
@@ -1235,19 +1332,19 @@ export default function MassageTemplate({
           </div>
         </div>
 
-      {/* ============ NAVIGATION — sticky globally, starts below header ============ */}
+      {/* ============ NAVIGATION — sticky top (шапка контактов уезжает вверх, меню прилипает). ============ */}
       <nav
         ref={navRef}
-        className="sticky top-0 z-20 border-b border-gray-100 shadow-sm"
+        className="sticky top-0 z-30 border-b border-gray-100 shadow-sm"
         style={{ backgroundColor: col('navBg') }}
       >
-        <div className="max-w-7xl mx-auto px-6 flex items-center justify-center gap-8 py-3.5 overflow-x-auto scrollbar-hide">
+        <div className="max-w-7xl mx-auto px-3 sm:px-5 md:px-6 flex flex-wrap justify-center items-center gap-x-3 sm:gap-x-5 md:gap-8 gap-y-2 py-2.5 sm:py-3.5">
           {navItems.map(({ label, id }) => (
             <button
               key={id}
               type="button"
               onClick={() => scrollTo(id)}
-              className="whitespace-nowrap text-sm transition-colors font-medium tracking-wide hover:opacity-80"
+              className="text-center text-xs sm:text-sm transition-colors font-medium tracking-wide hover:opacity-80 py-1 px-1.5 touch-manipulation whitespace-nowrap shrink-0"
               style={{ fontFamily: 'inherit', color: col('navLink') }}
             >
               {label}
@@ -1257,7 +1354,10 @@ export default function MassageTemplate({
       </nav>
 
       {/* ============ HERO — fills remaining first screen ============ */}
-      <section className="relative overflow-hidden flex items-center" style={{ height: heroH }}>
+      <section
+        className="relative overflow-hidden flex items-center min-h-[min(52vh,380px)] sm:min-h-0"
+        style={{ height: heroH }}
+      >
         {heroVideo ? (
           <video
             src={heroVideo}
@@ -1293,8 +1393,8 @@ export default function MassageTemplate({
           </>
         )}
 
-        <div className="relative z-10 w-full px-6 md:px-12 lg:px-20">
-          <h1 className="text-7xl md:text-9xl italic font-bold leading-[0.85]">
+        <div className="relative z-10 w-full px-4 sm:px-8 md:px-12 lg:px-20 max-w-[100vw] overflow-x-hidden text-center md:text-left">
+          <h1 className="text-[clamp(2.25rem,10vw,4.5rem)] sm:text-6xl md:text-7xl lg:text-9xl italic font-bold leading-[0.9] sm:leading-[0.85] break-words mx-auto md:mx-0 max-w-5xl">
             <span
               className={`block whitespace-pre-line${isEditMode ? ' border-b border-dashed border-b-pink-300 cursor-text' : ''}`}
               style={{ color: col('heroLine1') }}
@@ -1332,7 +1432,7 @@ export default function MassageTemplate({
             </span>
           </h1>
           <p
-            className={`mt-6 text-base md:text-lg max-w-lg leading-relaxed whitespace-pre-line${isEditMode ? ' border-b border-dashed border-b-pink-300 cursor-text' : ''}`}
+            className={`mt-4 sm:mt-6 text-sm sm:text-base md:text-lg max-w-lg mx-auto md:mx-0 leading-relaxed whitespace-pre-line${isEditMode ? ' border-b border-dashed border-b-pink-300 cursor-text' : ''}`}
             style={{ fontFamily: 'sans-serif', color: col('heroSub') }}
             contentEditable={!!isEditMode}
             suppressContentEditableWarning
@@ -1344,32 +1444,118 @@ export default function MassageTemplate({
           >
             {heroSubText}
           </p>
-          <button
-            onClick={onBookNow}
-            className="mt-8 text-white px-8 py-4 rounded-full text-sm font-bold tracking-wider transition-all duration-200 hover:shadow-lg hover:scale-[1.02] border-2 border-solid"
-            style={{
-              fontFamily: 'sans-serif',
-              backgroundColor: PINK,
-              borderColor: col('heroCtaBorder'),
-            }}
-            onMouseEnter={e => {
-              e.currentTarget.style.backgroundColor = PINK_DARK
-            }}
-            onMouseLeave={e => {
-              e.currentTarget.style.backgroundColor = PINK
-            }}
-          >
-            {t.heroCta}
-          </button>
+          <div className="mt-6 sm:mt-8 flex flex-col gap-3 w-full max-w-md mx-auto md:mx-0">
+            <div
+              role="button"
+              tabIndex={isEditMode ? -1 : 0}
+              onClick={() => {
+                if (isEditMode) return
+                onBookNow?.()
+              }}
+              onKeyDown={e => {
+                if (isEditMode) return
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault()
+                  onBookNow?.()
+                }
+              }}
+              className="inline-flex items-center justify-center gap-2 w-full sm:w-auto min-w-0 text-white px-6 sm:px-8 py-3.5 sm:py-4 rounded-full text-sm font-semibold tracking-wide transition-all duration-200 hover:shadow-lg hover:scale-[1.02] border-2 border-solid touch-manipulation cursor-pointer select-none"
+              style={{
+                fontFamily: 'sans-serif',
+                backgroundColor: col('heroPrimBtnBg'),
+                borderColor: col('heroCtaBorder'),
+              }}
+              onMouseEnter={e => {
+                if (!isEditMode) e.currentTarget.style.backgroundColor = col('heroPrimBtnHover')
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.backgroundColor = col('heroPrimBtnBg')
+              }}
+              aria-label={heroBookLabel}
+            >
+              <PencilSquare size="w-5 h-5" />
+              {isEditMode && onSaveDraft ? (
+                <span
+                  key={`hero-book-${lang}-${heroBookLabel}`}
+                  className="min-w-0 text-center outline-none border-b border-dashed border-white/70"
+                  contentEditable
+                  suppressContentEditableWarning
+                  onMouseDown={e => e.stopPropagation()}
+                  onClick={e => e.stopPropagation()}
+                  onInput={e => enforceHeroMaxLength(e.currentTarget, MAX_HERO_BTN_LABEL)}
+                  onBlur={e =>
+                    onSaveDraft(
+                      'publicHeroBookOnline',
+                      clipHeroText(e.currentTarget.innerText ?? '', MAX_HERO_BTN_LABEL)
+                    )
+                  }
+                >
+                  {heroBookLabel}
+                </span>
+              ) : (
+                <span>{heroBookLabel}</span>
+              )}
+            </div>
+            <div
+              role="button"
+              tabIndex={isEditMode ? -1 : 0}
+              onClick={() => {
+                if (isEditMode) return
+                scrollTo('contacts')
+              }}
+              onKeyDown={e => {
+                if (isEditMode) return
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault()
+                  scrollTo('contacts')
+                }
+              }}
+              className="inline-flex items-center justify-center gap-2 w-full sm:w-auto min-w-0 rounded-xl px-4 py-3 text-sm font-medium text-white border-2 border-solid touch-manipulation transition-all duration-200 cursor-pointer select-none"
+              style={{
+                fontFamily: 'sans-serif',
+                backgroundColor: col('heroSecBtnBg'),
+                borderColor: col('heroSecBtnBorder'),
+              }}
+              onMouseEnter={e => {
+                if (!isEditMode) e.currentTarget.style.backgroundColor = col('heroSecBtnHover')
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.backgroundColor = col('heroSecBtnBg')
+              }}
+              aria-label={heroWhereLabel}
+            >
+              <Pin size="w-5 h-5" />
+              {isEditMode && onSaveDraft ? (
+                <span
+                  key={`hero-where-${lang}-${heroWhereLabel}`}
+                  className="min-w-0 text-center outline-none border-b border-dashed border-white/50"
+                  contentEditable
+                  suppressContentEditableWarning
+                  onMouseDown={e => e.stopPropagation()}
+                  onClick={e => e.stopPropagation()}
+                  onInput={e => enforceHeroMaxLength(e.currentTarget, MAX_HERO_BTN_LABEL)}
+                  onBlur={e =>
+                    onSaveDraft(
+                      'publicHeroWhereFind',
+                      clipHeroText(e.currentTarget.innerText ?? '', MAX_HERO_BTN_LABEL)
+                    )
+                  }
+                >
+                  {heroWhereLabel}
+                </span>
+              ) : (
+                <span>{heroWhereLabel}</span>
+              )}
+            </div>
+          </div>
         </div>
       </section>
-      </div>
 
       {/* ============ SERVICES ============ */}
-      <section id="our-services" className="py-16">
-        <div className="max-w-7xl mx-auto px-4">
+      <section id="our-services" className="py-12 sm:py-16">
+        <div className="max-w-7xl mx-auto px-3 sm:px-4">
           <h2
-            className={`text-3xl md:text-5xl italic font-bold leading-tight text-center${isEditMode ? ' border-b border-dashed border-b-pink-300 cursor-text' : ''}`}
+            className={`text-2xl sm:text-3xl md:text-5xl italic font-bold leading-tight text-center px-1${isEditMode ? ' border-b border-dashed border-b-pink-300 cursor-text' : ''}`}
             style={{ color: col('svcBlockTitle') }}
             contentEditable={!!isEditMode}
             suppressContentEditableWarning
@@ -1529,13 +1715,13 @@ export default function MassageTemplate({
       </section>
 
       {/* ============ ABOUT ============ */}
-      <section id="about" className="py-20 md:py-28 bg-white">
-        <div className="max-w-7xl mx-auto px-6 md:px-12 flex flex-col md:flex-row items-center gap-16 md:gap-20">
+      <section id="about" className="py-14 sm:py-20 md:py-28 bg-white">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 md:px-12 flex flex-col md:flex-row items-center gap-10 sm:gap-16 md:gap-20">
           {/* Text */}
           <div className="flex-1 min-w-0">
             <h2
               className={cn(
-                'text-4xl md:text-6xl italic font-bold leading-[1.1] max-w-xl whitespace-pre-line',
+                'text-2xl sm:text-3xl md:text-5xl lg:text-6xl italic font-bold leading-[1.15] sm:leading-[1.1] max-w-xl whitespace-pre-line',
                 isEditMode && 'border-b border-dashed border-b-pink-300 cursor-text'
               )}
               style={{ color: col('aboutHeading'), fontFamily: 'sans-serif' }}
@@ -1558,7 +1744,7 @@ export default function MassageTemplate({
             </h2>
             <p
               className={cn(
-                'mt-8 text-lg md:text-xl leading-relaxed max-w-xl whitespace-pre-line',
+                'mt-5 sm:mt-8 text-base sm:text-lg md:text-xl leading-relaxed max-w-xl whitespace-pre-line',
                 isEditMode && 'border-b border-dashed border-b-pink-300 cursor-text'
               )}
               style={{ fontFamily: 'sans-serif', color: col('aboutBody') }}
@@ -1602,7 +1788,7 @@ export default function MassageTemplate({
           </div>
 
           {/* Avatar with decorative elements */}
-          <div className="flex-shrink-0 relative flex items-center justify-center w-72 h-80 md:w-80 md:h-96">
+          <div className="flex-shrink-0 relative flex items-center justify-center w-full max-w-[18rem] sm:max-w-none sm:w-72 h-72 sm:h-80 md:w-80 md:h-96 mx-auto md:mx-0">
             {/* Outer decorative ring */}
             <div
               className="absolute inset-0 rounded-[50%] opacity-20"
@@ -1832,13 +2018,13 @@ export default function MassageTemplate({
             ))}
           </div>
           {/* Carousel */}
-          <div className="mt-8 relative">
+          <div className="mt-6 sm:mt-8 relative px-10 sm:px-12 md:px-14">
             <div className="overflow-hidden rounded-xl">
               <div
                 className="flex"
                 style={{
                   transform: galCanScroll
-                    ? `translateX(-${galSlide * (100 / VISIBLE_GAL)}%)`
+                    ? `translateX(-${galSlide * (100 / visibleGal)}%)`
                     : undefined,
                   transition: galSmooth ? 'transform 500ms ease-out' : 'none',
                 }}
@@ -1850,7 +2036,7 @@ export default function MassageTemplate({
                     <div
                       key={`gal-${activeGalTab}-${i}`}
                       className="shrink-0 px-2"
-                      style={{ width: `${100 / VISIBLE_GAL}%` }}
+                      style={{ width: `${100 / visibleGal}%` }}
                     >
                       <div
                         className="aspect-[3/4] rounded-xl flex items-center justify-center overflow-hidden hover:shadow-lg transition-shadow cursor-pointer relative"
@@ -1876,7 +2062,7 @@ export default function MassageTemplate({
                 <button
                   type="button"
                   onClick={galPrev}
-                  className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-3 w-11 h-11 rounded-full flex items-center justify-center transition-colors shadow-md"
+                  className="absolute left-0 top-1/2 -translate-y-1/2 z-10 w-9 h-9 sm:w-11 sm:h-11 rounded-full flex items-center justify-center transition-colors shadow-md touch-manipulation"
                   style={{
                     background: `color-mix(in srgb, ${galTabActiveCol} 22%, white)`,
                     color: galTabActiveCol,
@@ -1895,7 +2081,7 @@ export default function MassageTemplate({
                 <button
                   type="button"
                   onClick={galNext}
-                  className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-3 w-11 h-11 rounded-full flex items-center justify-center transition-colors shadow-md"
+                  className="absolute right-0 top-1/2 -translate-y-1/2 z-10 w-9 h-9 sm:w-11 sm:h-11 rounded-full flex items-center justify-center transition-colors shadow-md touch-manipulation"
                   style={{
                     background: `color-mix(in srgb, ${galTabActiveCol} 22%, white)`,
                     color: galTabActiveCol,
@@ -1926,7 +2112,7 @@ export default function MassageTemplate({
               'text-3xl md:text-5xl italic font-bold max-w-4xl',
               isEditMode && 'border-b border-dashed border-b-pink-300 cursor-text'
             )}
-            style={{ color: '#1a1a1a' }}
+            style={{ color: subsBlockTitleCol }}
             contentEditable={!!isEditMode}
             suppressContentEditableWarning
             onKeyDown={e => {
@@ -1941,7 +2127,7 @@ export default function MassageTemplate({
           >
             {subsTitleDisplay}
           </h2>
-          <div className="mt-10 relative">
+          <div className="mt-8 sm:mt-10 relative px-10 sm:px-12 md:px-14">
             {displaySubs.length === 0 && isEditMode ? (
               <p className="text-sm text-muted-foreground border border-dashed border-border/60 rounded-2xl p-6 text-center">
                 {t.subsEmptyHint}
@@ -1951,7 +2137,7 @@ export default function MassageTemplate({
               <div
                 className="flex"
                 style={{
-                  transform: `translateX(-${subsSlide * (100 / SUBS_VISIBLE)}%)`,
+                  transform: `translateX(-${subsSlideVisual * (100 / visibleSubs)}%)`,
                   transition: subsSmooth ? 'transform 500ms ease-out' : 'none',
                 }}
                 onTransitionEnd={handleSubsTransEnd}
@@ -1959,15 +2145,18 @@ export default function MassageTemplate({
                 {(subsCanScroll ? [...displaySubs, ...displaySubs, ...displaySubs] : displaySubs).map((sub, i) => {
                   const realIdx = subsCanScroll ? i % displaySubs.length : i
                   const isPrimary = realIdx === 0
+                  const cardBg = isPrimary
+                    ? `linear-gradient(135deg, ${subsCardBgFrom}, ${subsCardBgTo})`
+                    : `linear-gradient(135deg, color-mix(in srgb, ${subsCardBgFrom} 82%, #0c0c0c), color-mix(in srgb, ${subsCardBgTo} 82%, #0c0c0c))`
                   return (
                     <div
                       key={`${sub.id}-${i}`}
                       className="shrink-0 px-2.5"
-                      style={{ width: `${100 / SUBS_VISIBLE}%` }}
+                      style={{ width: `${100 / visibleSubs}%` }}
                     >
                       <div
-                        className="rounded-2xl p-6 flex flex-col justify-between relative overflow-hidden h-full min-h-[220px]"
-                        style={{ background: isPrimary ? '#3a3a3a' : '#2D2D2D' }}
+                        className="rounded-2xl p-4 sm:p-6 flex flex-col justify-between relative overflow-hidden h-full min-h-[200px] sm:min-h-[220px]"
+                        style={{ background: cardBg }}
                       >
                         {isEditMode && (
                           <button
@@ -1988,8 +2177,8 @@ export default function MassageTemplate({
                           style={{
                             fontSize: '6rem',
                             lineHeight: 1,
-                            opacity: 0.08,
-                            color: 'white',
+                            opacity: 0.12,
+                            color: subsCardTitleCol,
                           }}
                         >
                           {sub.pct}
@@ -1998,9 +2187,12 @@ export default function MassageTemplate({
                           <h3
                             className={cn(
                               'italic text-base font-bold tracking-wide whitespace-pre-line',
-                              isEditMode && 'border-b border-dashed border-white/40 cursor-text'
+                              isEditMode && 'border-b border-dashed cursor-text'
                             )}
-                            style={{ color: 'white' }}
+                            style={{
+                              color: subsCardTitleCol,
+                              ...(isEditMode ? { borderBottomColor: `${subsCardTitleCol}55` } : {}),
+                            }}
                             contentEditable={!!isEditMode}
                             suppressContentEditableWarning
                             onKeyDown={e => {
@@ -2010,7 +2202,7 @@ export default function MassageTemplate({
                             onInput={e => isEditMode && enforceHeroMaxLength(e.currentTarget, 220)}
                             onBlur={e =>
                               isEditMode &&
-                              patchSubItem(realIdx, { title: clipHeroText(e.currentTarget.innerText ?? '', 220) })
+                              patchSubItem(sub.id, { title: clipHeroText(e.currentTarget.innerText ?? '', 220) })
                             }
                           >
                             {sub.title}
@@ -2018,9 +2210,13 @@ export default function MassageTemplate({
                           <p
                             className={cn(
                               'text-xs mt-2 whitespace-pre-line',
-                              isEditMode && 'border-b border-dashed border-white/30 cursor-text'
+                              isEditMode && 'border-b border-dashed cursor-text'
                             )}
-                            style={{ fontFamily: 'sans-serif', color: 'rgba(255,255,255,0.5)' }}
+                            style={{
+                              fontFamily: 'sans-serif',
+                              color: subsCardDescCol,
+                              ...(isEditMode ? { borderBottomColor: `${subsCardDescCol}66` } : {}),
+                            }}
                             contentEditable={!!isEditMode}
                             suppressContentEditableWarning
                             onKeyDown={e => {
@@ -2030,7 +2226,7 @@ export default function MassageTemplate({
                             onInput={e => isEditMode && enforceHeroMaxLength(e.currentTarget, 320)}
                             onBlur={e =>
                               isEditMode &&
-                              patchSubItem(realIdx, { desc: clipHeroText(e.currentTarget.innerText ?? '', 320) })
+                              patchSubItem(sub.id, { desc: clipHeroText(e.currentTarget.innerText ?? '', 320) })
                             }
                           >
                             {sub.desc}
@@ -2040,10 +2236,15 @@ export default function MassageTemplate({
                           <button
                             type="button"
                             onClick={handleSubsCtaClick}
-                            className="text-xs font-bold mt-4 relative z-10 text-left hover:underline"
+                            className="mt-4 relative z-10 block w-full text-left text-xs font-bold bg-transparent p-0 m-0 rounded-none border-0 shadow-none ring-0 outline-none transition-opacity hover:opacity-90 hover:underline focus-visible:ring-0 focus-visible:ring-offset-0 appearance-none"
                             style={{
-                              color: subsCtaTextCol,
                               fontFamily: 'sans-serif',
+                              color: subsCtaTextCol,
+                              border: 'none',
+                              boxShadow: 'none',
+                              WebkitBoxShadow: 'none',
+                              WebkitAppearance: 'none',
+                              appearance: 'none',
                             }}
                           >
                             {t.subsCta}
@@ -2060,20 +2261,32 @@ export default function MassageTemplate({
               <>
                 <button
                   type="button"
-                  className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-3 w-11 h-11 rounded-full flex items-center justify-center transition-colors shadow-md"
-                  style={{ background: PINK_LIGHT, color: PINK }}
-                  onMouseEnter={e => { e.currentTarget.style.background = PINK; e.currentTarget.style.color = 'white' }}
-                  onMouseLeave={e => { e.currentTarget.style.background = PINK_LIGHT; e.currentTarget.style.color = PINK }}
+                  className="absolute left-0 top-1/2 -translate-y-1/2 z-10 w-9 h-9 sm:w-11 sm:h-11 rounded-full flex items-center justify-center transition-colors shadow-md border border-black/5 touch-manipulation"
+                  style={{ backgroundColor: `color-mix(in srgb, ${subsCtaBgCol} 28%, white)`, color: subsCtaBgCol }}
+                  onMouseEnter={e => {
+                    e.currentTarget.style.backgroundColor = subsCtaBgCol
+                    e.currentTarget.style.color = subsCtaTextCol
+                  }}
+                  onMouseLeave={e => {
+                    e.currentTarget.style.backgroundColor = `color-mix(in srgb, ${subsCtaBgCol} 28%, white)`
+                    e.currentTarget.style.color = subsCtaBgCol
+                  }}
                   onClick={subsPrev}
                 >
                   <ChevL />
                 </button>
                 <button
                   type="button"
-                  className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-3 w-11 h-11 rounded-full flex items-center justify-center transition-colors shadow-md"
-                  style={{ background: PINK_LIGHT, color: PINK }}
-                  onMouseEnter={e => { e.currentTarget.style.background = PINK; e.currentTarget.style.color = 'white' }}
-                  onMouseLeave={e => { e.currentTarget.style.background = PINK_LIGHT; e.currentTarget.style.color = PINK }}
+                  className="absolute right-0 top-1/2 -translate-y-1/2 z-10 w-9 h-9 sm:w-11 sm:h-11 rounded-full flex items-center justify-center transition-colors shadow-md border border-black/5 touch-manipulation"
+                  style={{ backgroundColor: `color-mix(in srgb, ${subsCtaBgCol} 28%, white)`, color: subsCtaBgCol }}
+                  onMouseEnter={e => {
+                    e.currentTarget.style.backgroundColor = subsCtaBgCol
+                    e.currentTarget.style.color = subsCtaTextCol
+                  }}
+                  onMouseLeave={e => {
+                    e.currentTarget.style.backgroundColor = `color-mix(in srgb, ${subsCtaBgCol} 28%, white)`
+                    e.currentTarget.style.color = subsCtaBgCol
+                  }}
                   onClick={subsNext}
                 >
                   <ChevR />
@@ -2086,57 +2299,220 @@ export default function MassageTemplate({
       )}
 
       {/* ============ CATALOG ============ */}
+      {!catalogBlockHidden && (displayCatalog.length > 0 || isEditMode) && (
       <section id="catalog" className="py-20 md:py-28">
         <div className="max-w-7xl mx-auto px-4">
-          <h2 className="text-3xl md:text-5xl italic font-bold text-[#1a1a1a] text-center">{t.catTitle}</h2>
-          <div className="mt-12 relative">
+          <h2
+            className={cn(
+              'text-3xl md:text-5xl italic font-bold text-[#1a1a1a] text-center',
+              isEditMode && 'border-b border-dashed border-b-pink-300 cursor-text outline-none'
+            )}
+            contentEditable={!!isEditMode}
+            suppressContentEditableWarning
+            onKeyDown={e => {
+              if (!isEditMode) return
+              if (e.key === 'Enter' && !e.shiftKey) e.preventDefault()
+            }}
+            onBlur={e =>
+              isEditMode &&
+              onSaveDraft?.(
+                'publicMassageCatalogTitle',
+                clipHeroText(e.currentTarget.innerText ?? '', MAX_CATALOG_TITLE_LEN)
+              )
+            }
+          >
+            {catalogTitleDisplay}
+          </h2>
+          {displayCatalog.length === 0 && isEditMode ? (
+            <p className="mt-10 text-sm text-center text-muted-foreground border border-dashed border-border/60 rounded-2xl p-8">
+              {t.catEmptyHint}
+            </p>
+          ) : displayCatalog.length === 0 ? null : (
+          <div className="mt-8 sm:mt-12 relative px-10 sm:px-12 md:px-14">
             <div className="overflow-hidden">
               <div
                 className="flex"
                 style={{
-                  transform: `translateX(-${catSlide * (100 / CAT_VISIBLE)}%)`,
+                  transform: `translateX(-${catSlide * (100 / visibleCat)}%)`,
                   transition: 'transform 500ms ease-out',
                 }}
               >
-                {products.map((p, i) => {
+                {displayCatalog.map((p, i) => {
                   const grad = SVC_COLORS[i % SVC_COLORS.length]
                   const discount = p.oldPrice > p.price ? Math.round((1 - p.price / p.oldPrice) * 100) : 0
                   return (
                     <div
-                      key={i}
+                      key={p.id}
                       className="shrink-0 px-3"
-                      style={{ width: `${100 / CAT_VISIBLE}%` }}
+                      style={{ width: `${100 / visibleCat}%` }}
                     >
                       <div
-                        className="bg-white rounded-2xl overflow-hidden hover:shadow-xl hover:-translate-y-1 transition-all duration-300 group h-full"
+                        className="bg-white rounded-2xl overflow-hidden hover:shadow-xl hover:-translate-y-1 transition-all duration-300 group h-full relative"
                         style={{ border: '1px solid #f0eded' }}
                       >
-                        <div
-                          className="relative h-56 flex items-center justify-center overflow-hidden"
-                          style={{ background: `linear-gradient(160deg, ${grad[0]}, ${grad[1]})` }}
-                        >
+                        {isEditMode && (
+                          <button
+                            type="button"
+                            className="absolute top-2 right-2 z-20 flex h-8 w-8 items-center justify-center rounded-full border-2 border-red-500 bg-white text-xl font-semibold leading-none text-red-600 shadow-sm hover:bg-red-50"
+                            aria-label={t.svcDeleteCard}
+                            onClick={() => removeCatalogProduct(p.id)}
+                          >
+                            ×
+                          </button>
+                        )}
+                        <div className="relative h-56 overflow-hidden bg-neutral-100">
+                          {p.image ? (
+                            <img
+                              src={p.image}
+                              alt=""
+                              className="absolute inset-0 h-full w-full object-cover"
+                            />
+                          ) : (
+                            <div
+                              className="absolute inset-0 flex items-center justify-center"
+                              style={{ background: `linear-gradient(160deg, ${grad[0]}, ${grad[1]})` }}
+                            >
+                              <ImgIcon className="w-16 h-16 text-white/30 group-hover:scale-110 transition-transform duration-300" />
+                            </div>
+                          )}
                           {discount > 0 && (
                             <span
-                              className="absolute top-3.5 left-3.5 text-white text-[10px] px-3 py-1 rounded-full font-bold tracking-wide"
+                              className="absolute top-3.5 left-3.5 z-10 text-white text-[10px] px-3 py-1 rounded-full font-bold tracking-wide"
                               style={{ background: PINK, fontFamily: 'sans-serif' }}
                             >
                               −{discount}%
                             </span>
                           )}
-                          <ImgIcon className="w-16 h-16 text-white/30 group-hover:scale-110 transition-transform duration-300" />
                         </div>
                         <div className="p-5" style={{ fontFamily: 'sans-serif' }}>
-                          <div className="flex items-baseline gap-1.5">
-                            <span className="text-3xl font-bold text-[#1a1a1a]">{p.price}</span>
-                            <span className="text-xs text-gray-400 font-medium">{t.currency}</span>
-                            {p.oldPrice > p.price && (
-                              <span className="text-sm text-gray-300 line-through ml-2">{p.oldPrice}</span>
+                          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                            {isEditMode ? (
+                              <>
+                                <span
+                                  className="text-3xl font-bold text-[#1a1a1a] min-w-[3ch] border-b border-dashed border-pink-300/80 outline-none"
+                                  contentEditable
+                                  suppressContentEditableWarning
+                                  onBlur={e =>
+                                    patchCatalogProduct(i, {
+                                      price: parseCatalogPriceText(e.currentTarget.textContent ?? ''),
+                                    })
+                                  }
+                                >
+                                  {formatCatalogPriceDisplay(p.price)}
+                                </span>
+                                <span
+                                  key={`ccy-${p.id}-${p.currency}`}
+                                  className="text-3xl font-bold text-gray-500 min-w-[0.5ch] border-b border-dashed border-pink-300/80 outline-none"
+                                  contentEditable
+                                  suppressContentEditableWarning
+                                  title={t.catCurrencyHint}
+                                  onBlur={e =>
+                                    patchCatalogProduct(i, {
+                                      currency: normalizeCatalogCurrencyInput(
+                                        e.currentTarget.textContent ?? ''
+                                      ),
+                                    })
+                                  }
+                                >
+                                  {p.currency}
+                                </span>
+                                <span
+                                  className={cn(
+                                    'text-sm border-b border-dashed border-pink-300/80 outline-none min-w-[3ch]',
+                                    p.oldPrice > p.price ? 'text-gray-400 line-through' : 'text-gray-500'
+                                  )}
+                                  title={t.catOldPriceHint}
+                                  contentEditable
+                                  suppressContentEditableWarning
+                                  onBlur={e =>
+                                    patchCatalogProduct(i, {
+                                      oldPrice: parseCatalogPriceText(e.currentTarget.textContent ?? ''),
+                                    })
+                                  }
+                                >
+                                  {formatCatalogPriceDisplay(p.oldPrice)}
+                                </span>
+                              </>
+                            ) : (
+                              <>
+                                <span className="text-3xl font-bold text-[#1a1a1a]">
+                                  {formatCatalogPriceDisplay(p.price)}
+                                </span>
+                                {p.currency.length > 0 && (
+                                  <span className="text-3xl font-bold text-gray-500">{p.currency}</span>
+                                )}
+                                {p.oldPrice > p.price && (
+                                  <span className="text-sm text-gray-400 line-through ml-2">
+                                    {formatCatalogPriceDisplay(p.oldPrice)}
+                                    {p.currency.length > 0 ? `\u00a0${p.currency}` : ''}
+                                  </span>
+                                )}
+                              </>
                             )}
                           </div>
-                          <p className="mt-2.5 text-sm font-semibold text-[#1a1a1a] leading-snug">{p.name}</p>
+                          <p
+                            className={cn(
+                              'mt-2.5 text-sm font-semibold text-[#1a1a1a] leading-snug',
+                              isEditMode && 'border-b border-dashed border-pink-300/80 outline-none'
+                            )}
+                            contentEditable={!!isEditMode}
+                            suppressContentEditableWarning
+                            onKeyDown={e => {
+                              if (!isEditMode) return
+                              if (e.key === 'Enter' && !e.shiftKey) e.preventDefault()
+                            }}
+                            onBlur={e =>
+                              isEditMode &&
+                              patchCatalogProduct(i, {
+                                name: clipHeroText(e.currentTarget.innerText ?? '', MAX_CATALOG_NAME_LEN),
+                              })
+                            }
+                          >
+                            {p.name}
+                          </p>
+                          <p
+                            className={cn(
+                              'mt-1 text-xs text-gray-500',
+                              isEditMode && 'border-b border-dashed border-pink-300/60 outline-none'
+                            )}
+                            contentEditable={!!isEditMode}
+                            suppressContentEditableWarning
+                            onKeyDown={e => {
+                              if (!isEditMode) return
+                              if (e.key === 'Enter' && !e.shiftKey) e.preventDefault()
+                            }}
+                            onBlur={e =>
+                              isEditMode &&
+                              patchCatalogProduct(i, {
+                                brand: clipHeroText(e.currentTarget.innerText ?? '', MAX_CATALOG_BRAND_LEN),
+                              })
+                            }
+                          >
+                            {p.brand}
+                          </p>
                           <div className="mt-3 space-y-1 border-t border-gray-100 pt-3">
                             {p.info.map((line, j) => (
-                              <p key={j} className="text-[11px] text-gray-400 leading-relaxed">{line}</p>
+                              <p
+                                key={j}
+                                className={cn(
+                                  'text-[11px] text-gray-400 leading-relaxed',
+                                  isEditMode && 'border-b border-dashed border-pink-200/70 outline-none'
+                                )}
+                                contentEditable={!!isEditMode}
+                                suppressContentEditableWarning
+                                onKeyDown={e => {
+                                  if (!isEditMode) return
+                                  if (e.key === 'Enter' && !e.shiftKey) e.preventDefault()
+                                }}
+                                onBlur={e => {
+                                  if (!isEditMode) return
+                                  const next = [...p.info]
+                                  next[j] = clipHeroText(e.currentTarget.innerText ?? '', MAX_CATALOG_INFO_LINE)
+                                  patchCatalogProduct(i, { info: next })
+                                }}
+                              >
+                                {line}
+                              </p>
                             ))}
                           </div>
                         </div>
@@ -2146,12 +2522,13 @@ export default function MassageTemplate({
                 })}
               </div>
             </div>
-            {catTotal > CAT_VISIBLE && (
+            {catTotal > visibleCat && (
               <>
                 {!catAtStart && (
                   <button
+                    type="button"
                     onClick={() => setCatSlide(s => Math.max(0, s - 1))}
-                    className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-3 w-11 h-11 rounded-full flex items-center justify-center transition-colors shadow-md"
+                    className="absolute left-0 top-1/2 -translate-y-1/2 z-10 w-9 h-9 sm:w-11 sm:h-11 rounded-full flex items-center justify-center transition-colors shadow-md touch-manipulation"
                     style={{ background: PINK_LIGHT, color: PINK }}
                     onMouseEnter={e => { e.currentTarget.style.background = PINK; e.currentTarget.style.color = 'white' }}
                     onMouseLeave={e => { e.currentTarget.style.background = PINK_LIGHT; e.currentTarget.style.color = PINK }}
@@ -2161,8 +2538,9 @@ export default function MassageTemplate({
                 )}
                 {!catAtEnd && (
                   <button
-                    onClick={() => setCatSlide(s => Math.min(catTotal - CAT_VISIBLE, s + 1))}
-                    className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-3 w-11 h-11 rounded-full flex items-center justify-center transition-colors shadow-md"
+                    type="button"
+                    onClick={() => setCatSlide(s => Math.min(catTotal - visibleCat, s + 1))}
+                    className="absolute right-0 top-1/2 -translate-y-1/2 z-10 w-9 h-9 sm:w-11 sm:h-11 rounded-full flex items-center justify-center transition-colors shadow-md touch-manipulation"
                     style={{ background: PINK_LIGHT, color: PINK }}
                     onMouseEnter={e => { e.currentTarget.style.background = PINK; e.currentTarget.style.color = 'white' }}
                     onMouseLeave={e => { e.currentTarget.style.background = PINK_LIGHT; e.currentTarget.style.color = PINK }}
@@ -2173,31 +2551,103 @@ export default function MassageTemplate({
               </>
             )}
           </div>
+          )}
         </div>
       </section>
+      )}
 
       {/* ============ SPECIALISTS ============ */}
+      {specsHidden && isEditMode && (
+        <section
+          id="masters"
+          className="py-10 md:py-12 bg-amber-50 border-y border-dashed border-amber-300/80"
+        >
+          <div className="max-w-[90rem] mx-auto px-4 text-center">
+            <p className="text-sm font-medium text-amber-950 max-w-lg mx-auto leading-relaxed">
+              {t.specsHiddenBanner}
+            </p>
+          </div>
+        </section>
+      )}
+      {!specsHidden && (displaySpecs.length > 0 || isEditMode) && (
       <section id="masters" className="py-20 md:py-28 bg-white">
         <div className="max-w-[90rem] mx-auto px-4">
-          <h2 className="text-3xl md:text-5xl italic font-bold text-[#1a1a1a] leading-tight max-w-2xl">
-            {t.specTitle}
-          </h2>
-          <div className="mt-12 grid grid-cols-5 gap-5">
-            {specs.map((s, i) => {
+          {isEditMode ? (
+            <h2
+              className="text-3xl md:text-5xl italic font-bold text-[#1a1a1a] leading-tight max-w-2xl outline-none"
+              contentEditable
+              suppressContentEditableWarning
+              onBlur={e => onSaveDraft?.('publicMassageSpecsTitle', e.currentTarget.textContent ?? '')}
+            >
+              {specsTitleDisplay}
+            </h2>
+          ) : (
+            <h2 className="text-3xl md:text-5xl italic font-bold text-[#1a1a1a] leading-tight max-w-2xl">
+              {specsTitleDisplay}
+            </h2>
+          )}
+          <div className="mt-8 sm:mt-12 grid grid-cols-1 min-[400px]:grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 sm:gap-5">
+            {displaySpecs.map((s, i) => {
               const grad = GALLERY_COLORS[i % GALLERY_COLORS.length]
               return (
-                <div key={i} className="rounded-2xl overflow-hidden group cursor-pointer" style={{ border: '1px solid #f0eded' }}>
+                <div key={s.id} className="rounded-2xl overflow-hidden group cursor-pointer relative" style={{ border: '1px solid #f0eded' }}>
+                  {isEditMode && (
+                    <button
+                      type="button"
+                      className="absolute top-2 right-2 z-20 flex h-7 w-7 items-center justify-center rounded-full bg-red-500/80 text-white shadow hover:bg-red-600 transition-colors"
+                      onClick={() => removeSpec(s.id)}
+                    >
+                      <span className="text-sm font-bold leading-none">×</span>
+                    </button>
+                  )}
                   <div
                     className="aspect-[3/4] relative flex items-center justify-center overflow-hidden"
                     style={{ background: `linear-gradient(180deg, ${grad[0]}, ${grad[1]})` }}
                   >
-                    <PersonIcon />
+                    {s.image ? (
+                      <img src={s.image} alt="" className="absolute inset-0 h-full w-full object-cover" />
+                    ) : (
+                      <PersonIcon />
+                    )}
                     <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                   </div>
                   <div className="bg-white px-4 py-5">
-                    <p className="italic text-base font-bold text-[#1a1a1a] tracking-wide">{s.name}</p>
-                    <p className="text-xs mt-1 font-medium" style={{ color: PINK, fontFamily: 'sans-serif' }}>{s.role}</p>
-                    <p className="text-[11px] text-gray-400 mt-2 leading-relaxed" style={{ fontFamily: 'sans-serif' }}>{s.exp}</p>
+                    {isEditMode ? (
+                      <>
+                        <p
+                          className="italic text-base font-bold text-[#1a1a1a] tracking-wide outline-none"
+                          contentEditable
+                          suppressContentEditableWarning
+                          onBlur={e => patchSpec(s.id, { name: (e.currentTarget.textContent ?? '').slice(0, 120) })}
+                        >
+                          {s.name}
+                        </p>
+                        <p
+                          className="text-xs mt-1 font-medium outline-none"
+                          style={{ color: PINK, fontFamily: 'sans-serif' }}
+                          contentEditable
+                          suppressContentEditableWarning
+                          onBlur={e => patchSpec(s.id, { role: (e.currentTarget.textContent ?? '').slice(0, 120) })}
+                        >
+                          {s.role}
+                        </p>
+                        <p
+                          className="text-[11px] text-gray-400 mt-2 leading-relaxed outline-none"
+                          style={{ fontFamily: 'sans-serif' }}
+                          contentEditable
+                          suppressContentEditableWarning
+                          onBlur={e => patchSpec(s.id, { exp: (e.currentTarget.textContent ?? '').slice(0, 300) })}
+                        >
+                          {s.exp}
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <p className="italic text-base font-bold text-[#1a1a1a] tracking-wide">{s.name}</p>
+                        <p className="text-xs mt-1 font-medium" style={{ color: PINK, fontFamily: 'sans-serif' }}>{s.role}</p>
+                        <p className="text-[11px] text-gray-400 mt-2 leading-relaxed" style={{ fontFamily: 'sans-serif' }}>{s.exp}</p>
+                      </>
+                    )}
                   </div>
                 </div>
               )
@@ -2205,12 +2655,24 @@ export default function MassageTemplate({
           </div>
         </div>
       </section>
+      )}
 
       {/* ============ CTA — BOOK NOW ============ */}
+      {ctaBlockHidden && isEditMode && (
+        <section
+          id="massage-block-cta"
+          className="py-10 md:py-12 bg-amber-50 border-y border-dashed border-amber-300/80"
+        >
+          <div className="max-w-3xl mx-auto px-6 text-center">
+            <p className="text-sm font-medium text-amber-950 leading-relaxed">{t.ctaHiddenBanner}</p>
+          </div>
+        </section>
+      )}
+      {!ctaBlockHidden && (
       <section
         id="massage-block-cta"
         className="relative py-24 md:py-32 overflow-hidden"
-        style={{ background: `linear-gradient(135deg, ${PINK}, ${PINK_DARK})` }}
+        style={{ background: `linear-gradient(135deg, ${ctaBgFrom}, ${ctaBgTo})` }}
       >
         <div
           className="absolute -top-20 -right-20 w-72 h-72 rounded-full opacity-10"
@@ -2220,140 +2682,445 @@ export default function MassageTemplate({
           className="absolute -bottom-16 -left-16 w-56 h-56 rounded-full opacity-10"
           style={{ background: 'white' }}
         />
-        <div className="relative z-10 max-w-3xl mx-auto px-6 text-center">
-          <h2 className="text-4xl md:text-6xl italic font-bold text-white leading-[1.1]">
-            {t.ctaTitle}
-          </h2>
-          <p
-            className="mt-6 text-white/80 text-base md:text-lg max-w-xl mx-auto leading-relaxed"
-            style={{ fontFamily: 'sans-serif' }}
-          >
-            {t.ctaSub}
-          </p>
+        <div className="relative z-10 max-w-3xl mx-auto px-4 sm:px-6 text-center">
+          {isEditMode ? (
+            <h2
+              className="text-3xl sm:text-4xl md:text-6xl italic font-bold leading-[1.12] sm:leading-[1.1] outline-none"
+              style={{ color: ctaTitleCol }}
+              contentEditable
+              suppressContentEditableWarning
+              onBlur={e =>
+                onSaveDraft?.('publicMassageCtaTitle', (e.currentTarget.textContent ?? '').slice(0, 320))
+              }
+            >
+              {ctaTitleDisplay}
+            </h2>
+          ) : (
+            <h2 className="text-3xl sm:text-4xl md:text-6xl italic font-bold leading-[1.12] sm:leading-[1.1]" style={{ color: ctaTitleCol }}>
+              {ctaTitleDisplay}
+            </h2>
+          )}
+          {isEditMode ? (
+            <p
+              className="mt-4 sm:mt-6 text-sm sm:text-base md:text-lg max-w-xl mx-auto leading-relaxed outline-none"
+              style={{ fontFamily: 'sans-serif', color: ctaSubCol }}
+              contentEditable
+              suppressContentEditableWarning
+              onBlur={e =>
+                onSaveDraft?.('publicMassageCtaSub', (e.currentTarget.textContent ?? '').slice(0, 720))
+              }
+            >
+              {ctaSubDisplay}
+            </p>
+          ) : (
+            <p
+              className="mt-4 sm:mt-6 text-sm sm:text-base md:text-lg max-w-xl mx-auto leading-relaxed"
+              style={{ fontFamily: 'sans-serif', color: ctaSubCol }}
+            >
+              {ctaSubDisplay}
+            </p>
+          )}
           <button
-            onClick={onBookNow}
-            className="mt-10 bg-white px-12 py-5 rounded-full text-sm font-bold tracking-wider transition-all duration-200 hover:shadow-2xl hover:scale-[1.03]"
-            style={{ color: PINK, fontFamily: 'sans-serif' }}
+            type="button"
+            onClick={() => {
+              if (!isEditMode) onBookNow?.()
+            }}
+            className="mt-8 sm:mt-10 w-full sm:w-auto max-w-md sm:max-w-none mx-auto sm:mx-0 px-8 sm:px-12 py-4 sm:py-5 rounded-full text-xs sm:text-sm font-bold tracking-wider transition-all duration-200 hover:shadow-2xl hover:scale-[1.03] touch-manipulation"
+            style={{ background: ctaBtnBgCol, color: ctaBtnTextCol, fontFamily: 'sans-serif' }}
           >
-            {t.ctaBtn}
+            {isEditMode ? (
+              <span
+                className="outline-none"
+                contentEditable
+                suppressContentEditableWarning
+                onBlur={e =>
+                  onSaveDraft?.('publicMassageCtaBtn', (e.currentTarget.textContent ?? '').slice(0, 120))
+                }
+                onKeyDown={e => {
+                  if (e.key === 'Enter') e.preventDefault()
+                }}
+              >
+                {ctaBtnDisplay}
+              </span>
+            ) : (
+              ctaBtnDisplay
+            )}
           </button>
         </div>
       </section>
+      )}
 
       {/* ============ CONTACTS ============ */}
-      <section id="contacts" className="py-20 md:py-28">
-        <div className="max-w-7xl mx-auto px-4">
-          <h2 className="text-3xl md:text-5xl italic font-bold text-[#1a1a1a] leading-tight max-w-3xl">
-            {t.contactTitle}
-          </h2>
-          <div className="mt-10 flex flex-col md:flex-row gap-10">
-            <div className="flex-1 max-w-sm">
-              <h3 className="text-2xl italic font-bold">{t.ourContacts}</h3>
-              <div className="mt-6 space-y-5 text-sm" style={{ fontFamily: 'sans-serif' }}>
-                <div className="flex items-center gap-3" style={{ color: PINK }}>
-                  <Pin size="w-5 h-5" />
-                  <span className="text-[#1a1a1a]">{headerAddress ?? t.addressDefault}</span>
+      <section id="contacts" className="py-14 sm:py-20 md:py-28">
+        <div className="max-w-7xl mx-auto px-3 sm:px-4">
+          {isEditMode ? (
+            <h2
+              className="text-2xl sm:text-3xl md:text-5xl italic font-bold leading-tight max-w-3xl outline-none"
+              style={{ color: contactsBlockTitleCol }}
+              contentEditable
+              suppressContentEditableWarning
+              onBlur={e =>
+                onSaveDraft?.('publicMassageContactTitle', (e.currentTarget.textContent ?? '').slice(0, 280))
+              }
+            >
+              {contactTitleDisplay}
+            </h2>
+          ) : (
+            <h2
+              className="text-2xl sm:text-3xl md:text-5xl italic font-bold leading-tight max-w-3xl"
+              style={{ color: contactsBlockTitleCol }}
+            >
+              {contactTitleDisplay}
+            </h2>
+          )}
+          <div className="mt-8 sm:mt-10 flex flex-col lg:flex-row gap-8 lg:gap-10">
+            <div className="flex-1 w-full lg:max-w-sm min-w-0">
+              {isEditMode ? (
+                <h3
+                  className="text-xl sm:text-2xl italic font-bold outline-none"
+                  style={{ color: contactsSectionHeadingCol }}
+                  contentEditable
+                  suppressContentEditableWarning
+                  onBlur={e =>
+                    onSaveDraft?.('publicMassageContactOurHeading', (e.currentTarget.textContent ?? '').slice(0, 120))
+                  }
+                >
+                  {contactOurHeadingDisplay}
+                </h3>
+              ) : (
+                <h3 className="text-xl sm:text-2xl italic font-bold" style={{ color: contactsSectionHeadingCol }}>
+                  {contactOurHeadingDisplay}
+                </h3>
+              )}
+              <div className="mt-4 sm:mt-6 space-y-4 sm:space-y-5 text-xs sm:text-sm" style={{ fontFamily: 'sans-serif' }}>
+                <div className="flex items-center gap-3">
+                  <span className="shrink-0 flex items-center" style={{ color: contactsIconCol }}>
+                    <Pin size="w-5 h-5" />
+                  </span>
+                  {isEditMode ? (
+                    <span
+                      className="min-w-0 flex-1 outline-none border-b border-dashed border-b-pink-300/60 cursor-text"
+                      style={{ color: contactsBodyCol }}
+                      contentEditable
+                      suppressContentEditableWarning
+                      onBlur={e => onSaveDraft?.('publicAddress', (e.currentTarget.textContent ?? '').slice(0, 400))}
+                    >
+                      {headerAddress ?? t.addressDefault}
+                    </span>
+                  ) : (
+                    <span className="min-w-0" style={{ color: contactsBodyCol }}>
+                      {headerAddress ?? t.addressDefault}
+                    </span>
+                  )}
                 </div>
-                <div className="flex items-start gap-3" style={{ color: PINK }}>
-                  <Clock size="w-5 h-5" />
-                  <div className="text-[#1a1a1a]">
-                    <p>{t.workHours}</p>
-                    <p>{t.workWeekend}</p>
-                    <p>{t.dayOff}</p>
-                  </div>
+                <div className="flex items-start gap-3">
+                  <span className="shrink-0 pt-0.5" style={{ color: contactsIconCol }}>
+                    <Clock size="w-5 h-5" />
+                  </span>
+                  {isEditMode ? (
+                    <div
+                      className="min-w-0 flex-1 whitespace-pre-line outline-none border-b border-dashed border-b-pink-300/60 cursor-text"
+                      style={{ color: contactsBodyCol }}
+                      contentEditable
+                      suppressContentEditableWarning
+                      onBlur={e =>
+                        onSaveDraft?.('publicMassageContactSchedule', (e.currentTarget.textContent ?? '').slice(0, 600))
+                      }
+                    >
+                      {contactScheduleDisplay}
+                    </div>
+                  ) : (
+                    <div className="min-w-0 whitespace-pre-line" style={{ color: contactsBodyCol }}>
+                      {contactScheduleDisplay}
+                    </div>
+                  )}
                 </div>
-                <div className="flex items-center gap-3" style={{ color: PINK }}>
-                  <Phone size="w-5 h-5" />
-                  <span className="text-[#1a1a1a]">{headerPhone ?? t.phone}</span>
+                <div className="flex items-center gap-3">
+                  <span className="shrink-0" style={{ color: contactsIconCol }}>
+                    <Phone size="w-5 h-5" />
+                  </span>
+                  {isEditMode ? (
+                    <span
+                      className="min-w-0 flex-1 outline-none border-b border-dashed border-b-pink-300/60 cursor-text"
+                      style={{ color: contactsBodyCol }}
+                      contentEditable
+                      suppressContentEditableWarning
+                      onBlur={e => onSaveDraft?.('publicPhone', (e.currentTarget.textContent ?? '').slice(0, 80))}
+                    >
+                      {headerPhone ?? t.phone}
+                    </span>
+                  ) : (
+                    <span className="min-w-0" style={{ color: contactsBodyCol }}>
+                      {headerPhone ?? t.phone}
+                    </span>
+                  )}
                 </div>
-                <div className="flex items-center gap-3" style={{ color: PINK }}>
-                  <Mail size="w-5 h-5" />
-                  <span className="text-[#1a1a1a]">{t.email}</span>
+                <div className="flex items-center gap-3">
+                  <span className="shrink-0" style={{ color: contactsIconCol }}>
+                    <Mail size="w-5 h-5" />
+                  </span>
+                  {isEditMode ? (
+                    <span
+                      className="min-w-0 flex-1 outline-none border-b border-dashed border-b-pink-300/60 cursor-text"
+                      style={{ color: contactsBodyCol }}
+                      contentEditable
+                      suppressContentEditableWarning
+                      onBlur={e =>
+                        onSaveDraft?.('publicMassageContactEmail', (e.currentTarget.textContent ?? '').slice(0, 120))
+                      }
+                    >
+                      {contactEmailDisplay}
+                    </span>
+                  ) : (
+                    <span className="min-w-0" style={{ color: contactsBodyCol }}>
+                      {contactEmailDisplay}
+                    </span>
+                  )}
                 </div>
               </div>
-              {(viberUrl || whatsappUrl || telegramUrl) && (
+              {(isEditMode ||
+                socialUrls.viberUrl ||
+                socialUrls.whatsappUrl ||
+                socialUrls.telegramUrl ||
+                socialUrls.facebookUrl ||
+                socialUrls.instagramUrl ||
+                socialUrls.vkUrl ||
+                socialUrls.twitterUrl ||
+                socialUrls.tiktokUrl) && (
                 <>
-                  <p className="mt-6 text-[10px] font-bold text-gray-400 uppercase tracking-wider" style={{ fontFamily: 'sans-serif' }}>
-                    {t.writeOnline}
-                  </p>
-                  <div className="mt-3 flex flex-wrap gap-2.5">
-                    {viberUrl && (
-                      <a href={viberUrl} target="_blank" rel="noopener noreferrer" className="inline-block">
-                        <SocialCircle bg="#7F00FF" size={38}>
-                          <ViberIcon className="w-[18px] h-[18px]" />
-                        </SocialCircle>
-                      </a>
-                    )}
-                    {whatsappUrl && (
-                      <a href={whatsappUrl} target="_blank" rel="noopener noreferrer" className="inline-block">
-                        <SocialCircle bg="#25D366" size={38}>
-                          <WhatsAppIcon className="w-[18px] h-[18px]" />
-                        </SocialCircle>
-                      </a>
-                    )}
-                    {telegramUrl && (
-                      <a href={telegramUrl} target="_blank" rel="noopener noreferrer" className="inline-block">
-                        <SocialCircle bg="#0088cc" size={38}>
-                          <TelegramIcon className="w-[18px] h-[18px]" />
-                        </SocialCircle>
-                      </a>
-                    )}
-                  </div>
-                </>
-              )}
-              {(facebookUrl || instagramUrl || vkUrl || twitterUrl || tiktokUrl) && (
-                <>
-                  <p className="mt-6 text-[11px] font-bold text-gray-400 uppercase tracking-wider" style={{ fontFamily: 'sans-serif' }}>
+                  <p
+                    className="mt-6 text-[11px] font-bold uppercase tracking-wider"
+                    style={{ fontFamily: 'sans-serif', color: contactsLabelCol }}
+                  >
                     {t.socials}
                   </p>
                   <div className="mt-3 flex flex-wrap gap-2.5">
-                    {facebookUrl && (
-                      <a href={facebookUrl} target="_blank" rel="noopener noreferrer" className="inline-block">
-                        <SocialCircle bg="#1877F2" size={38}>
-                          <FacebookIcon className="w-[18px] h-[18px]" />
-                        </SocialCircle>
-                      </a>
+                    {socialUrls.viberUrl && (
+                      <div className="relative inline-block">
+                        {isEditMode && onSaveDraft && (
+                          <button
+                            type="button"
+                            onClick={() => onSaveDraft('publicViber', '')}
+                            className="absolute -top-1.5 -right-1.5 h-4 w-4 rounded-full bg-red-500 text-white flex items-center justify-center text-[8px] z-10 hover:bg-red-600"
+                          >
+                            ✕
+                          </button>
+                        )}
+                        {!isEditMode ? (
+                          <a href={socialUrls.viberUrl} target="_blank" rel="noopener noreferrer" className="inline-block">
+                            <SocialCircle bg="#7F00FF" size={38}>
+                              <ViberIcon className="w-[18px] h-[18px]" />
+                            </SocialCircle>
+                          </a>
+                        ) : (
+                          <SocialCircle bg="#7F00FF" size={38}>
+                            <ViberIcon className="w-[18px] h-[18px]" />
+                          </SocialCircle>
+                        )}
+                      </div>
                     )}
-                    {instagramUrl && (
-                      <a href={instagramUrl} target="_blank" rel="noopener noreferrer" className="inline-block">
-                        <SocialCircle bg="linear-gradient(135deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888)" size={38}>
-                          <InstagramIcon className="w-[18px] h-[18px]" />
-                        </SocialCircle>
-                      </a>
+                    {socialUrls.whatsappUrl && (
+                      <div className="relative inline-block">
+                        {isEditMode && onSaveDraft && (
+                          <button
+                            type="button"
+                            onClick={() => onSaveDraft('publicWhatsapp', '')}
+                            className="absolute -top-1.5 -right-1.5 h-4 w-4 rounded-full bg-red-500 text-white flex items-center justify-center text-[8px] z-10 hover:bg-red-600"
+                          >
+                            ✕
+                          </button>
+                        )}
+                        {!isEditMode ? (
+                          <a href={socialUrls.whatsappUrl} target="_blank" rel="noopener noreferrer" className="inline-block">
+                            <SocialCircle bg="#25D366" size={38}>
+                              <WhatsAppIcon className="w-[18px] h-[18px]" />
+                            </SocialCircle>
+                          </a>
+                        ) : (
+                          <SocialCircle bg="#25D366" size={38}>
+                            <WhatsAppIcon className="w-[18px] h-[18px]" />
+                          </SocialCircle>
+                        )}
+                      </div>
                     )}
-                    {vkUrl && (
-                      <a href={vkUrl} target="_blank" rel="noopener noreferrer" className="inline-block">
-                        <SocialCircle bg="#4C75A3" size={38}>
-                          <VKIcon className="w-[18px] h-[18px]" />
-                        </SocialCircle>
-                      </a>
+                    {socialUrls.telegramUrl && (
+                      <div className="relative inline-block">
+                        {isEditMode && onSaveDraft && (
+                          <button
+                            type="button"
+                            onClick={() => onSaveDraft('publicTelegram', '')}
+                            className="absolute -top-1.5 -right-1.5 h-4 w-4 rounded-full bg-red-500 text-white flex items-center justify-center text-[8px] z-10 hover:bg-red-600"
+                          >
+                            ✕
+                          </button>
+                        )}
+                        {!isEditMode ? (
+                          <a href={socialUrls.telegramUrl} target="_blank" rel="noopener noreferrer" className="inline-block">
+                            <SocialCircle bg="#0088cc" size={38}>
+                              <TelegramIcon className="w-[18px] h-[18px]" />
+                            </SocialCircle>
+                          </a>
+                        ) : (
+                          <SocialCircle bg="#0088cc" size={38}>
+                            <TelegramIcon className="w-[18px] h-[18px]" />
+                          </SocialCircle>
+                        )}
+                      </div>
                     )}
-                    {twitterUrl && (
-                      <a href={twitterUrl} target="_blank" rel="noopener noreferrer" className="inline-block">
-                        <SocialCircle bg="#0f1419" size={38}>
-                          <TwitterIcon className="w-[18px] h-[18px]" />
-                        </SocialCircle>
-                      </a>
+                    {socialUrls.facebookUrl && (
+                      <div className="relative inline-block">
+                        {isEditMode && onSaveDraft && (
+                          <button
+                            type="button"
+                            onClick={() => onSaveDraft('publicFacebook', '')}
+                            className="absolute -top-1.5 -right-1.5 h-4 w-4 rounded-full bg-red-500 text-white flex items-center justify-center text-[8px] z-10 hover:bg-red-600"
+                          >
+                            ✕
+                          </button>
+                        )}
+                        {!isEditMode ? (
+                          <a href={socialUrls.facebookUrl} target="_blank" rel="noopener noreferrer" className="inline-block">
+                            <SocialCircle bg="#1877F2" size={38}>
+                              <FacebookIcon className="w-[18px] h-[18px]" />
+                            </SocialCircle>
+                          </a>
+                        ) : (
+                          <SocialCircle bg="#1877F2" size={38}>
+                            <FacebookIcon className="w-[18px] h-[18px]" />
+                          </SocialCircle>
+                        )}
+                      </div>
                     )}
-                    {tiktokUrl && (
-                      <a href={tiktokUrl} target="_blank" rel="noopener noreferrer" className="inline-block">
-                        <SocialCircle bg="#010101" size={38}>
-                          <TikTokIcon className="w-[18px] h-[18px]" />
-                        </SocialCircle>
-                      </a>
+                    {socialUrls.instagramUrl && (
+                      <div className="relative inline-block">
+                        {isEditMode && onSaveDraft && (
+                          <button
+                            type="button"
+                            onClick={() => onSaveDraft('publicInstagram', '')}
+                            className="absolute -top-1.5 -right-1.5 h-4 w-4 rounded-full bg-red-500 text-white flex items-center justify-center text-[8px] z-10 hover:bg-red-600"
+                          >
+                            ✕
+                          </button>
+                        )}
+                        {!isEditMode ? (
+                          <a href={socialUrls.instagramUrl} target="_blank" rel="noopener noreferrer" className="inline-block">
+                            <SocialCircle
+                              bg="linear-gradient(135deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888)"
+                              size={38}
+                            >
+                              <InstagramIcon className="w-[18px] h-[18px]" />
+                            </SocialCircle>
+                          </a>
+                        ) : (
+                          <SocialCircle
+                            bg="linear-gradient(135deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888)"
+                            size={38}
+                          >
+                            <InstagramIcon className="w-[18px] h-[18px]" />
+                          </SocialCircle>
+                        )}
+                      </div>
+                    )}
+                    {socialUrls.vkUrl && (
+                      <div className="relative inline-block">
+                        {isEditMode && onSaveDraft && (
+                          <button
+                            type="button"
+                            onClick={() => onSaveDraft('publicVk', '')}
+                            className="absolute -top-1.5 -right-1.5 h-4 w-4 rounded-full bg-red-500 text-white flex items-center justify-center text-[8px] z-10 hover:bg-red-600"
+                          >
+                            ✕
+                          </button>
+                        )}
+                        {!isEditMode ? (
+                          <a href={socialUrls.vkUrl} target="_blank" rel="noopener noreferrer" className="inline-block">
+                            <SocialCircle bg="#4C75A3" size={38}>
+                              <VKIcon className="w-[18px] h-[18px]" />
+                            </SocialCircle>
+                          </a>
+                        ) : (
+                          <SocialCircle bg="#4C75A3" size={38}>
+                            <VKIcon className="w-[18px] h-[18px]" />
+                          </SocialCircle>
+                        )}
+                      </div>
+                    )}
+                    {socialUrls.twitterUrl && (
+                      <div className="relative inline-block">
+                        {isEditMode && onSaveDraft && (
+                          <button
+                            type="button"
+                            onClick={() => onSaveDraft('publicTwitter', '')}
+                            className="absolute -top-1.5 -right-1.5 h-4 w-4 rounded-full bg-red-500 text-white flex items-center justify-center text-[8px] z-10 hover:bg-red-600"
+                          >
+                            ✕
+                          </button>
+                        )}
+                        {!isEditMode ? (
+                          <a href={socialUrls.twitterUrl} target="_blank" rel="noopener noreferrer" className="inline-block">
+                            <SocialCircle bg="#0f1419" size={38}>
+                              <TwitterIcon className="w-[18px] h-[18px]" />
+                            </SocialCircle>
+                          </a>
+                        ) : (
+                          <SocialCircle bg="#0f1419" size={38}>
+                            <TwitterIcon className="w-[18px] h-[18px]" />
+                          </SocialCircle>
+                        )}
+                      </div>
+                    )}
+                    {socialUrls.tiktokUrl && (
+                      <div className="relative inline-block">
+                        {isEditMode && onSaveDraft && (
+                          <button
+                            type="button"
+                            onClick={() => onSaveDraft('publicTiktok', '')}
+                            className="absolute -top-1.5 -right-1.5 h-4 w-4 rounded-full bg-red-500 text-white flex items-center justify-center text-[8px] z-10 hover:bg-red-600"
+                          >
+                            ✕
+                          </button>
+                        )}
+                        {!isEditMode ? (
+                          <a href={socialUrls.tiktokUrl} target="_blank" rel="noopener noreferrer" className="inline-block">
+                            <SocialCircle bg="#010101" size={38}>
+                              <TikTokIcon className="w-[18px] h-[18px]" />
+                            </SocialCircle>
+                          </a>
+                        ) : (
+                          <SocialCircle bg="#010101" size={38}>
+                            <TikTokIcon className="w-[18px] h-[18px]" />
+                          </SocialCircle>
+                        )}
+                      </div>
                     )}
                   </div>
                 </>
               )}
             </div>
 
-            <div className="flex-[2]">
-              <p className="text-sm font-medium text-gray-400 mb-2" style={{ fontFamily: 'sans-serif' }}>{t.salonAddr}</p>
-              <div className="rounded-xl border border-gray-200 h-80 overflow-hidden">
+            <div className="flex-[2] min-w-0">
+              {isEditMode ? (
+                <p
+                  className="text-sm font-medium mb-2 outline-none"
+                  style={{ fontFamily: 'sans-serif', color: contactsLabelCol }}
+                  contentEditable
+                  suppressContentEditableWarning
+                  onBlur={e =>
+                    onSaveDraft?.('publicMassageContactMapLabel', (e.currentTarget.textContent ?? '').slice(0, 80))
+                  }
+                >
+                  {contactMapCaptionDisplay}
+                </p>
+              ) : (
+                <p className="text-sm font-medium mb-2" style={{ fontFamily: 'sans-serif', color: contactsLabelCol }}>
+                  {contactMapCaptionDisplay}
+                </p>
+              )}
+              <div className="rounded-xl border border-gray-200 h-[min(52vh,22rem)] sm:h-72 md:h-80 overflow-hidden bg-muted/20">
                 <iframe
                   title="map"
-                  src="https://www.google.com/maps?q=0,0&z=2&output=embed&hl=en"
-                  className="w-full h-full border-0"
+                  src={contactMapEmbedSrc}
+                  className={cn('w-full h-full border-0', isEditMode && 'pointer-events-none')}
                   loading="lazy"
                   referrerPolicy="no-referrer-when-downgrade"
                 />
@@ -2363,11 +3130,51 @@ export default function MassageTemplate({
         </div>
       </section>
 
+      {/* ============ LANGUAGE SWITCHER ============ */}
+      {showLangSwitcher && (
+        <div className="fixed bottom-[max(1rem,env(safe-area-inset-bottom))] left-4 sm:left-6 z-50">
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setIsLangOpen(prev => !prev)}
+              className="h-11 w-11 rounded-full bg-black/70 border border-white/20 shadow-lg backdrop-blur-md flex items-center justify-center hover:bg-black/90 transition"
+            >
+              <img
+                src={lang === 'ru' ? flagRu : lang === 'en' ? flagEn : flagRo}
+                alt={lang === 'ru' ? 'Русский' : lang === 'en' ? 'English' : 'Română'}
+                className="h-6 w-6 rounded-full"
+              />
+            </button>
+            {isLangOpen && (
+              <div className="absolute bottom-full left-0 mb-3 flex flex-col gap-2">
+                {([
+                  { code: 'ru' as const, icon: flagRu, label: 'Русский' },
+                  { code: 'en' as const, icon: flagEn, label: 'English' },
+                  { code: 'ro' as const, icon: flagRo, label: 'Română' },
+                ] as const)
+                  .filter(item => item.code !== lang && enabledLangs.includes(item.code))
+                  .map(item => (
+                    <button
+                      key={item.code}
+                      type="button"
+                      onClick={() => handleLangChange(item.code)}
+                      className="h-11 w-11 rounded-full border border-white/20 bg-black/70 hover:bg-black/90 shadow-lg backdrop-blur-md flex items-center justify-center transition"
+                      aria-label={item.label}
+                    >
+                      <img src={item.icon} alt={item.label} className="h-6 w-6 rounded-full" />
+                    </button>
+                  ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* ============ SCROLL TO TOP ============ */}
       {showScrollTop && (
         <button
           onClick={scrollToTop}
-          className="sticky bottom-6 float-right mr-6 w-10 h-10 rounded-full text-white flex items-center justify-center shadow-lg z-20 transition-colors"
+          className="sticky bottom-4 sm:bottom-6 float-right mr-3 sm:mr-6 mb-4 w-11 h-11 sm:w-10 sm:h-10 rounded-full text-white flex items-center justify-center shadow-lg z-20 transition-colors touch-manipulation"
           style={{ background: PINK }}
           onMouseEnter={e => (e.currentTarget.style.background = PINK_DARK)}
           onMouseLeave={e => (e.currentTarget.style.background = PINK)}

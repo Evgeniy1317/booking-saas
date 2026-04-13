@@ -63,6 +63,7 @@ export const translations = {
     home: {
       greeting: 'Здравствуйте',
       subtitle: 'Вот что происходит в салоне',
+      todayInSubtitle: 'сегодня',
       newAppointmentToday: 'Новая запись сегодня',
       ifClientWithoutAppointment: 'Если клиент без записи',
       editAppointment: 'Редактировать запись',
@@ -386,6 +387,7 @@ export const translations = {
     home: {
       greeting: 'Bună ziua',
       subtitle: 'Iată ce se întâmplă în salon',
+      todayInSubtitle: 'astăzi',
       newAppointmentToday: 'Programare nouă astăzi',
       ifClientWithoutAppointment: 'Dacă clientul nu are programare',
       editAppointment: 'Editează programarea',
@@ -697,6 +699,7 @@ export const translations = {
     home: {
       greeting: 'Hello',
       subtitle: 'Here\'s what\'s happening in the salon',
+      todayInSubtitle: 'today',
       newAppointmentToday: 'New Appointment Today',
       ifClientWithoutAppointment: 'If client without appointment',
       editAppointment: 'Edit Appointment',

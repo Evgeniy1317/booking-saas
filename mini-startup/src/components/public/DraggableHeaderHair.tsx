@@ -4,6 +4,7 @@ import { GripVertical, MapPin } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { isOrdinaryDraggableHeaderTheme } from '@/lib/ordinary-draggable-header-themes'
+import type { PublicSiteLang } from '@/lib/public-site-langs'
 import bookingIcon from '@/assets/images/free-icon-write-file-17127339.png'
 
 const SNAP_GUIDES = [0, 25, 50, 75, 100]
@@ -84,12 +85,13 @@ function isOldLeftAlignedLayout(layout: Record<string, Position>): boolean {
 
 function loadLayout(
   storageKey: string,
-  fallbackDefault?: Record<string, Position>
+  fallbackDefault?: Record<string, Position>,
+  getRaw?: (storageKey: string) => string | null
 ): Record<string, Position> {
   const base = fallbackDefault ?? defaultLayout
   if (typeof window === 'undefined') return { ...base }
   try {
-    const raw = window.localStorage.getItem(storageKey)
+    const raw = getRaw ? getRaw(storageKey) : window.localStorage.getItem(storageKey)
     if (!raw) return { ...base }
     const parsed = JSON.parse(raw) as Record<string, Position>
     const merged = { ...base, ...parsed }
@@ -256,6 +258,15 @@ export interface DraggableHeaderHairProps {
   readOnly?: boolean
   /** Совпадает с ?headerLayoutBranch — какой ключ localStorage (*_v6 vs *_v6_mobile) читать при широкой вкладке */
   headerLayoutBranch?: 'mobile' | 'desktop' | null
+  /** Превью массажа: тексты hero → massage_draft_<slot>_* */
+  persistDraft?: (key: string, value: string) => void
+  /** Превью массажа: раскладка drag → тот же ключ, что у салона, но в слоте массажа */
+  heroLayoutStorage?: {
+    read: (resolvedStorageKey: string) => string | null
+    write: (resolvedStorageKey: string, json: string) => void
+  }
+  /** Язык сайта: тексты hero-кнопок пишутся в `draft_*_*_*_${lang}` (как в PublicPage.readPublic). */
+  draftLocale?: PublicSiteLang
 }
 
 export default function DraggableHeaderHair({
@@ -292,18 +303,46 @@ export default function DraggableHeaderHair({
   constructorMobilePreview = false,
   readOnly = false,
   headerLayoutBranch: headerLayoutBranchProp = null,
+  persistDraft,
+  heroLayoutStorage,
+  draftLocale,
 }: DraggableHeaderHairProps) {
   const saveDraft = useCallback(
     (key: string, value: string) => {
       if (typeof window === 'undefined') return
-      const storageKey = `draft_${key}_${slug}_${headerTheme}`
-      const prev = window.localStorage.getItem(storageKey)
+      if (persistDraft) {
+        persistDraft(key, value)
+        onDraftChange?.()
+        return
+      }
+      const base = `draft_${key}_${slug}_${headerTheme}`
+      const ctaLangKey =
+        key === 'publicHeaderPrimaryCta' || key === 'publicHeaderSecondaryCta'
+      const storageKey =
+        draftLocale && ctaLangKey ? `${base}_${draftLocale}` : base
+      const prev =
+        draftLocale && ctaLangKey
+          ? window.localStorage.getItem(storageKey) ??
+            (draftLocale === 'ru' ? window.localStorage.getItem(base) : null)
+          : window.localStorage.getItem(storageKey)
       if (prev === value) return
       window.localStorage.setItem(storageKey, value)
+      if (draftLocale && ctaLangKey && draftLocale === 'ru') {
+        window.localStorage.setItem(base, value)
+      }
       window.localStorage.setItem(`constructorHasUserEdits_${headerTheme}`, '1')
       onDraftChange?.()
     },
-    [onDraftChange, headerTheme, slug]
+    [onDraftChange, headerTheme, slug, persistDraft, draftLocale]
+  )
+
+  const readHeroLayoutRaw = useCallback(
+    (sk: string) => {
+      if (typeof window === 'undefined') return null
+      if (heroLayoutStorage) return heroLayoutStorage.read(sk)
+      return window.localStorage.getItem(sk)
+    },
+    [heroLayoutStorage]
   )
   const themeDefault = defaultLayoutProp ?? defaultLayout
   const [dragging, setDragging] = useState<string | null>(null)
@@ -328,6 +367,8 @@ export default function DraggableHeaderHair({
   const taglineBlurTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [titleCharCount, setTitleCharCount] = useState(() => publicName.length)
   const titleEditableRef = useRef<HTMLHeadingElement>(null)
+  const primaryCtaEditableRef = useRef<HTMLSpanElement>(null)
+  const secondaryCtaEditableRef = useRef<HTMLSpanElement>(null)
   const [taglineCharCount, setTaglineCharCount] = useState(() => publicTagline.length)
   const [taglineFocused, setTaglineFocused] = useState(false)
   const [localTagline, setLocalTagline] = useState(publicTagline)
@@ -360,7 +401,13 @@ export default function DraggableHeaderHair({
     const initialMobile = effectiveMobileBranch(constructorMobilePreview, initialNarrow, headerLayoutBranchProp)
     return loadLayout(
       resolveHeaderLayoutStorageKey(layoutStorageKey, initialMobile),
-      layoutFallbackForInit(headerTheme, defaultLayoutProp)
+      layoutFallbackForInit(headerTheme, defaultLayoutProp),
+      (sk) =>
+        heroLayoutStorage
+          ? heroLayoutStorage.read(sk)
+          : typeof window !== 'undefined'
+            ? window.localStorage.getItem(sk)
+            : null
     )
   })
   const layoutRef = useRef<Record<string, Position>>(layout)
@@ -373,10 +420,20 @@ export default function DraggableHeaderHair({
     }
     if (prevLayoutBranchKeyRef.current === layoutStorageKeyResolved) return
     prevLayoutBranchKeyRef.current = layoutStorageKeyResolved
-    const next = loadLayout(layoutStorageKeyResolved, layoutFallbackForInit(headerTheme, defaultLayoutProp))
+    const next = loadLayout(
+      layoutStorageKeyResolved,
+      layoutFallbackForInit(headerTheme, defaultLayoutProp),
+      readHeroLayoutRaw
+    )
     layoutRef.current = next
     setLayout(next)
-  }, [layoutStorageKeyResolved, headerTheme, headerLayoutBranchProp])
+  }, [
+    layoutStorageKeyResolved,
+    headerTheme,
+    headerLayoutBranchProp,
+    readHeroLayoutRaw,
+    defaultLayoutProp,
+  ])
 
   useEffect(() => {
     setTitleCharCount(publicName.length)
@@ -391,6 +448,31 @@ export default function DraggableHeaderHair({
       el.textContent = publicName
     }
   }, [publicName])
+
+  const primaryCtaSyncText = publicHeaderPrimaryCta || bookLabel
+  const secondaryCtaSyncText = publicHeaderSecondaryCta || mapLabel
+
+  /** Не вставлять текст кнопок как children у contentEditable — ре-рендеры React портят DOM (смешение языков/символов). */
+  useLayoutEffect(() => {
+    if (readOnly) return
+    const el = primaryCtaEditableRef.current
+    if (!el) return
+    if (typeof document !== 'undefined' && document.activeElement === el) return
+    if (el.innerText !== primaryCtaSyncText) {
+      el.textContent = primaryCtaSyncText
+    }
+  }, [primaryCtaSyncText, readOnly])
+
+  useLayoutEffect(() => {
+    if (readOnly) return
+    const el = secondaryCtaEditableRef.current
+    if (!el) return
+    if (typeof document !== 'undefined' && document.activeElement === el) return
+    if (el.innerText !== secondaryCtaSyncText) {
+      el.textContent = secondaryCtaSyncText
+    }
+  }, [secondaryCtaSyncText, readOnly])
+
   useEffect(() => {
     setTaglineCharCount(publicTagline.length)
   }, [publicTagline])
@@ -650,7 +732,8 @@ export default function DraggableHeaderHair({
     ? 'text-base sm:text-lg md:text-2xl leading-[1.35]'
     : 'text-base sm:text-lg md:text-2xl'
   const titleClassName = cn(
-    'font-semibold tracking-[0.08em] text-white drop-shadow-[0_12px_34px_rgba(0,0,0,0.5)] outline-none focus:ring-2 focus:ring-primary/50 focus:ring-offset-2 focus:ring-offset-transparent rounded px-1 min-w-[2ch] inline-block max-w-full text-center',
+    'font-semibold tracking-[0.08em] drop-shadow-[0_12px_34px_rgba(0,0,0,0.5)] outline-none focus:ring-2 focus:ring-primary/50 focus:ring-offset-2 focus:ring-offset-transparent rounded px-1 min-w-[2ch] inline-block max-w-full text-center',
+    !headerTitleStyle?.color && 'text-white',
     isOrdinaryDraggableHeaderTheme(headerTheme) && 'whitespace-pre-wrap break-words salon-hair-mobile-title',
     headerTheme === 'barber'
       ? 'font-barber-title'
@@ -694,8 +777,12 @@ export default function DraggableHeaderHair({
         pointerCaptureElRef.current = null
       }
       if (dragCommittedRef.current) {
-        saveLayout(layoutStorageKeyResolved, layoutRef.current, headerTheme)
-        if (typeof window !== 'undefined') {
+        if (heroLayoutStorage) {
+          heroLayoutStorage.write(layoutStorageKeyResolved, JSON.stringify(layoutRef.current))
+        } else {
+          saveLayout(layoutStorageKeyResolved, layoutRef.current, headerTheme)
+        }
+        if (typeof window !== 'undefined' && !heroLayoutStorage) {
           window.localStorage.setItem(`constructorHasUserEdits_${headerTheme}`, '1')
         }
         onDraftChange?.()
@@ -710,7 +797,14 @@ export default function DraggableHeaderHair({
     setDragging(null)
     setDragPos(null)
     onDragEnd?.()
-  }, [layoutStorageKeyResolved, focusEditableAndMoveCaretToEnd, onDragEnd, onDraftChange, headerTheme])
+  }, [
+    layoutStorageKeyResolved,
+    focusEditableAndMoveCaretToEnd,
+    onDragEnd,
+    onDraftChange,
+    headerTheme,
+    heroLayoutStorage,
+  ])
 
   useEffect(() => {
     if (!dragging) return
@@ -905,7 +999,9 @@ export default function DraggableHeaderHair({
             )}
             placeholder="Введите текст (Shift+Enter — новая строка)"
             className={cn(
-              'block max-w-full overflow-x-hidden overflow-y-auto rounded border-0 bg-transparent py-0.5 text-white/80 placeholder:text-white/40 outline-none focus:ring-2 focus:ring-white/40 focus:ring-offset-0 min-w-0 min-h-[1.5em] scrollbar-hide break-words [overflow-wrap:anywhere]',
+              'block max-w-full overflow-x-hidden overflow-y-auto rounded border-0 bg-transparent py-0.5 outline-none focus:ring-2 focus:ring-white/40 focus:ring-offset-0 min-w-0 min-h-[1.5em] scrollbar-hide break-words [overflow-wrap:anywhere]',
+              !headerSubtitleStyle?.color && 'text-white/80 placeholder:text-white/40',
+              headerSubtitleStyle?.color && 'placeholder:text-muted-foreground/60',
               isOrdinaryDraggableHeaderTheme(headerTheme) && narrowViewportEffective ? 'resize-y' : 'resize-none',
               readOnly && 'cursor-default resize-none focus:ring-0',
               isOrdinaryDraggableHeaderTheme(headerTheme) &&
@@ -1013,18 +1109,18 @@ export default function DraggableHeaderHair({
             onClick={readOnly ? (e) => { e.stopPropagation(); _onBookClick() } : undefined}
           >
             <img src={bookingIcon} alt="" className={cn('h-5 w-5 opacity-80 shrink-0', getPrimaryIconClass('brightness-0 invert'))} />
-            <span
-              contentEditable={!readOnly}
-              suppressContentEditableWarning
-              className={cn(
-                'outline-none rounded px-1 min-w-[2ch]',
-                readOnly ? 'cursor-default' : 'focus:ring-2 focus:ring-white/50'
-              )}
-              onInput={readOnly ? undefined : enforceMaxLength(MAX_BUTTON_LEN)}
-              onBlur={readOnly ? undefined : (e) => saveDraft('publicHeaderPrimaryCta', e.currentTarget.innerText.trim())}
-            >
-              {publicHeaderPrimaryCta || bookLabel}
-            </span>
+            {readOnly ? (
+              <span className={cn('outline-none rounded px-1 min-w-[2ch]', 'cursor-default')}>{primaryCtaSyncText}</span>
+            ) : (
+              <span
+                ref={primaryCtaEditableRef}
+                contentEditable
+                suppressContentEditableWarning
+                className={cn('outline-none rounded px-1 min-w-[2ch]', 'focus:ring-2 focus:ring-white/50')}
+                onInput={enforceMaxLength(MAX_BUTTON_LEN)}
+                onBlur={(e) => saveDraft('publicHeaderPrimaryCta', e.currentTarget.innerText.trim())}
+              />
+            )}
           </Button>
         </div>
         <div
@@ -1072,18 +1168,18 @@ export default function DraggableHeaderHair({
             onClick={readOnly ? (e) => { e.stopPropagation(); _onMapClick() } : undefined}
           >
             <MapPin className="h-8 w-8 shrink-0" style={{ color: headerSecondaryCustom ? barberSecondaryColor.text : 'rgba(255,255,255,0.8)' }} />
-            <span
-              contentEditable={!readOnly}
-              suppressContentEditableWarning
-              className={cn(
-                'outline-none rounded px-1 min-w-[2ch]',
-                readOnly ? 'cursor-default' : 'focus:ring-2 focus:ring-white/50'
-              )}
-              onInput={readOnly ? undefined : enforceMaxLength(MAX_BUTTON_LEN)}
-              onBlur={readOnly ? undefined : (e) => saveDraft('publicHeaderSecondaryCta', e.currentTarget.innerText.trim())}
-            >
-              {publicHeaderSecondaryCta || mapLabel}
-            </span>
+            {readOnly ? (
+              <span className={cn('outline-none rounded px-1 min-w-[2ch]', 'cursor-default')}>{secondaryCtaSyncText}</span>
+            ) : (
+              <span
+                ref={secondaryCtaEditableRef}
+                contentEditable
+                suppressContentEditableWarning
+                className={cn('outline-none rounded px-1 min-w-[2ch]', 'focus:ring-2 focus:ring-white/50')}
+                onInput={enforceMaxLength(MAX_BUTTON_LEN)}
+                onBlur={(e) => saveDraft('publicHeaderSecondaryCta', e.currentTarget.innerText.trim())}
+              />
+            )}
           </Button>
         </div>
       </div>

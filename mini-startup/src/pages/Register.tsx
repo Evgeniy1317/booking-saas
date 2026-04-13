@@ -11,6 +11,16 @@ interface BusinessType {
   subcategories: string[]
 }
 
+/** Ключи тем в localStorage совпадают с themeStorageId в конструкторе (premium-hair → hair и т.д.) */
+const THEME_STORAGE_IDS_FOR_SALON_NAME = ['hair', 'barber', 'cosmetology', 'coloring', 'manicure'] as const
+
+function seedSalonNameDrafts(salonName: string, slug: string) {
+  for (const tid of THEME_STORAGE_IDS_FOR_SALON_NAME) {
+    localStorage.setItem(`draft_publicName_${slug}_${tid}`, salonName)
+    localStorage.setItem(`draft_publicFooterName_${slug}_${tid}`, salonName)
+  }
+}
+
 const businessTypes: BusinessType[] = [
   {
     id: 'beauty',
@@ -116,11 +126,21 @@ export default function Register() {
       localStorage.setItem('fullName', formData.fullName)
       localStorage.setItem('businessName', formData.businessName)
       localStorage.setItem('businessType', formData.businessType)
-      
+
+      const slug =
+        (formData.slug.trim() || generateSlug(formData.businessName) || 'salon').toLowerCase()
+      localStorage.setItem('publicSlug', slug)
+      localStorage.setItem('publicName', formData.businessName)
+      localStorage.setItem('publicFooterName', formData.businessName)
+      localStorage.setItem('constructorBusinessName', formData.businessName)
+      if (formData.businessName.trim()) {
+        seedSalonNameDrafts(formData.businessName.trim(), slug)
+      }
+
       // Симуляция задержки
       await new Promise(resolve => setTimeout(resolve, 1000))
-      
-      navigate('/dashboard')
+
+      navigate(formData.businessType === 'massage' ? '/constructor-massage' : '/dashboard')
     } catch (err: any) {
       setError(err.message || 'Ошибка регистрации')
     } finally {
@@ -450,7 +470,10 @@ export default function Register() {
                 <Button
                   type="button"
                   onClick={handleNext}
-                  disabled={!formData.businessType || (selectedType?.subcategories.length > 0 && formData.subcategories.length === 0)}
+                  disabled={
+                    !formData.businessType ||
+                    ((selectedType?.subcategories?.length ?? 0) > 0 && formData.subcategories.length === 0)
+                  }
                   size="lg"
                   className="flex-1 h-12 rounded-full backdrop-blur-xl bg-accent/80 hover:bg-accent/90 text-accent-foreground font-semibold shadow-lg shadow-accent/20 transition-all hover:shadow-accent/30 border border-accent/30 disabled:opacity-50"
                 >

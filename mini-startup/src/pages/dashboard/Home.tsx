@@ -9,6 +9,7 @@ import { AVAILABLE_SLOTS } from '@/lib/mock-data'
 import { cn } from '@/lib/utils'
 import { useLanguage } from '@/contexts/LanguageContext'
 import { getTranslation, Language } from '@/lib/translations'
+import { getCanonicalSalonBusinessName } from '@/lib/salon-business-name'
 
 export default function Home() {
   const location = useLocation()
@@ -33,9 +34,8 @@ export default function Home() {
   }
 
   const getBusinessName = () => {
-    // Попробуем получить из localStorage
-    const storedBusinessName = localStorage.getItem('businessName')
-    return storedBusinessName || t('common.salon')
+    const name = getCanonicalSalonBusinessName()
+    return name || t('common.salon')
   }
 
   const userName = getUserName()
@@ -1313,8 +1313,15 @@ export default function Home() {
     <>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-display font-bold">{t('home.greeting')}, {userName}</h2>
-          <p className="text-muted-foreground">{t('home.subtitle')} {businessName} {t('common.today')}:</p>
+          <h2 className="text-2xl font-display font-bold text-foreground">
+            {t('home.greeting')},{' '}
+            <span className="font-semibold text-primary">{userName}</span>
+          </h2>
+          <p className="text-muted-foreground">
+            {t('home.subtitle')}{' '}
+            <span className="font-medium text-primary">{businessName}</span>{' '}
+            {t('home.todayInSubtitle')}:
+          </p>
         </div>
         <div className="flex flex-col items-center gap-1.5">
           <Button 
@@ -1336,7 +1343,7 @@ export default function Home() {
           return (
             <Card
               key={i}
-              className="p-5 flex flex-col gap-4 backdrop-blur-xl bg-card/60 border border-border/50 relative hover:border-border/80 transition-all !rounded-2xl flex-1 min-w-[280px] max-w-none w-full overflow-hidden"
+              className="p-5 flex flex-col gap-4 backdrop-blur-xl bg-card/60 border border-border/50 relative hover:border-border/80 transition-all !rounded-none flex-1 min-w-[280px] max-w-none w-full overflow-hidden"
             >
               <div className={cn('absolute inset-0 opacity-70', meta?.glow)} />
               <div className="relative z-10 flex items-start justify-between gap-4">

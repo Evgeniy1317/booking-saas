@@ -7,6 +7,7 @@ import { MapPin, ChevronLeft, ChevronRight, Instagram, Plus, X, Eye, EyeOff, Spa
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { DEFAULT_WORLD_MAP_EMBED_URL } from '@/lib/hair-theme-defaults'
+import { serializeFooterFieldForStorage } from '@/lib/public-footer-field-empty'
 import barberHeaderBg from '@/assets/images/constructor-images/загруженное (2).jpg'
 import worksDefault1 from '@/assets/images/constructor-images/998b104a5c45e39378ead8e9c3414675.jpg'
 import worksDefault2 from '@/assets/images/constructor-images/orig (2).jpg'
@@ -102,7 +103,7 @@ const PREMIUM_UI = {
     deleteFacebook: 'Удалить Facebook', deleteWhatsapp: 'Удалить WhatsApp', deleteTwitter: 'Удалить Twitter', deleteTiktok: 'Удалить TikTok',
     map: 'Карта',
     defTagline: 'Премиум барбершоп и груминг для мужчин', defBook: 'Записаться',
-    defHeroSub: 'Твой салон красоты', defHeroTitle: 'Стрижки, укладки\nи уход в одном месте', defContacts: 'Контакты',
+    defHeroSub: 'Стиль, комфорт и забота', defHeroTitle: 'Стрижки, укладки и уход в одном месте', defContacts: 'Контакты',
     defAboutTitle: 'О салоне', defAboutDesc: 'Уютное пространство для стрижек, укладок и ухода. Качественный сервис и спокойная атмосфера — без суеты и очередей.', defAboutThird: 'Услуги для всей семьи',
     defWorksTitle: 'Наши работы', defWorksSub: 'Вы заслуживаете выглядеть лучше всех',
     defServicesTitle: 'Наши услуги', defServicesSub: 'Стрижки, уход и процедуры в уютной атмосфере, работаем с качественными средствами',
@@ -429,7 +430,7 @@ export interface PremiumBarberTemplateProps {
   heroImageUrl?: string | null
   /** Режим редактирования в превью: тексты можно править прямо на месте */
   isEditMode?: boolean
-  /** Подзаголовок hero (золотая строка «Твой салон красоты») */
+  /** Подзаголовок hero (золотая строка над заголовком; по умолчанию из PREMIUM_UI / public) */
   heroSubtitle?: string
   /** Крупный заголовок hero («Стрижки, укладки…») */
   heroTitle?: string
@@ -595,18 +596,27 @@ export default function PremiumBarberTemplate(props: PremiumBarberTemplateProps)
     ctaButtonBorderColor,
     mapLabelColor,
     sectionRefs,
-    footerPhone = '+373 22 123 456',
+    footerPhone,
     footerDayOff,
     footerEmail,
   } = props
   const tagline = props.tagline ?? ui.defTagline
   const bookLabel = props.bookLabel ?? ui.defBook
-  const footerAddress = props.footerAddress ?? ui.defAddr
-  const footerHours = props.footerHours ?? ui.defHours
-  const addressLabel = props.addressLabel ?? ui.phAddress.toUpperCase()
-  const scheduleLabel = props.scheduleLabel ?? ui.phSchedule.toUpperCase()
-  const phoneLabel = props.phoneLabel ?? ui.phPhone.toUpperCase()
-  const emailLabel = props.emailLabel ?? ui.phEmail.toUpperCase()
+  /** В edit не подставлять ui.def* в value — иначе при кратком undefined/рассинхроне ключей controlled input откатывается к шаблону. */
+  const footerAddress =
+    isEditMode && onSaveDraft ? (props.footerAddress ?? '') : (props.footerAddress ?? ui.defAddr)
+  const footerHours =
+    isEditMode && onSaveDraft ? (props.footerHours ?? '') : (props.footerHours ?? ui.defHours)
+  const footerPhoneResolved =
+    isEditMode && onSaveDraft ? (footerPhone ?? '') : (footerPhone ?? '+373 22 123 456')
+  /**
+   * Подписи колонок: по умолчанию строго из PREMIUM_UI[lang], чтобы при смене языка не залипали
+   * строки из родителя/кастомного JSON другой локали. Кастом задаётся только непустой строкой с parent.
+   */
+  const addressLabel = props.addressLabel?.trim() ? props.addressLabel : ui.phAddress.toUpperCase()
+  const scheduleLabel = props.scheduleLabel?.trim() ? props.scheduleLabel : ui.phSchedule.toUpperCase()
+  const phoneLabel = props.phoneLabel?.trim() ? props.phoneLabel : ui.phPhone.toUpperCase()
+  const emailLabel = props.emailLabel?.trim() ? props.emailLabel : ui.phEmail.toUpperCase()
   const heroSubtitle = props.heroSubtitle ?? ui.defHeroSub
   const heroTitle = props.heroTitle ?? ui.defHeroTitle
   const heroContactsLabel = props.heroContactsLabel ?? ui.defContacts
@@ -753,7 +763,7 @@ export default function PremiumBarberTemplate(props: PremiumBarberTemplateProps)
         {heroVideoUrl ? (
           <video
             src={heroVideoUrl}
-            className="absolute inset-0 w-full h-full object-cover"
+            className="absolute inset-0 z-0 w-full h-full object-cover"
             muted
             loop
             autoPlay
@@ -761,7 +771,7 @@ export default function PremiumBarberTemplate(props: PremiumBarberTemplateProps)
             aria-hidden
           />
         ) : null}
-        <div className="absolute inset-0 bg-black/50" />
+        <div className="absolute inset-0 z-[1] bg-black/50" />
         <div className="premium-hero-content relative z-10 w-full max-w-2xl text-left pl-5 sm:pl-10 md:pl-16 lg:pl-24">
           {isEditMode && onSaveDraft ? (
             <input
@@ -1726,7 +1736,10 @@ export default function PremiumBarberTemplate(props: PremiumBarberTemplateProps)
             </div>
 
             <div className="mt-20">
-              <div className="premium-footer-contacts flex flex-nowrap items-start justify-center gap-3 sm:gap-4 md:gap-6 text-center">
+              <div
+                key={`premium-footer-contacts-${lang}`}
+                className="premium-footer-contacts flex flex-nowrap items-start justify-center gap-3 sm:gap-4 md:gap-6 text-center"
+              >
                 {[
                   footerVis.address && {
                     id: 'address' as const,
@@ -1736,7 +1749,7 @@ export default function PremiumBarberTemplate(props: PremiumBarberTemplateProps)
                         <input
                           type="text"
                           value={footerAddress}
-                          onChange={(e) => onSaveDraft('publicFooterAddress', e.target.value)}
+                          onChange={(e) => onSaveDraft('publicFooterAddress', serializeFooterFieldForStorage(e.target.value))}
                           className="w-full min-w-0 text-lg md:text-xl font-semibold leading-relaxed bg-transparent border-b border-transparent hover:border-white/30 focus:border-white focus:outline-none text-center"
                           style={{ color: footerTextC }}
                           placeholder={ui.phAddress}
@@ -1757,7 +1770,7 @@ export default function PremiumBarberTemplate(props: PremiumBarberTemplateProps)
                           <input
                             type="text"
                             value={footerHours}
-                            onChange={(e) => onSaveDraft('publicHours', e.target.value)}
+                            onChange={(e) => onSaveDraft('publicHours', serializeFooterFieldForStorage(e.target.value))}
                             className="w-full min-w-0 text-lg md:text-xl font-semibold leading-relaxed bg-transparent border-b border-transparent hover:border-white/30 focus:border-white focus:outline-none text-center"
                             style={{ color: footerTextC }}
                             placeholder={ui.phSchedule}
@@ -1765,7 +1778,7 @@ export default function PremiumBarberTemplate(props: PremiumBarberTemplateProps)
                           <input
                             type="text"
                             value={footerDayOff || ''}
-                            onChange={(e) => onSaveDraft('publicDayOff', e.target.value)}
+                            onChange={(e) => onSaveDraft('publicDayOff', serializeFooterFieldForStorage(e.target.value))}
                             className="w-full min-w-0 text-sm md:text-base bg-transparent border-b border-transparent hover:border-white/30 focus:border-white focus:outline-none text-center"
                             style={{ color: footerDayOffC }}
                             placeholder={ui.phDayOff}
@@ -1792,15 +1805,15 @@ export default function PremiumBarberTemplate(props: PremiumBarberTemplateProps)
                       isEditMode && onSaveDraft ? (
                         <input
                           type="text"
-                          value={footerPhone}
-                          onChange={(e) => onSaveDraft('publicPhone', e.target.value)}
+                          value={footerPhoneResolved}
+                          onChange={(e) => onSaveDraft('publicPhone', serializeFooterFieldForStorage(e.target.value))}
                           className="w-full min-w-0 text-lg md:text-xl font-semibold leading-relaxed bg-transparent border-b border-transparent hover:border-white/30 focus:border-white focus:outline-none text-center"
                           style={{ color: footerTextC }}
                           placeholder={ui.phPhone}
                         />
                       ) : (
                         <p className="text-lg md:text-xl font-semibold leading-relaxed min-w-0 truncate" style={{ color: footerTextC }}>
-                          {footerPhone}
+                          {footerPhoneResolved}
                         </p>
                       )
                     ),
@@ -1813,7 +1826,7 @@ export default function PremiumBarberTemplate(props: PremiumBarberTemplateProps)
                         <input
                           type="text"
                           value={footerEmail || ''}
-                          onChange={(e) => onSaveDraft('publicEmail', e.target.value)}
+                          onChange={(e) => onSaveDraft('publicEmail', serializeFooterFieldForStorage(e.target.value))}
                           className="w-full min-w-0 text-lg md:text-xl font-semibold leading-relaxed bg-transparent border-b border-transparent hover:border-white/30 focus:border-white focus:outline-none text-center"
                           style={{ color: footerTextC }}
                           placeholder={ui.phEmail}

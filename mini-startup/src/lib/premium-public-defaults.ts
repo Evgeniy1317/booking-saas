@@ -24,8 +24,10 @@ export const PREMIUM_PUBLIC_DEFAULTS_BY_LANG: Record<
   }
 > = {
   ru: {
-    heroSubtitle: 'Твой салон красоты',
-    heroTitle: 'Стрижки, укладки\nи уход в одном месте',
+    /** Не дублирует название салона / FOOTER_DEFAULT_NAME — подставляется имя из регистрации выше по приоритету */
+    heroSubtitle: 'Стиль, комфорт и забота',
+    /** Один абзац: в шаблоне отображается caps через CSS */
+    heroTitle: 'Стрижки, укладки и уход в одном месте',
     tagline: 'Премиум барбершоп и груминг для мужчин',
     aboutTitle: 'О салоне',
     aboutDesc:
