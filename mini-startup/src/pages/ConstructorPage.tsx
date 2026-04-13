@@ -102,6 +102,8 @@ const ABOUT_SALON_DEFAULTS = [aboutSalon1, aboutSalon2, aboutSalon3]
 /** Дефолтные фото для блока «Salon photos» (обычные шаблоны) — слоты 1–5 по умолчанию */
 const SALON_PHOTOS_DEFAULTS = [salonPhoto1, salonPhoto2, salonPhoto3, salonPhoto4, salonPhoto5]
 
+const APP_BASE = import.meta.env.BASE_URL
+
 const BODY_BACKGROUND_OPTIONS = [
   { id: 'bg-1', type: 'image' as const, url: patternBg },
   { id: 'bg-2', type: 'image' as const, url: manicurePattern },
@@ -992,7 +994,7 @@ export default function ConstructorPage() {
     if (previewMobileFrame) q.set('mobileFrame', '1')
     return q
   }, [panelStage, previewMobileFrame])
-  const previewUrl = useMemo(() => `/b/${slug}?${previewParams.toString()}`, [slug, previewParams])
+  const previewUrl = useMemo(() => `${APP_BASE}b/${slug}?${previewParams.toString()}`, [slug, previewParams])
   /** «Полный размер»: новая вкладка, черновики, без редактирования (без edit=1). mobileFrame сохраняет ветку *_mobile. На странице включается узкий viewport для моб. адаптива — см. PublicPage. */
   const fullSizePreviewParams = useMemo(() => {
     const q = new URLSearchParams()
@@ -1026,7 +1028,7 @@ export default function ConstructorPage() {
       q.set('draftSlug', slug)
       q.set('draftTheme', th)
     }
-    const fullViewUrl = `/b/${slug}?${q.toString()}`
+    const fullViewUrl = `${APP_BASE}b/${slug}?${q.toString()}`
     const narrow =
       typeof window !== 'undefined' && window.matchMedia('(max-width: 639px)').matches
     if (narrow) {

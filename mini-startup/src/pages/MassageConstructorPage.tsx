@@ -124,6 +124,8 @@ const SALON_PREVIEW_BLOCKS = [
   { id: 'footer', ru: 'Контактная информация', en: 'Contact information', ro: 'Informații de contact' },
 ] as const
 
+const APP_BASE = import.meta.env.BASE_URL
+
 /** Иконки выбора темы: классический, тайский, стоун, антистресс, спортивный */
 const MASSAGE_CONSTRUCTOR_THEMES: { id: MassageOrdinaryTemplateId; icon: string }[] = [
   { id: 'hair', icon: iconMassageClassic },
@@ -1039,11 +1041,11 @@ export default function MassageConstructorPage() {
     if (panelStage === 'edit') q.set('edit', '1')
     if (previewMobileFrame) q.set('mobileFrame', '1')
     if (massageSlotActive === PREMIUM_MASSAGE_SLOT) {
-      return `/massage-preview?${q.toString()}`
+      return `${APP_BASE}massage-preview?${q.toString()}`
     }
     q.set('massagePreview', '1')
     q.set('massageSlot', massageSlotActive)
-    return `/b/${publicSlug}?${q.toString()}`
+    return `${APP_BASE}b/${publicSlug}?${q.toString()}`
   }, [panelStage, massageSlotActive, publicSlug, poll, previewMobileFrame])
 
   const previewBlocks =
@@ -1061,7 +1063,7 @@ export default function MassageConstructorPage() {
       q.set('full', '1')
       if (previewMobileFrame) q.set('mobileFrame', '1')
       q.set('_', String(Date.now()))
-      const url = `/massage-preview?${q.toString()}`
+      const url = `${APP_BASE}massage-preview?${q.toString()}`
       if (narrow) window.location.assign(url)
       else window.open(url, '_blank')
       return
@@ -1073,7 +1075,7 @@ export default function MassageConstructorPage() {
     q.set('massageSlot', slot)
     if (previewMobileFrame) q.set('mobileFrame', '1')
     q.set('_', String(Date.now()))
-    const url = `/b/${publicSlug}?${q.toString()}`
+    const url = `${APP_BASE}b/${publicSlug}?${q.toString()}`
     if (narrow) window.location.assign(url)
     else window.open(url, '_blank')
   }, [publicSlug, previewMobileFrame])
