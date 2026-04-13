@@ -4,6 +4,11 @@ import { LogOut, Plus, ChevronDown, Moon, Sun, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
+import {
+  ADMIN_THEME_STORAGE_KEY,
+  applyAdminThemeToDocument,
+  readStoredAdminTheme,
+} from '@/lib/admin-theme'
 import { useLanguage } from '@/contexts/LanguageContext'
 import { Language } from '@/lib/translations'
 import iconHome from '@/assets/images/admin-icons/home.png'
@@ -54,7 +59,7 @@ export default function SidebarContent({ onCollapse }: SidebarContentProps) {
   const navigate = useNavigate()
   const { language, setLanguage, t } = useLanguage()
   const [isLanguageOpen, setIsLanguageOpen] = useState(false)
-  const [theme, setTheme] = useState<'light' | 'dark'>('dark')
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => readStoredAdminTheme() ?? 'dark')
   const [showThemeNotice, setShowThemeNotice] = useState(false)
   const languageRef = useRef<HTMLDivElement>(null)
   const themeRef = useRef<HTMLDivElement>(null)
@@ -92,30 +97,19 @@ export default function SidebarContent({ onCollapse }: SidebarContentProps) {
     const newTheme = theme === 'dark' ? 'light' : 'dark'
     setTheme(newTheme)
     // Применяем тему к приложению
-    if (newTheme === 'light') {
-      document.documentElement.classList.add('light')
-      document.documentElement.classList.remove('dark')
-    } else {
-      document.documentElement.classList.remove('light')
-      document.documentElement.classList.add('dark')
+    applyAdminThemeToDocument(newTheme)
+    try {
+      localStorage.setItem(ADMIN_THEME_STORAGE_KEY, newTheme)
+      localStorage.removeItem('theme')
+    } catch {
+      /* ignore */
     }
-    // Сохраняем в localStorage
-    localStorage.setItem('theme', newTheme)
   }
-  
-  // Загружаем тему из localStorage при монтировании
+
   useEffect(() => {
-    const savedTheme = localStorage.getItem('theme') as 'light' | 'dark' | null
-    if (savedTheme) {
-      setTheme(savedTheme)
-      if (savedTheme === 'light') {
-        document.documentElement.classList.add('light')
-        document.documentElement.classList.remove('dark')
-      } else {
-        document.documentElement.classList.remove('light')
-        document.documentElement.classList.add('dark')
-      }
-    }
+    const s = readStoredAdminTheme() ?? 'dark'
+    setTheme(s)
+    applyAdminThemeToDocument(s)
   }, [])
 
   const currentLanguage = languages.find(lang => lang.code === language) || languages[0]

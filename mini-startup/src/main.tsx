@@ -4,6 +4,9 @@ import './i18n'
 import App from './App.tsx'
 import './index.css'
 import { LanguageProvider } from './contexts/LanguageContext'
+import { applyStoredAdminThemeOrDefault } from './lib/admin-theme'
+
+applyStoredAdminThemeOrDefault()
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
