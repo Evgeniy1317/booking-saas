@@ -18,8 +18,10 @@ import MassageConstructorPage from './pages/MassageConstructorPage'
 import MassagePreviewPage from './pages/MassagePreviewPage'
 
 function App() {
+  const base = import.meta.env.BASE_URL
+  const routerBasename = base === '/' ? undefined : base.replace(/\/$/, '')
   return (
-    <Router>
+    <Router basename={routerBasename}>
       <Routes>
         <Route path="/" element={<Landing />} />
         <Route path="/constructor" element={<ConstructorPage />} />
